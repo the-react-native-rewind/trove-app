@@ -17,6 +17,7 @@ export function StatusSegmented({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={styles.bar}
       contentContainerStyle={styles.track}
     >
       {STATUSES.map(({ key, label }) => {
@@ -48,7 +49,15 @@ export function StatusSegmented({
 }
 
 const styles = StyleSheet.create({
-  track: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  // Pin the bar height so the horizontal ScrollView can't claim flexible
+  // vertical space (which would stretch the pills to fill the screen).
+  bar: { flexGrow: 0, flexShrink: 0 },
+  track: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
   seg: {
     flexDirection: 'row',
     alignItems: 'center',
