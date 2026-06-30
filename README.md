@@ -1,56 +1,66 @@
-# Welcome to your Expo app 👋
+# Trove
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A shared task board for the groups in your life: your home, your projects, your communities. Everyone sees only their part, so no single person carries the whole list.
 
-## Get started
+Visibility is enforced in the database (Supabase Row Level Security), not by app-side filters: you can see or change a task only if you are a member of its space.
 
-1. Install dependencies
+## Stack
 
-   ```bash
-   npm install
-   ```
+- React Native + Expo (SDK 56), TypeScript, Expo Router
+- Supabase (Postgres, Auth, RLS) via `supabase-js` with AsyncStorage
+- TanStack Query for data and mutations
+- react-native-gesture-handler + reanimated, react-native-draggable-flatlist
+- Fonts: Fraunces (display) + Hanken Grotesk (UI)
+- EAS Build → TestFlight
 
-2. Start the app
+## Backend
 
-   ```bash
-   npx expo start
-   ```
+- Supabase project: `Trove` (ref `umxghjfxwyiscxdxdwhf`, region eu-west-1)
+- Schema, RLS policies, the `is_space_member` / `current_space_role` SECURITY DEFINER
+  helpers, the creator-owner trigger, the new-user trigger (creates profile + default
+  "Personal" space), and the `accept_invite` RPC are all applied via migrations.
 
-In the output, you'll find options to open the app in a
+## Environment
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Create `.env` (git-ignored):
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+EXPO_PUBLIC_SUPABASE_URL=https://umxghjfxwyiscxdxdwhf.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<publishable key>
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Run locally (dev build)
 
-### Other setup steps
+These native modules need a development build, not Expo Go.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```
+nvm use 20            # Expo SDK 56 needs Node >= 20.19
+npm install
+npx expo run:ios      # builds the dev client, installs on the simulator, starts Metro
+```
 
-## Learn more
+## TestFlight (EAS)
 
-To learn more about developing your project with Expo, look at the following resources:
+EAS is configured (`eas.json`, project `@the-react-native-rewind/trove`). A TestFlight
+build requires Apple signing credentials. Provide an **App Store Connect API key**:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+1. App Store Connect -> Users and Access -> Integrations -> App Store Connect API ->
+   generate a key with the **App Manager** role. Note the **Key ID**, **Issuer ID**,
+   download the `.p8`, and find your **Team ID**.
+2. Build + submit:
 
-## Join the community
+```
+eas build --platform ios --profile production       # interactive Apple login OR ASC API key
+eas submit --platform ios --profile production --latest
+```
 
-Join our community of developers creating universal apps.
+In non-interactive/CI use, configure the ASC API key with `eas credentials` (iOS ->
+App Store Connect API Key) so builds and submits run hands-off.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Follow-ups (deferred from v1)
+
+- Custom SMTP for auth emails (the built-in Supabase mailer is rate-limited; email
+  confirmation is currently enabled).
+- Google sign-in (Supabase OAuth + `trove://auth-callback` deep link).
+- Accepting an invite deep link while signed out (currently handled when signed in).
+- Realtime live sync, labels, comments, attachments, push notifications.
