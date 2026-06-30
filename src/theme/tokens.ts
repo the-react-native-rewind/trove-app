@@ -1,0 +1,158 @@
+/**
+ * Trove design tokens (the "Atelier" identity).
+ * Warm, calm, communal. A noticeboard for real life, not software for work.
+ * These exact values are the source of truth from the product spec.
+ */
+
+export const colors = {
+  // Core
+  paper: '#F2EAD9', // app background (warm oat)
+  surface: '#FBF6EC', // cards
+  surfaceAlt: '#F7F0E1', // subtle fills
+  ink: '#2B2620', // primary text (warm espresso)
+  inkSoft: '#6A5F52', // secondary text
+  inkFaint: '#A3947E', // metadata
+  hairline: '#E4D9C3', // borders
+  hairlineSoft: '#EADFCB',
+
+  // Brand
+  brand: '#4C6444', // primary actions
+  brandDeep: '#3A4E34', // pressed / dark-green text
+  brandSoft: '#E7ECDD', // green wash, label backgrounds
+  honey: '#D29A40', // warm accent and spark
+
+  // On-color text
+  onBrand: '#FBF6EC',
+
+  // Priority
+  priorityHigh: '#C04A3C',
+  priorityMedium: '#4C6444',
+  priorityLow: '#C9BCA4',
+
+  white: '#FFFFFF',
+  transparent: 'transparent',
+} as const;
+
+/** Accent colors a space can take (shown as a dot and on tags). */
+export const spaceAccents = {
+  plum: '#8E5B6A',
+  ochre: '#C2922F',
+  sage: '#5F7050',
+  terracotta: '#C16E43',
+  brand: '#4C6444',
+  honey: '#D29A40',
+} as const;
+
+export type SpaceAccentName = keyof typeof spaceAccents;
+
+export const spaceAccentOrder: SpaceAccentName[] = [
+  'sage',
+  'plum',
+  'ochre',
+  'terracotta',
+  'brand',
+  'honey',
+];
+
+/** Resolve a stored space color (hex or accent name) to a hex value. */
+export function resolveAccent(color: string | null | undefined): string {
+  if (!color) return spaceAccents.sage;
+  if (color in spaceAccents) return spaceAccents[color as SpaceAccentName];
+  return color; // already a hex value
+}
+
+/** Example label chip tints (warm). */
+export const labelChips = {
+  urgent: { bg: '#F6E1DC', text: '#A23A30' },
+  events: { bg: '#E7ECDD', text: '#3A4E34' },
+  content: { bg: '#FBEFD9', text: '#9A6A12' },
+} as const;
+
+export const priority = {
+  high: { color: colors.priorityHigh, label: 'High' },
+  medium: { color: colors.priorityMedium, label: 'Medium' },
+  low: { color: colors.priorityLow, label: 'Low' },
+} as const;
+
+export type PriorityLevel = keyof typeof priority;
+
+export const radii = {
+  sm: 8,
+  button: 12,
+  card: 15,
+  lg: 20,
+  pill: 999,
+} as const;
+
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
+} as const;
+
+/** Font families — must match the keys registered with useFonts in the root layout. */
+export const fonts = {
+  // Fraunces (serif) — display & headings
+  displayRegular: 'Fraunces_400Regular',
+  displayMedium: 'Fraunces_500Medium',
+  displaySemiBold: 'Fraunces_600SemiBold',
+  displayBold: 'Fraunces_700Bold',
+  // Hanken Grotesk (sans) — body & UI
+  bodyRegular: 'HankenGrotesk_400Regular',
+  bodyMedium: 'HankenGrotesk_500Medium',
+  bodySemiBold: 'HankenGrotesk_600SemiBold',
+  bodyBold: 'HankenGrotesk_700Bold',
+} as const;
+
+/** Type scale (mobile), from the spec. */
+export const type = {
+  screenTitle: { fontFamily: fonts.displaySemiBold, fontSize: 25, lineHeight: 30 },
+  sectionHeading: { fontFamily: fonts.displaySemiBold, fontSize: 19, lineHeight: 24 },
+  cardTitle: { fontFamily: fonts.bodySemiBold, fontSize: 15.5, lineHeight: 21 },
+  body: { fontFamily: fonts.bodyRegular, fontSize: 15.5, lineHeight: 22 },
+  bodyMedium: { fontFamily: fonts.bodyMedium, fontSize: 15.5, lineHeight: 22 },
+  button: { fontFamily: fonts.bodySemiBold, fontSize: 16, lineHeight: 20 },
+  meta: { fontFamily: fonts.bodyMedium, fontSize: 13, lineHeight: 17 },
+  label: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 11.5,
+    lineHeight: 14,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase' as const,
+  },
+} as const;
+
+/** Soft, warm shadows based on rgba(43,38,32,...). */
+export const shadows = {
+  card: {
+    shadowColor: '#2B2620',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  floating: {
+    shadowColor: '#2B2620',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+} as const;
+
+export const theme = {
+  colors,
+  spaceAccents,
+  labelChips,
+  priority,
+  radii,
+  spacing,
+  fonts,
+  type,
+  shadows,
+} as const;
+
+export type Theme = typeof theme;
