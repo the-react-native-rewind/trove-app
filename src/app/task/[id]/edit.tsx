@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import { AssigneePicker, DueDatePicker, OptionChips } from '@/components/form';
+import { TaskMedia } from '@/components/TaskMedia';
 import { Button } from '@/components/ui/Button';
 import { SpaceTag } from '@/components/ui/Indicators';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
@@ -140,6 +141,7 @@ export default function TaskEdit() {
         value={task.due_date}
         onChange={(due_date) => patch({ id: task.id, due_date })}
       />
+      <TaskMedia taskId={task.id} spaceId={task.space_id} canWrite />
     </ModalScaffold>
   );
 }

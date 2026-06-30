@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import {
   type Attachment,
+  pickMedia,
   useAddAttachment,
   useDeleteAttachment,
   useTaskAttachments,
@@ -28,20 +28,10 @@ export function TaskMedia({
   const deleteAttachment = useDeleteAttachment(taskId);
 
   async function pick() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Allow photo access', 'Trove needs access to your photos to add media to a task.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.length) return;
-    const asset = result.assets[0];
-    const mediaType = asset.type === 'video' ? 'video' : 'image';
+    const picked = await pickMedia();
+    if (!picked) return;
     try {
-      await addAttachment.mutateAsync({ uri: asset.uri, mediaType });
+      await addAttachment.mutateAsync(picked);
     } catch {
       Alert.alert('Upload failed', 'That file could not be added. Try again.');
     }
