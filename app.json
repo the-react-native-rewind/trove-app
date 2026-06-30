@@ -2,6 +2,7 @@
   "expo": {
     "name": "Trove",
     "slug": "trove",
+    "owner": "the-react-native-rewind",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,7 +10,10 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.rewind.trove",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.rewind.trove",
@@ -44,6 +48,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8396f5b4-3415-42a5-a683-7bdb52ca7aec"
+      }
     }
   }
 }
