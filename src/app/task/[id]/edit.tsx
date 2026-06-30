@@ -20,7 +20,7 @@ const PRIORITY_OPTIONS: { value: Priority | 'none'; label: string; color?: strin
   { value: 'high', label: 'High', color: priorityTokens.high.color },
 ];
 
-export default function TaskDetail() {
+export default function TaskEdit() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { data: task, isLoading } = useTask(id);
@@ -40,7 +40,7 @@ export default function TaskDetail() {
 
   if (isLoading) {
     return (
-      <ModalScaffold title="Task">
+      <ModalScaffold title="Edit task">
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand} />
         </View>
@@ -50,7 +50,7 @@ export default function TaskDetail() {
 
   if (!task) {
     return (
-      <ModalScaffold title="Task">
+      <ModalScaffold title="Edit task">
         <Text variant="body" color={colors.inkSoft}>
           This task is no longer here. It may have been deleted.
         </Text>
@@ -58,8 +58,7 @@ export default function TaskDetail() {
     );
   }
 
-  const role = spaces.find((s) => s.id === task.space_id)?.role;
-  const writable = canWrite(role);
+  const writable = canWrite(spaces.find((s) => s.id === task.space_id)?.role);
 
   function patch(input: Parameters<typeof updateTask.mutate>[0]) {
     updateTask.mutate(input);
@@ -73,20 +72,28 @@ export default function TaskDetail() {
         style: 'destructive',
         onPress: async () => {
           await deleteTask.mutateAsync(task!.id);
+          // Pop edit + view back to the board.
+          router.back();
           router.back();
         },
       },
     ]);
   }
 
+  if (!writable) {
+    return (
+      <ModalScaffold title="Edit task">
+        <Text variant="body" color={colors.inkSoft}>
+          You can view this space but not change its tasks.
+        </Text>
+      </ModalScaffold>
+    );
+  }
+
   return (
     <ModalScaffold
-      title="Task"
-      footer={
-        writable ? (
-          <Button label="Delete task" variant="danger" onPress={confirmDelete} />
-        ) : undefined
-      }
+      title="Edit task"
+      footer={<Button label="Delete task" variant="danger" onPress={confirmDelete} />}
     >
       {task.space ? (
         <View style={styles.tagRow}>
@@ -94,68 +101,46 @@ export default function TaskDetail() {
         </View>
       ) : null}
 
-      {writable ? (
-        <>
-          <TextField
-            label="Title"
-            value={title}
-            onChangeText={setTitle}
-            onEndEditing={() => title.trim() && title !== task.title && patch({ id: task.id, title })}
-            placeholder="Task title"
-          />
-          <TextField
-            label="Notes"
-            value={description}
-            onChangeText={setDescription}
-            onEndEditing={() =>
-              description !== (task.description ?? '') && patch({ id: task.id, description })
-            }
-            placeholder="Optional details"
-            multiline
-            style={{ minHeight: 80, textAlignVertical: 'top' }}
-          />
-          <OptionChips
-            label="Status"
-            options={STATUSES.map((s) => ({ value: s.key, label: s.label }))}
-            value={task.status as TaskStatus}
-            onChange={(status) => patch({ id: task.id, status })}
-          />
-          <AssigneePicker
-            spaceId={task.space_id}
-            value={task.assignee_id}
-            onChange={(assignee_id) => patch({ id: task.id, assignee_id })}
-          />
-          <OptionChips
-            label="Priority"
-            options={PRIORITY_OPTIONS}
-            value={(task.priority as Priority) ?? 'none'}
-            onChange={(p) => patch({ id: task.id, priority: p === 'none' ? null : p })}
-          />
-          <DueDatePicker
-            value={task.due_date}
-            onChange={(due_date) => patch({ id: task.id, due_date })}
-          />
-        </>
-      ) : (
-        <ReadOnly task={task} />
-      )}
+      <TextField
+        label="Title"
+        value={title}
+        onChangeText={setTitle}
+        onEndEditing={() => title.trim() && title !== task.title && patch({ id: task.id, title })}
+        placeholder="Task title"
+      />
+      <TextField
+        label="Notes"
+        value={description}
+        onChangeText={setDescription}
+        onEndEditing={() =>
+          description !== (task.description ?? '') && patch({ id: task.id, description })
+        }
+        placeholder="Optional details"
+        multiline
+        style={{ minHeight: 80, textAlignVertical: 'top' }}
+      />
+      <OptionChips
+        label="Status"
+        options={STATUSES.map((s) => ({ value: s.key, label: s.label }))}
+        value={task.status as TaskStatus}
+        onChange={(status) => patch({ id: task.id, status })}
+      />
+      <AssigneePicker
+        spaceId={task.space_id}
+        value={task.assignee_id}
+        onChange={(assignee_id) => patch({ id: task.id, assignee_id })}
+      />
+      <OptionChips
+        label="Priority"
+        options={PRIORITY_OPTIONS}
+        value={(task.priority as Priority) ?? 'none'}
+        onChange={(p) => patch({ id: task.id, priority: p === 'none' ? null : p })}
+      />
+      <DueDatePicker
+        value={task.due_date}
+        onChange={(due_date) => patch({ id: task.id, due_date })}
+      />
     </ModalScaffold>
-  );
-}
-
-function ReadOnly({ task }: { task: NonNullable<ReturnType<typeof useTask>['data']> }) {
-  return (
-    <View style={{ gap: spacing.lg }}>
-      <Text variant="screenTitle">{task.title}</Text>
-      {task.description ? (
-        <Text variant="body" color={colors.inkSoft}>
-          {task.description}
-        </Text>
-      ) : null}
-      <Text variant="meta" color={colors.inkFaint}>
-        You can view this space but not change its tasks.
-      </Text>
-    </View>
   );
 }
 

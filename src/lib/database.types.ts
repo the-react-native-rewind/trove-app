@@ -126,6 +126,36 @@ export type Database = {
         }
         Relationships: []
       }
+      task_attachments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          media_type: string
+          path: string
+          space_id: string
+          task_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          media_type: string
+          path: string
+          space_id: string
+          task_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          media_type?: string
+          path?: string
+          space_id?: string
+          task_id?: string
+        }
+        Relationships: []
+      }
       task_labels: {
         Row: { label_id: string; task_id: string }
         Insert: { label_id: string; task_id: string }

@@ -34,6 +34,13 @@ const INVITE_ROLES: { value: SpaceRole; label: string }[] = [
   { value: 'viewer', label: 'Viewer' },
 ];
 
+const ROLE_DESCRIPTIONS: Record<SpaceRole, string> = {
+  owner: 'Created the space. Full control, including deleting it.',
+  admin: 'Can add and remove people and invites, and change any task.',
+  member: 'Can add, edit, and complete tasks in this space.',
+  viewer: 'Can see the board but not change anything.',
+};
+
 export default function Members() {
   const { id: spaceId } = useLocalSearchParams<{ id: string }>();
   const { userId } = useAuth();
@@ -104,6 +111,9 @@ export default function Members() {
             autoCorrect={false}
           />
           <OptionChips label="Role" options={INVITE_ROLES} value={role} onChange={setRole} />
+          <Text variant="meta" color={colors.inkSoft} style={styles.roleHint}>
+            {ROLE_DESCRIPTIONS[role]}
+          </Text>
           {error ? (
             <Text variant="meta" color={colors.priorityHigh}>
               {error}
@@ -185,6 +195,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  roleHint: { marginTop: -spacing.xs, marginLeft: 2 },
   section: { gap: spacing.sm },
   memberRow: {
     flexDirection: 'row',

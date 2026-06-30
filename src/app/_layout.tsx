@@ -53,7 +53,8 @@ function RootNavigator() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
       <Stack.Screen name="task-new" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="task/[id]" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="task/[id]/index" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="task/[id]/edit" options={{ presentation: 'modal' }} />
       <Stack.Screen name="space-new" options={{ presentation: 'modal' }} />
       <Stack.Screen name="space/[id]/members" options={{ presentation: 'modal' }} />
       <Stack.Screen name="space/[id]/settings" options={{ presentation: 'modal' }} />

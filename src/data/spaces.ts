@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Crypto from 'expo-crypto';
 
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
@@ -53,13 +54,18 @@ export function useCreateSpace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { name: string; color: string }) => {
-      const { data, error } = await supabase
+      // Generate the id client-side and skip the representation read. A brand-new
+      // space has no membership yet (the owner row is added by an AFTER trigger),
+      // so a RETURNING select would be hidden by the spaces RLS policy and 401.
+      const id = Crypto.randomUUID();
+      const { error } = await supabase
         .from('spaces')
-        .insert({ name: input.name.trim(), color: input.color, owner_id: userId! })
-        .select()
-        .single();
+        .insert({ id, name: input.name.trim(), color: input.color, owner_id: userId! });
       if (error) throw error;
-      return data;
+      return { id, name: input.name.trim(), color: input.color } as Pick<
+        Space,
+        'id' | 'name' | 'color'
+      >;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.spaces });
