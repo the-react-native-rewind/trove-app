@@ -60,7 +60,7 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
                       e.dataTransfer.setData('text/plain', task.id);
                       e.dataTransfer.effectAllowed = 'move';
                     }}
-                    style={{ cursor: canDrag ? 'grab' : 'default' }}
+                    style={{ cursor: canDrag ? 'grab' : 'default', display: 'flex', flexDirection: 'column' }}
                   >
                     <TaskCard task={task} showSpaceTag={showSpaceTag} onPress={() => onOpen(task.id)} />
                   </div>
