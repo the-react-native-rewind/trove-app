@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -26,14 +27,19 @@ export function TaskMedia({
   const { data: items = [] } = useTaskAttachments(taskId);
   const addAttachment = useAddAttachment(taskId, spaceId);
   const deleteAttachment = useDeleteAttachment(taskId);
+  const [error, setError] = useState<string | null>(null);
 
   async function pick() {
+    setError(null);
     const picked = await pickMedia();
     if (!picked) return;
     try {
       await addAttachment.mutateAsync(picked);
-    } catch {
-      Alert.alert('Upload failed', 'That file could not be added. Try again.');
+    } catch (e) {
+      // Alert doesn't render on web, so surface the reason inline everywhere.
+      const message = e instanceof Error ? e.message : 'That file could not be added.';
+      setError(message);
+      Alert.alert('Upload failed', message);
     }
   }
 
@@ -91,6 +97,12 @@ export function TaskMedia({
           </Pressable>
         ) : null}
       </View>
+
+      {error ? (
+        <Text variant="meta" color={colors.priorityHigh}>
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
