@@ -7,6 +7,7 @@ import DraggableFlatList, {
 } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { KanbanBoard } from '@/components/KanbanBoard';
 import { StatusSegmented } from '@/components/StatusSegmented';
 import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -14,6 +15,7 @@ import { AccentDot } from '@/components/ui/Indicators';
 import { Text } from '@/components/ui/Text';
 import { positionBetween, useMoveTaskStatus, useReorderTask, useTasks } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
+import { useIsWide } from '@/hooks/useIsWide';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
@@ -29,12 +31,14 @@ export default function Board() {
   const navigation = useNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isWide = useIsWide();
   const { selectedSpaceId } = useSelectedSpace();
   const { data: spaces = [] } = useSpaces();
 
   const isAll = selectedSpaceId === 'all';
   const currentSpace = spaces.find((s) => s.id === selectedSpaceId);
   const writable = isAll ? true : canWrite(currentSpace?.role);
+  const canWriteTask = (spaceId: string) => canWrite(spaces.find((s) => s.id === spaceId)?.role);
 
   const { data: tasks = [], isLoading, refetch, isRefetching } = useTasks(selectedSpaceId);
   const moveStatus = useMoveTaskStatus();
@@ -85,15 +89,17 @@ export default function Board() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable
-          onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Open spaces"
-          style={styles.iconBtn}
-        >
-          <Ionicons name="menu" size={26} color={colors.ink} />
-        </Pressable>
+        {!isWide ? (
+          <Pressable
+            onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Open spaces"
+            style={styles.iconBtn}
+          >
+            <Ionicons name="menu" size={26} color={colors.ink} />
+          </Pressable>
+        ) : null}
 
         <View style={styles.titleWrap}>
           {!isAll && currentSpace ? <AccentDot color={currentSpace.color} size={12} /> : null}
@@ -142,7 +148,7 @@ export default function Board() {
         </View>
       </View>
 
-      <StatusSegmented value={status} counts={counts} onChange={setStatus} />
+      {!isWide ? <StatusSegmented value={status} counts={counts} onChange={setStatus} /> : null}
 
       {isAll && showFilter ? (
         <View style={styles.filterRow}>
@@ -171,27 +177,35 @@ export default function Board() {
         </View>
       ) : null}
 
-      <DraggableFlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        onDragEnd={({ data, to }) => {
-          setItems(data);
-          const moved = data[to];
-          if (!moved) return;
-          const prev = data[to - 1]?.position ?? null;
-          const next = data[to + 1]?.position ?? null;
-          reorder.mutate({ id: moved.id, position: positionBetween(prev, next) });
-        }}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          isLoading ? null : <EmptyState {...EMPTY_COPY[status]} />
-        }
-        refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brand} />
-        }
-        containerStyle={styles.listFlex}
-      />
+      {isWide ? (
+        <KanbanBoard
+          tasks={visibleTasks}
+          showSpaceTag={isAll}
+          onOpen={(id) => router.push(`/task/${id}` as never)}
+          onMove={(id, next) => moveStatus.mutate({ id, status: next })}
+          canWriteTask={canWriteTask}
+        />
+      ) : (
+        <DraggableFlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          onDragEnd={({ data, to }) => {
+            setItems(data);
+            const moved = data[to];
+            if (!moved) return;
+            const prev = data[to - 1]?.position ?? null;
+            const next = data[to + 1]?.position ?? null;
+            reorder.mutate({ id: moved.id, position: positionBetween(prev, next) });
+          }}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={isLoading ? null : <EmptyState {...EMPTY_COPY[status]} />}
+          refreshControl={
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brand} />
+          }
+          containerStyle={styles.listFlex}
+        />
+      )}
 
       {writable ? (
         <Pressable

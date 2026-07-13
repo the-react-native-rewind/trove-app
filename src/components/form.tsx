@@ -1,10 +1,10 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useRoster } from '@/data/members';
-import { formatDueDate, toDateString } from '@/lib/format';
+import { formatDueDate } from '@/lib/format';
+import { DateSpinner } from './DateSpinner';
 import type { SpaceWithMeta } from '@/lib/types';
 import { canWrite } from '@/lib/types';
 import { colors, radii, resolveAccent, spaceAccentOrder, spaceAccents, spacing } from '@/theme/tokens';
@@ -211,19 +211,12 @@ export function DueDatePicker({
         ) : null}
       </View>
 
-      {show ? (
-        <DateTimePicker
-          value={value ? new Date(`${value}T00:00:00`) : new Date()}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          themeVariant="light"
-          accentColor={colors.brand}
-          onChange={(event, date) => {
-            if (Platform.OS !== 'ios') setShow(false);
-            if (event.type === 'set' && date) onChange(toDateString(date));
-          }}
-        />
-      ) : null}
+      <DateSpinner
+        visible={show}
+        value={value}
+        onChange={onChange}
+        onClose={() => setShow(false)}
+      />
     </View>
   );
 }

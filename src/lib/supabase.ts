@@ -14,16 +14,27 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
+// On web the app renders in the browser (SPA), but Metro/Expo may still evaluate
+// this module in a Node context where `window` (and localStorage) is absent.
+// Fall back to a no-op store there so client construction never touches `window`.
+const isBrowserOrNative = typeof window !== 'undefined' || typeof navigator !== 'undefined';
+const memoryStore = {
+  getItem: async () => null,
+  setItem: async () => {},
+  removeItem: async () => {},
+};
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
   auth: {
-    storage: AsyncStorage,
-    persistSession: true,
-    autoRefreshToken: true,
+    storage: isBrowserOrNative ? AsyncStorage : memoryStore,
+    persistSession: isBrowserOrNative,
+    autoRefreshToken: isBrowserOrNative,
     detectSessionInUrl: false,
   },
 });
 
-// Refresh the session while the app is in the foreground; pause it in the background.
+// Refresh the session while a native app is in the foreground; pause it in the
+// background. AppState is a no-op on web, so this only matters on iOS/Android.
 AppState.addEventListener('change', (state) => {
   if (state === 'active') {
     supabase.auth.startAutoRefresh();
