@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { celebrate } from '@/lib/celebrate';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import type { Priority, TaskStatus, TaskWithRefs } from '@/lib/types';
@@ -104,6 +105,7 @@ export function useUpdateTask() {
     onSuccess: (_d, vars) => {
       invalidateTasks(qc);
       qc.invalidateQueries({ queryKey: qk.task(vars.id) });
+      if (vars.status === 'done') celebrate();
     },
   });
 }
@@ -118,7 +120,10 @@ export function useMoveTaskStatus() {
         .eq('id', input.id);
       if (error) throw error;
     },
-    onSuccess: () => invalidateTasks(qc),
+    onSuccess: (_d, vars) => {
+      invalidateTasks(qc);
+      if (vars.status === 'done') celebrate();
+    },
   });
 }
 

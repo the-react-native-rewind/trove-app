@@ -20,6 +20,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '@/lib/devtools';
+import { Celebration } from '@/components/Celebration';
 import { useIsWide } from '@/hooks/useIsWide';
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
@@ -104,6 +105,7 @@ export default function RootLayout() {
             <SpaceProvider>
               <StatusBar style="dark" />
               <RootNavigator />
+              <Celebration />
             </SpaceProvider>
           </AuthProvider>
         </QueryClientProvider>

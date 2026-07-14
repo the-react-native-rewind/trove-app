@@ -44,3 +44,6 @@ example
 
 # local env
 .env
+
+# skia web (regenerate with: npx setup-skia-web public)
+public/canvaskit.wasm
