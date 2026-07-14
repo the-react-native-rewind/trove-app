@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, spacing } from '@/theme/tokens';
+import { useIsWide } from '@/hooks/useIsWide';
+import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Text } from './Text';
 
 export function ModalScaffold({
@@ -27,14 +28,15 @@ export function ModalScaffold({
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isWide = useIsWide();
 
   function close() {
     if (onClose) onClose();
     else if (router.canGoBack()) router.back();
   }
 
-  return (
-    <View style={[styles.container, { paddingTop: spacing.md }]}>
+  const body = (
+    <>
       <View style={styles.header}>
         <Text variant="sectionHeading">{title}</Text>
         <Pressable onPress={close} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close">
@@ -55,16 +57,58 @@ export function ModalScaffold({
           {children}
         </ScrollView>
         {footer ? (
-          <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>{footer}</View>
+          <View
+            style={[
+              styles.footer,
+              { paddingBottom: (isWide ? spacing.md : insets.bottom) + spacing.md },
+            ]}
+          >
+            {footer}
+          </View>
         ) : null}
       </KeyboardAvoidingView>
-    </View>
+    </>
   );
+
+  // Wide screens: a centered dialog over a dimmed, tap-to-close backdrop.
+  if (isWide) {
+    return (
+      <View style={styles.backdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={close}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
+        <View style={styles.card}>{body}</View>
+      </View>
+    );
+  }
+
+  // Phones: full-screen modal.
+  return <View style={[styles.container, { paddingTop: spacing.md }]}>{body}</View>;
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
   flex: { flex: 1 },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(43, 38, 32, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '88%',
+    backgroundColor: colors.paper,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    paddingTop: spacing.sm,
+    ...shadows.floating,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

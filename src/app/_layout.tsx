@@ -20,6 +20,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '@/lib/devtools';
+import { useIsWide } from '@/hooks/useIsWide';
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { SpaceProvider } from '@/providers/SpaceProvider';
@@ -45,22 +46,32 @@ function useProtectedRoute() {
 
 function RootNavigator() {
   const { initializing } = useAuth();
+  const isWide = useIsWide();
   useProtectedRoute();
 
   if (initializing) return null; // splash stays up
+
+  // On wide screens, present these routes as transparent overlays so the board
+  // stays visible behind the ModalScaffold's dimmed, centered dialog. On phones
+  // they're regular full-screen modals.
+  const modalOptions = {
+    presentation: (isWide ? 'transparentModal' : 'modal') as 'transparentModal' | 'modal',
+    animation: (isWide ? 'fade' : 'default') as 'fade' | 'default',
+    contentStyle: { backgroundColor: isWide ? 'transparent' : colors.paper },
+  };
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
-      <Stack.Screen name="task-new" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="task/[id]/index" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="task/[id]/edit" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="space-new" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="space/[id]/members" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="space/[id]/settings" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="account" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="invite/[token]" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="task-new" options={modalOptions} />
+      <Stack.Screen name="task/[id]/index" options={modalOptions} />
+      <Stack.Screen name="task/[id]/edit" options={modalOptions} />
+      <Stack.Screen name="space-new" options={modalOptions} />
+      <Stack.Screen name="space/[id]/members" options={modalOptions} />
+      <Stack.Screen name="space/[id]/settings" options={modalOptions} />
+      <Stack.Screen name="account" options={modalOptions} />
+      <Stack.Screen name="invite/[token]" options={modalOptions} />
     </Stack>
   );
 }
