@@ -63,7 +63,15 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
-      - name: Build, generate test, run
+      # Build the APK before booting the emulator so the AVD isn't holding
+      # 2-4 GB of RAM while the C++ (reanimated/worklets/skia) compiles.
+      # Restrict to x86_64 only — the sole ABI this emulator runs — instead of
+      # the default 4 ABIs, cutting native compile work (and peak memory) ~75%.
+      - name: Build release APK (x86_64)
+        working-directory: android
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64
+
+      - name: Generate test, run
         uses: reactivecircus/android-emulator-runner@v2
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -74,7 +82,6 @@ jobs:
           script: |
             set -e
             mkdir -p .maestro maestro-results
-            (cd android && ./gradlew :app:assembleRelease)
             adb install -r android/app/build/outputs/apk/release/app-release.apk
             claude -p "$(cat .github/maestro-agent-prompt.md)" \
               --mcp-config .github/mcp.json \
