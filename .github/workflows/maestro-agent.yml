@@ -115,7 +115,10 @@ jobs:
       - name: Generate test, run
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Bills the agent against a Claude Pro/Max subscription instead of
+          # Console API credits (separate billing surface). Generate locally with
+          # `claude setup-token` and store as the CLAUDE_CODE_OAUTH_TOKEN secret.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         with:
           api-level: 34
           arch: x86_64
