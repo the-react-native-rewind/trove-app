@@ -77,13 +77,23 @@ jobs:
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
       # One source-hash key, computed once and reused by restore + save so they
-      # can't drift. The release APK embeds the JS bundle, so the key must cover
-      # ALL app source (src, assets) plus deps and native config — otherwise a
-      # stale APK would be tested silently. Workflow-only edits (this YAML)
-      # intentionally hit the cache, so iterating on the pipeline skips the build.
+      # can't drift. The release APK embeds the JS bundle AND the EXPO_PUBLIC_*
+      # values Metro inlines at build time, so the key must cover ALL app source
+      # (src, assets), deps, native config, AND those env values — otherwise a
+      # stale APK (e.g. one built without Supabase config, which crashes on
+      # launch) would be restored and tested silently. Workflow-only edits (this
+      # YAML) still hit the cache, so iterating on the pipeline skips the build.
+      # (These EXPO_PUBLIC_* values are public by design — the anon key ships in
+      # every client binary — so a truncated hash of them in the key leaks nothing.)
       - name: Compute APK cache key
         id: apk-key
-        run: echo "key=apk-release-x86_64-${{ hashFiles('package-lock.json', 'app.json', 'babel.config.js', 'tsconfig.json', 'src/**', 'assets/**') }}" >> "$GITHUB_OUTPUT"
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          ENV_HASH=$(printf '%s' "${EXPO_PUBLIC_SUPABASE_URL}|${EXPO_PUBLIC_SUPABASE_ANON_KEY}" | sha256sum | cut -c1-12)
+          SRC_HASH=${{ hashFiles('package-lock.json', 'app.json', 'babel.config.js', 'tsconfig.json', 'src/**', 'assets/**') }}
+          echo "key=apk-release-x86_64-${ENV_HASH}-${SRC_HASH}" >> "$GITHUB_OUTPUT"
 
       - name: Restore cached release APK
         id: apk-cache
@@ -99,6 +109,12 @@ jobs:
       - name: Build release APK (x86_64)
         if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: android
+        env:
+          # EXPO_PUBLIC_* are inlined into the JS bundle by Metro DURING this
+          # release build, so they must be present here (not at emulator runtime).
+          # Without them the app crashes on launch: "Missing Supabase config".
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
         run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64
 
       # Save right after building, BEFORE the emulator step (the one that tends
@@ -119,6 +135,14 @@ jobs:
           # Console API credits (separate billing surface). Generate locally with
           # `claude setup-token` and store as the CLAUDE_CODE_OAUTH_TOKEN secret.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Test-user login for the agent to get past the auth screen. Kept in
+          # secrets (never hardcoded) because this repo is PUBLIC — a literal
+          # password would leak via the committed workflow AND the flow YAML that
+          # the "Comment on PR" step posts publicly. The generated flow references
+          # these as ${MAESTRO_TEST_EMAIL}/${MAESTRO_TEST_PASSWORD} placeholders
+          # and maestro test injects the real values via -e at runtime.
+          MAESTRO_TEST_EMAIL: ${{ secrets.MAESTRO_TEST_EMAIL }}
+          MAESTRO_TEST_PASSWORD: ${{ secrets.MAESTRO_TEST_PASSWORD }}
         with:
           api-level: 34
           arch: x86_64
@@ -131,8 +155,9 @@ jobs:
           script: |
             mkdir -p .maestro maestro-results
             adb install -r android/app/build/outputs/apk/release/app-release.apk
+            printf 'email: %s\npassword: %s\n' "$MAESTRO_TEST_EMAIL" "$MAESTRO_TEST_PASSWORD" > pr-credentials.md
             claude -p "$(cat .github/maestro-agent-prompt.md)" --mcp-config .github/mcp.json --allowedTools "mcp__maestro__list_devices,mcp__maestro__inspect_screen,mcp__maestro__take_screenshot,mcp__maestro__run,mcp__maestro__cheat_sheet,Write,Read" --dangerously-skip-permissions --max-turns 40 < /dev/null | tee agent-output.txt
-            maestro test .maestro --format junit --output maestro-results/report.xml 2>&1 | tee maestro-results/run.log || true
+            maestro test .maestro --format junit --output maestro-results/report.xml -e MAESTRO_TEST_EMAIL="$MAESTRO_TEST_EMAIL" -e MAESTRO_TEST_PASSWORD="$MAESTRO_TEST_PASSWORD" 2>&1 | tee maestro-results/run.log || true
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -45,5 +45,8 @@ example
 # local env
 .env
 
+# CI-only test-user credentials file written from secrets at runtime
+pr-credentials.md
+
 # skia web (regenerate with: npx setup-skia-web public)
 public/canvaskit.wasm
