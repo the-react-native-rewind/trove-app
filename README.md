@@ -1,3 +1,5 @@
+<img src="assets/images/logo.png" width="96" alt="Trove logo: three overlapping circles in sage, honey, and terracotta" />
+
 # Trove
 
 A shared task board for the groups in your life: your home, your projects, your communities. Everyone sees only their part, so no single person carries the whole list.

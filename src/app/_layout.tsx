@@ -15,11 +15,12 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '@/lib/devtools';
+import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { Celebration } from '@/components/Celebration';
 import { useIsWide } from '@/hooks/useIsWide';
 import { queryClient } from '@/lib/queryClient';
@@ -78,6 +79,7 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  const [splashDone, setSplashDone] = useState(false);
   const [fontsLoaded, fontError] = useFonts({
     Fraunces_400Regular,
     Fraunces_500Medium,
@@ -106,6 +108,7 @@ export default function RootLayout() {
               <StatusBar style="dark" />
               <RootNavigator />
               <Celebration />
+              {!splashDone ? <AnimatedSplash onDone={() => setSplashDone(true)} /> : null}
             </SpaceProvider>
           </AuthProvider>
         </QueryClientProvider>
