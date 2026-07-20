@@ -123,15 +123,15 @@ jobs:
           api-level: 34
           arch: x86_64
           profile: pixel_6
+          # NOTE: android-emulator-runner executes this script ONE LINE AT A TIME
+          # (each line is a separate `sh -c`), so a command must NOT be split
+          # across lines with `\` — the continuation lines run as their own
+          # commands and fail. Keep the `claude` invocation on a single line.
+          # The action already fails the job if any line exits non-zero.
           script: |
-            set -e
             mkdir -p .maestro maestro-results
             adb install -r android/app/build/outputs/apk/release/app-release.apk
-            claude -p "$(cat .github/maestro-agent-prompt.md)" \
-              --mcp-config .github/mcp.json \
-              --allowedTools "mcp__maestro__list_devices,mcp__maestro__inspect_screen,mcp__maestro__take_screenshot,mcp__maestro__run,mcp__maestro__cheat_sheet,Write,Read" \
-              --dangerously-skip-permissions \
-              --max-turns 40 | tee agent-output.txt
+            claude -p "$(cat .github/maestro-agent-prompt.md)" --mcp-config .github/mcp.json --allowedTools "mcp__maestro__list_devices,mcp__maestro__inspect_screen,mcp__maestro__take_screenshot,mcp__maestro__run,mcp__maestro__cheat_sheet,Write,Read" --dangerously-skip-permissions --max-turns 40 < /dev/null | tee agent-output.txt
             maestro test .maestro --format junit --output maestro-results/report.xml 2>&1 | tee maestro-results/run.log || true
 
       - uses: actions/upload-artifact@v4
