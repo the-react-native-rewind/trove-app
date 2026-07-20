@@ -19,6 +19,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ubuntu-latest ships with ~14 GB free on /, which the RN build fills —
+      # leaving too little for the emulator's AVD ("not enough disk space to
+      # run avd"). Reclaim ~15-25 GB of preinstalled toolchains we don't use.
+      # Does NOT touch the Android SDK/NDK or Node — those are needed downstream.
+      - name: Free up disk space
+        run: |
+          echo "Before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/share/boost /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+          echo "After:"; df -h /
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -63,11 +76,24 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
+      # Reuse a previously built APK when nothing that affects it changed. The
+      # release APK embeds the JS bundle, so the key must cover ALL app source
+      # (src, assets) plus deps and native config — otherwise a stale APK would
+      # be tested silently. Workflow-only edits (this YAML) intentionally hit the
+      # cache, so iterating on the pipeline skips the ~20 min build.
+      - name: Restore cached release APK
+        id: apk-cache
+        uses: actions/cache@v4
+        with:
+          path: android/app/build/outputs/apk/release/app-release.apk
+          key: apk-release-x86_64-${{ hashFiles('package-lock.json', 'app.json', 'babel.config.js', 'tsconfig.json', 'src/**', 'assets/**') }}
+
       # Build the APK before booting the emulator so the AVD isn't holding
-      # 2-4 GB of RAM while the C++ (reanimated/worklets/skia) compiles.
-      # Restrict to x86_64 only — the sole ABI this emulator runs — instead of
-      # the default 4 ABIs, cutting native compile work (and peak memory) ~75%.
+      # 2-4 GB of RAM while the C++ (reanimated/worklets/skia) compiles, and
+      # only for x86_64 (the sole ABI this emulator runs) instead of the
+      # default 4 ABIs — ~75% less native work. Skipped entirely on a cache hit.
       - name: Build release APK (x86_64)
+        if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: android
         run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64
 
