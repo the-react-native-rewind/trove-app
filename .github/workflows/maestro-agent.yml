@@ -76,17 +76,21 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
-      # Reuse a previously built APK when nothing that affects it changed. The
-      # release APK embeds the JS bundle, so the key must cover ALL app source
-      # (src, assets) plus deps and native config — otherwise a stale APK would
-      # be tested silently. Workflow-only edits (this YAML) intentionally hit the
-      # cache, so iterating on the pipeline skips the ~20 min build.
+      # One source-hash key, computed once and reused by restore + save so they
+      # can't drift. The release APK embeds the JS bundle, so the key must cover
+      # ALL app source (src, assets) plus deps and native config — otherwise a
+      # stale APK would be tested silently. Workflow-only edits (this YAML)
+      # intentionally hit the cache, so iterating on the pipeline skips the build.
+      - name: Compute APK cache key
+        id: apk-key
+        run: echo "key=apk-release-x86_64-${{ hashFiles('package-lock.json', 'app.json', 'babel.config.js', 'tsconfig.json', 'src/**', 'assets/**') }}" >> "$GITHUB_OUTPUT"
+
       - name: Restore cached release APK
         id: apk-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: android/app/build/outputs/apk/release/app-release.apk
-          key: apk-release-x86_64-${{ hashFiles('package-lock.json', 'app.json', 'babel.config.js', 'tsconfig.json', 'src/**', 'assets/**') }}
+          key: ${{ steps.apk-key.outputs.key }}
 
       # Build the APK before booting the emulator so the AVD isn't holding
       # 2-4 GB of RAM while the C++ (reanimated/worklets/skia) compiles, and
@@ -96,6 +100,17 @@ jobs:
         if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: android
         run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64
+
+      # Save right after building, BEFORE the emulator step (the one that tends
+      # to fail). actions/cache's implicit save only runs on full-job success, so
+      # an explicit save here caches the APK even when a later step fails —
+      # exactly the debugging case we want to stay fast.
+      - name: Save release APK to cache
+        if: steps.apk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: android/app/build/outputs/apk/release/app-release.apk
+          key: ${{ steps.apk-key.outputs.key }}
 
       - name: Generate test, run
         uses: reactivecircus/android-emulator-runner@v2
