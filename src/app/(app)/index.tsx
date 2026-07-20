@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import DraggableFlatList, {
   type RenderItemParams,
@@ -13,6 +13,7 @@ import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AccentDot } from '@/components/ui/Indicators';
 import { Text } from '@/components/ui/Text';
+import { sortTasks } from '@/lib/board';
 import { positionBetween, useMoveTaskStatus, useReorderTask, useTasks } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
@@ -44,7 +45,7 @@ export default function Board() {
   const moveStatus = useMoveTaskStatus();
   const reorder = useReorderTask();
 
-  const [status, setStatus] = useState<TaskStatus>('todo');
+  const [status, setStatus] = useState<TaskStatus>('in_progress');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [showFilter, setShowFilter] = useState(false);
   const [items, setItems] = useState<TaskWithRefs[]>([]);
@@ -55,11 +56,25 @@ export default function Board() {
   const counts: Record<TaskStatus, number> = { backlog: 0, todo: 0, in_progress: 0, done: 0 };
   for (const t of visibleTasks) counts[t.status as TaskStatus]++;
 
-  // Re-sync the visible column only when the underlying data meaningfully changes.
-  const signature =
-    visibleTasks.map((t) => `${t.id}:${t.status}:${t.position}`).join('|') + `#${status}`;
+  // On first load, default to "Doing" unless it's empty, then fall back to "To do".
+  const pickedInitialStatus = useRef(false);
   useEffect(() => {
-    setItems(visibleTasks.filter((t) => t.status === status));
+    if (pickedInitialStatus.current || isLoading) return;
+    pickedInitialStatus.current = true;
+    setStatus(counts.in_progress > 0 ? 'in_progress' : 'todo');
+  }, [isLoading, counts.in_progress]);
+
+  // Re-sync the visible column whenever any rendered/sorted field changes so
+  // edits (title, priority, due date, assignee, …) show up without a refresh.
+  const signature =
+    visibleTasks
+      .map(
+        (t) =>
+          `${t.id}:${t.status}:${t.position}:${t.title}:${t.priority}:${t.due_date}:${t.assignee_id}:${t.updated_at}`,
+      )
+      .join('|') + `#${status}`;
+  useEffect(() => {
+    setItems(sortTasks(visibleTasks.filter((t) => t.status === status)));
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dragEnabled = !isAll && writable && status !== 'done';

@@ -29,17 +29,27 @@ export const colors = {
   priorityMedium: '#4C6444',
   priorityLow: '#C9BCA4',
 
+  // Overdue (light red card wash)
+  overdueSurface: '#F6E1DC',
+  overdueBorder: '#E4B6AC',
+
   white: '#FFFFFF',
   transparent: 'transparent',
 } as const;
 
 /** Accent colors a space can take (shown as a dot and on tags). */
 export const spaceAccents = {
-  plum: '#8E5B6A',
-  ochre: '#C2922F',
   sage: '#5F7050',
-  terracotta: '#C16E43',
   brand: '#4C6444',
+  moss: '#6E7A3C',
+  teal: '#3F6E63',
+  dusk: '#5B6E7A',
+  lilac: '#7C6E9A',
+  plum: '#8E5B6A',
+  rose: '#B5566A',
+  terracotta: '#C16E43',
+  clay: '#A6572F',
+  ochre: '#C2922F',
   honey: '#D29A40',
 } as const;
 
@@ -47,10 +57,16 @@ export type SpaceAccentName = keyof typeof spaceAccents;
 
 export const spaceAccentOrder: SpaceAccentName[] = [
   'sage',
-  'plum',
-  'ochre',
-  'terracotta',
   'brand',
+  'moss',
+  'teal',
+  'dusk',
+  'lilac',
+  'plum',
+  'rose',
+  'terracotta',
+  'clay',
+  'ochre',
   'honey',
 ];
 

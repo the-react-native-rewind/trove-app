@@ -28,7 +28,7 @@ export function TaskCard({ task, showSpaceTag, onPress, onLongPress, dragging }:
       delayLongPress={180}
       accessibilityRole="button"
       accessibilityLabel={task.title}
-      style={[styles.card, dragging && styles.dragging]}
+      style={[styles.card, overdue && styles.overdue, dragging && styles.dragging]}
     >
       {showSpaceTag && task.space ? (
         <View style={styles.tagRow}>
@@ -75,6 +75,7 @@ const styles = StyleSheet.create({
     borderColor: colors.hairline,
     ...shadows.card,
   },
+  overdue: { backgroundColor: colors.overdueSurface, borderColor: colors.overdueBorder },
   dragging: { ...shadows.floating, borderColor: colors.brandSoft },
   tagRow: { flexDirection: 'row' },
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },

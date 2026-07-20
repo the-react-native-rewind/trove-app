@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { AssigneePicker, DueDatePicker, OptionChips } from '@/components/form';
 import { TaskMedia } from '@/components/TaskMedia';
@@ -11,8 +11,12 @@ import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { useSpaces } from '@/data/spaces';
 import { useDeleteTask, useTask, useUpdateTask } from '@/data/tasks';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 import { canWrite, STATUSES, type Priority, type TaskStatus } from '@/lib/types';
 import { colors, priority as priorityTokens, spacing } from '@/theme/tokens';
+
+/** Debounce for title/notes autosave — long enough to avoid a write per keystroke. */
+const AUTOSAVE_MS = 600;
 
 const PRIORITY_OPTIONS: { value: Priority | 'none'; label: string; color?: string }[] = [
   { value: 'none', label: 'None' },
@@ -32,12 +36,53 @@ export default function TaskEdit() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
 
+  // Refs let the debounced autosave and the on-exit flush read the freshest
+  // values without recreating timers or capturing stale closures.
+  const inputRef = useRef({ title: '', description: '' });
+  const savedRef = useRef({ title: '', description: null as string | null });
+  const taskIdRef = useRef<string | undefined>(undefined);
+  inputRef.current = { title, description };
+  taskIdRef.current = task?.id;
+
   useEffect(() => {
     if (task) {
       setTitle(task.title);
       setDescription(task.description ?? '');
+      savedRef.current = { title: task.title, description: task.description ?? null };
     }
   }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track the latest server value so autosave only fires on genuine changes.
+  useEffect(() => {
+    if (task) savedRef.current = { title: task.title, description: task.description ?? null };
+  }, [task?.title, task?.description]);
+
+  // Persist title/notes if (and only if) they differ from what's on the server.
+  // Reads from refs so it's safe to call from a debounce timer or on unmount.
+  function flush() {
+    const tid = taskIdRef.current;
+    if (!tid) return;
+    const nextTitle = inputRef.current.title.trim();
+    if (nextTitle && nextTitle !== savedRef.current.title) {
+      savedRef.current.title = nextTitle;
+      updateTask.mutate({ id: tid, title: nextTitle });
+    }
+    const nextDescription = inputRef.current.description.trim() || null;
+    if (nextDescription !== savedRef.current.description) {
+      savedRef.current.description = nextDescription;
+      updateTask.mutate({ id: tid, description: inputRef.current.description });
+    }
+  }
+
+  // Autosave shortly after the user stops typing.
+  useEffect(() => {
+    if (!task) return;
+    const handle = setTimeout(flush, AUTOSAVE_MS);
+    return () => clearTimeout(handle);
+  }, [title, description]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Catch the last edit when leaving the screen (e.g. swipe-to-dismiss the modal).
+  useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
     return (
@@ -65,20 +110,24 @@ export default function TaskEdit() {
     updateTask.mutate(input);
   }
 
-  function confirmDelete() {
-    Alert.alert('Delete task', 'This removes the task for everyone in the space.', [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteTask.mutateAsync(task!.id);
-          // Pop edit + view back to the board.
-          router.back();
-          router.back();
-        },
-      },
-    ]);
+  async function confirmDelete() {
+    if (!task) return;
+    const taskId = task.id;
+    const ok = await confirmDialog({
+      title: 'Delete task',
+      message: 'This removes the task for everyone in the space.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteTask.mutateAsync(taskId);
+      // Close the edit + view modals back to the board in one step.
+      router.dismissAll();
+    } catch {
+      alertDialog('Could not delete', 'Something went wrong. Please try again.');
+    }
   }
 
   if (!writable) {
@@ -91,31 +140,52 @@ export default function TaskEdit() {
     );
   }
 
+  const saveState = updateTask.isPending
+    ? 'saving'
+    : updateTask.isError
+      ? 'error'
+      : updateTask.isSuccess
+        ? 'saved'
+        : 'idle';
+
   return (
     <ModalScaffold
       title="Edit task"
       footer={<Button label="Delete task" variant="danger" onPress={confirmDelete} />}
     >
-      {task.space ? (
-        <View style={styles.tagRow}>
-          <SpaceTag name={task.space.name} color={task.space.color} />
-        </View>
-      ) : null}
+      <View style={styles.headerRow}>
+        {task.space ? <SpaceTag name={task.space.name} color={task.space.color} /> : <View />}
+        {saveState !== 'idle' ? (
+          <View style={styles.saveStatus}>
+            {saveState === 'saving' ? (
+              <ActivityIndicator size="small" color={colors.inkFaint} />
+            ) : null}
+            <Text
+              variant="meta"
+              color={saveState === 'error' ? colors.priorityHigh : colors.inkFaint}
+            >
+              {saveState === 'saving'
+                ? 'Saving…'
+                : saveState === 'error'
+                  ? "Couldn't save"
+                  : 'Saved'}
+            </Text>
+          </View>
+        ) : null}
+      </View>
 
       <TextField
         label="Title"
         value={title}
         onChangeText={setTitle}
-        onEndEditing={() => title.trim() && title !== task.title && patch({ id: task.id, title })}
+        onEndEditing={flush}
         placeholder="Task title"
       />
       <TextField
         label="Notes"
         value={description}
         onChangeText={setDescription}
-        onEndEditing={() =>
-          description !== (task.description ?? '') && patch({ id: task.id, description })
-        }
+        onEndEditing={flush}
         placeholder="Optional details"
         multiline
         style={{ minHeight: 80, textAlignVertical: 'top' }}
@@ -148,5 +218,11 @@ export default function TaskEdit() {
 
 const styles = StyleSheet.create({
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
-  tagRow: { flexDirection: 'row' },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 22,
+  },
+  saveStatus: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 });

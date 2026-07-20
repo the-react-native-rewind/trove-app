@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { useRoster } from '@/data/members';
 import { formatDueDate } from '@/lib/format';
@@ -27,13 +27,17 @@ export function ColorPicker({
   value: string;
   onChange: (color: string) => void;
 }) {
+  const resolved = resolveAccent(value);
+  const presetHexes = spaceAccentOrder.map((n) => spaceAccents[n].toLowerCase());
+  const isCustom = !presetHexes.includes(resolved.toLowerCase());
+
   return (
     <View style={styles.field}>
       <FieldLabel>Accent colour</FieldLabel>
       <View style={styles.swatchRow}>
         {spaceAccentOrder.map((name) => {
           const hex = spaceAccents[name];
-          const selected = resolveAccent(value) === hex;
+          const selected = resolved.toLowerCase() === hex.toLowerCase();
           return (
             <Pressable
               key={name}
@@ -47,7 +51,62 @@ export function ColorPicker({
             </Pressable>
           );
         })}
+        <CustomColorSwatch
+          value={isCustom ? resolved : '#4C6444'}
+          selected={isCustom}
+          onChange={onChange}
+        />
       </View>
+    </View>
+  );
+}
+
+/**
+ * Free-form colour picker. On web it uses the native `<input type="color">`;
+ * on native it isn't rendered (only the presets show).
+ */
+function CustomColorSwatch({
+  value,
+  selected,
+  onChange,
+}: {
+  value: string;
+  selected: boolean;
+  onChange: (color: string) => void;
+}) {
+  if (Platform.OS !== 'web') return null;
+
+  return (
+    <View
+      style={[
+        styles.swatch,
+        styles.customSwatch,
+        selected && { backgroundColor: value, borderColor: colors.ink },
+      ]}
+    >
+      {selected ? (
+        <Ionicons name="checkmark" size={18} color={colors.white} />
+      ) : (
+        <Ionicons name="color-palette-outline" size={18} color={colors.inkSoft} />
+      )}
+      {/* Transparent native colour input overlaid so the whole swatch is clickable. */}
+      <input
+        type="color"
+        aria-label="Custom accent colour"
+        value={value}
+        onChange={(e: { target: { value: string } }) => onChange(e.target.value)}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0,
+          cursor: 'pointer',
+          border: 'none',
+          padding: 0,
+        }}
+      />
     </View>
   );
 }
@@ -235,6 +294,13 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   swatchSelected: { borderColor: colors.ink },
+  customSwatch: {
+    backgroundColor: colors.surface,
+    borderColor: colors.hairline,
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+    position: 'relative',
+  },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     flexDirection: 'row',
