@@ -9,9 +9,37 @@ import { TaskCard } from './TaskCard';
  * Web Kanban: four columns with real drag-and-drop across columns using the
  * HTML5 Drag and Drop API (react-dom renders this file, so DOM events work).
  */
+/**
+ * Replace the browser's default drag snapshot (a square, opaque box that can
+ * even include scrollbars) with a clean clone of the card: clipped to the
+ * card radius, no shadow, fixed to the card's on-screen width.
+ */
+function setCardDragImage(e: React.DragEvent<HTMLDivElement>) {
+  if (typeof e.dataTransfer.setDragImage !== 'function') return;
+  const node = e.currentTarget;
+  const rect = node.getBoundingClientRect();
+  const clone = node.cloneNode(true) as HTMLElement;
+  clone.style.position = 'fixed';
+  clone.style.top = '-10000px';
+  clone.style.left = '-10000px';
+  clone.style.width = `${rect.width}px`;
+  clone.style.borderRadius = `${radii.card}px`;
+  clone.style.overflow = 'hidden';
+  clone.style.pointerEvents = 'none';
+  clone.style.margin = '0';
+  for (const el of clone.querySelectorAll<HTMLElement>('*')) {
+    el.style.boxShadow = 'none';
+    el.style.overflow = 'hidden';
+  }
+  document.body.appendChild(clone);
+  e.dataTransfer.setDragImage(clone, e.clientX - rect.left, e.clientY - rect.top);
+  setTimeout(() => clone.remove(), 0);
+}
+
 export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask }: KanbanProps) {
   const byStatus = groupByStatus(tasks);
   const [overCol, setOverCol] = useState<TaskStatus | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   return (
     <div style={styles.board}>
@@ -58,8 +86,21 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
                     onDragStart={(e) => {
                       e.dataTransfer.setData('text/plain', task.id);
                       e.dataTransfer.effectAllowed = 'move';
+                      setCardDragImage(e);
+                      setDraggingId(task.id);
                     }}
-                    style={{ cursor: canDrag ? 'grab' : 'default', display: 'flex', flexDirection: 'column' }}
+                    onDragEnd={() => {
+                      setDraggingId(null);
+                      setOverCol(null);
+                    }}
+                    style={{
+                      cursor: canDrag ? 'grab' : 'default',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      borderRadius: radii.card,
+                      opacity: draggingId === task.id ? 0.35 : 1,
+                      transition: 'opacity 120ms ease',
+                    }}
                   >
                     <TaskCard task={task} showSpaceTag={showSpaceTag} onPress={() => onOpen(task.id)} />
                   </div>
