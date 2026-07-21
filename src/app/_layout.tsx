@@ -18,9 +18,11 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 
 import '@/lib/devtools';
 import { AnimatedSplash } from '@/components/AnimatedSplash';
+import { toastConfig } from '@/components/ui/AppToast';
 import { Celebration } from '@/components/Celebration';
 import { useIsWide } from '@/hooks/useIsWide';
 import { queryClient } from '@/lib/queryClient';
@@ -112,6 +114,8 @@ export default function RootLayout() {
             </SpaceProvider>
           </AuthProvider>
         </QueryClientProvider>
+        {/* Must stay the last child so toasts render above modals and overlays. */}
+        <Toast config={toastConfig} topOffset={60} />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

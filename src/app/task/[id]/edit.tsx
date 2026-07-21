@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import Toast from 'react-native-toast-message';
 
 import { AssigneePicker, DueDatePicker, OptionChips } from '@/components/form';
 import { TaskMedia } from '@/components/TaskMedia';
@@ -125,6 +126,7 @@ export default function TaskEdit() {
       await deleteTask.mutateAsync(taskId);
       // Close the edit + view modals back to the board in one step.
       router.dismissAll();
+      Toast.show({ type: 'success', text1: 'Task deleted', text2: task.title });
     } catch {
       alertDialog('Could not delete', 'Something went wrong. Please try again.');
     }
