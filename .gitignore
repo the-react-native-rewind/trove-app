@@ -45,8 +45,12 @@ example
 # local env
 .env
 
-# CI-only test-user credentials file written from secrets at runtime
+# CI-only files written at runtime by the Maestro agent workflow
 pr-credentials.md
+pr-context.md
+pr-diff.patch
+flow-target.txt
+agent-output.txt
 
 # skia web (regenerate with: npx setup-skia-web public)
 public/canvaskit.wasm

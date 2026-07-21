@@ -1,0 +1,72 @@
+# Runs the committed Maestro suite (.maestro/) on Maestro Cloud whenever main
+# updates. The PR job (maestro-agent.yml) authors + validates + commits one flow
+# per feature; this job runs the whole accumulated suite on real devices.
+#
+# Does nothing useful until at least one flow has been merged into .maestro/ on
+# main. Requires secrets: MAESTRO_API_KEY, MAESTRO_PROJECT_ID (from the Maestro
+# dashboard), plus EXPO_PUBLIC_SUPABASE_* and MAESTRO_TEST_* (shared with the PR job).
+name: Maestro Cloud
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: maestro-cloud-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same disk reclaim as the PR job — the RN build fills the small runner disk.
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/share/boost /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci
+
+      - name: Expo prebuild (android)
+        run: npx expo prebuild -p android --no-install
+
+      # Build a UNIVERSAL apk (all ABIs) — do NOT restrict to x86_64. Maestro Cloud
+      # runs on its own devices and the PR job's x86_64-only APK may not install
+      # there. EXPO_PUBLIC_* must be present at build time (Metro inlines them) or
+      # the app crashes on launch with "Missing Supabase config".
+      - name: Build release APK (all ABIs)
+        working-directory: android
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: ./gradlew :app:assembleRelease
+
+      # Uploads the APK + the .maestro flows and runs them on Maestro Cloud.
+      # Flows are read from .maestro by default. The committed flows reference the
+      # login as ${MAESTRO_TEST_EMAIL}/${MAESTRO_TEST_PASSWORD}, injected here.
+      - name: Run flows on Maestro Cloud
+        uses: mobile-dev-inc/action-maestro-cloud@v2.0.2
+        with:
+          api-key: ${{ secrets.MAESTRO_API_KEY }}
+          project-id: ${{ secrets.MAESTRO_PROJECT_ID }}
+          app-file: android/app/build/outputs/apk/release/app-release.apk
+          env: |
+            MAESTRO_TEST_EMAIL=${{ secrets.MAESTRO_TEST_EMAIL }}
+            MAESTRO_TEST_PASSWORD=${{ secrets.MAESTRO_TEST_PASSWORD }}
