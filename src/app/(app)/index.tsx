@@ -88,7 +88,7 @@ export default function Board() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, isWide && styles.headerWide]}>
         {!isWide ? (
           <Pressable
             onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
@@ -230,6 +230,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
+  // Match the Kanban board's horizontal padding so the title and actions
+  // line up with the first and last columns.
+  headerWide: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
   iconBtn: { padding: spacing.xs },
   titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

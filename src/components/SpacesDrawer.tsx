@@ -52,7 +52,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   }));
 
   const toggleStyle = useAnimatedStyle(() => ({
-    left: interpolate(progress.value, [0, 1], [(RAIL_WIDTH - 32) / 2, FULL_WIDTH - 44]),
+    left: interpolate(progress.value, [0, 1], [(RAIL_WIDTH - 28) / 2, FULL_WIDTH - 40]),
   }));
 
   const totalOpen = spaces.reduce((sum, s) => sum + s.openCount, 0);
@@ -74,12 +74,12 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
             onPress={() => setCollapsed((v) => !v)}
             accessibilityRole="button"
             accessibilityLabel={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            style={styles.toggleButton}
+            style={({ pressed }) => [styles.toggleButton, pressed && styles.toggleButtonPressed]}
           >
             <Ionicons
               name={collapsed ? 'chevron-forward' : 'chevron-back'}
-              size={16}
-              color={colors.inkSoft}
+              size={17}
+              color={colors.inkFaint}
             />
           </Pressable>
         </Animated.View>
@@ -225,17 +225,15 @@ function Row({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface, overflow: 'hidden' },
   fullWidth: { width: '100%' },
-  toggle: { position: 'absolute', top: spacing.sm, zIndex: 2 },
+  toggle: { position: 'absolute', top: spacing.sm + 2, zIndex: 2 },
   toggleButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.hairline,
+    width: 28,
+    height: 28,
+    borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  toggleButtonPressed: { backgroundColor: colors.surfaceAlt },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -41,8 +41,7 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
             }}
             style={{
               ...styles.column,
-              backgroundColor: isOver ? colors.brandSoft : colors.surfaceAlt,
-              borderColor: isOver ? colors.brand : colors.hairline,
+              backgroundColor: isOver ? colors.brandSoft : 'transparent',
             }}
           >
             <div style={styles.head}>
@@ -80,8 +79,8 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
 const styles: Record<string, CSSProperties> = {
   board: {
     display: 'flex',
-    gap: 16,
-    padding: 16,
+    gap: 24,
+    padding: '8px 24px 24px',
     flex: 1,
     minHeight: 0,
     width: '100%',
@@ -93,19 +92,17 @@ const styles: Record<string, CSSProperties> = {
     flex: '1 1 0',
     minWidth: 220,
     borderRadius: radii.lg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    padding: 10,
+    padding: '8px 0',
     display: 'flex',
     flexDirection: 'column',
     minHeight: 0,
-    transition: 'background-color 120ms ease, border-color 120ms ease',
+    transition: 'background-color 120ms ease',
   },
   head: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '4px 6px 10px',
+    padding: '0 2px 10px',
   },
   headLabel: {
     fontFamily: fonts.bodySemiBold,

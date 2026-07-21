@@ -56,14 +56,10 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  board: { padding: spacing.lg, gap: spacing.md },
+  board: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.xl, gap: spacing.xl },
   column: {
     width: 280,
-    backgroundColor: colors.surfaceAlt,
     borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.hairline,
-    padding: spacing.sm,
   },
   head: {
     flexDirection: 'row',
