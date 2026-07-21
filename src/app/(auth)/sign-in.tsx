@@ -268,8 +268,7 @@ const styles = StyleSheet.create({
   // Wide layout
   wideRoot: { flex: 1, flexDirection: 'row' },
   leftPanel: {
-    flex: 1,
-    maxWidth: 520,
+    width: '40%',
     backgroundColor: colors.paper,
     borderRightWidth: 1,
     borderRightColor: colors.hairline,
