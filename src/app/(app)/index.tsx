@@ -182,7 +182,7 @@ export default function Board() {
           tasks={visibleTasks}
           showSpaceTag={isAll}
           onOpen={(id) => router.push(`/task/${id}` as never)}
-          onMove={(id, next) => moveStatus.mutate({ id, status: next })}
+          onMove={(id, next, position) => moveStatus.mutate({ id, status: next, position })}
           canWriteTask={canWriteTask}
         />
       ) : (

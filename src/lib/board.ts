@@ -21,6 +21,6 @@ export type KanbanProps = {
   tasks: TaskWithRefs[];
   showSpaceTag: boolean;
   onOpen: (id: string) => void;
-  onMove: (id: string, status: TaskStatus) => void;
+  onMove: (id: string, status: TaskStatus, position?: number) => void;
   canWriteTask: (spaceId: string) => boolean;
 };

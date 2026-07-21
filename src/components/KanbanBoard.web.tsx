@@ -1,5 +1,6 @@
-import { type CSSProperties, useState } from 'react';
+import { type CSSProperties, Fragment, useState } from 'react';
 
+import { positionBetween } from '@/data/tasks';
 import { groupByStatus, type KanbanProps, STATUSES } from '@/lib/board';
 import type { TaskStatus } from '@/lib/types';
 import { colors, fonts, radii } from '@/theme/tokens';
@@ -39,7 +40,20 @@ function setCardDragImage(e: React.DragEvent<HTMLDivElement>) {
 export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask }: KanbanProps) {
   const byStatus = groupByStatus(tasks);
   const [overCol, setOverCol] = useState<TaskStatus | null>(null);
+  const [overIndex, setOverIndex] = useState<number>(0);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  /** Insertion index in `column` for a pointer at clientY (dragged card excluded). */
+  function insertionIndex(columnEl: HTMLElement, column: typeof tasks, clientY: number): number {
+    const wrappers = [...columnEl.querySelectorAll<HTMLElement>('div[draggable]')];
+    let index = 0;
+    for (let i = 0; i < wrappers.length && i < column.length; i++) {
+      if (column[i].id === draggingId) continue; // ignore the card being dragged
+      const r = wrappers[i].getBoundingClientRect();
+      if (clientY > r.top + r.height / 2) index = index + 1;
+    }
+    return index;
+  }
 
   return (
     <div style={styles.board}>
@@ -47,13 +61,16 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
         const status = key as TaskStatus;
         const column = byStatus[status];
         const isOver = overCol === status;
+        const rest = column.filter((t) => t.id !== draggingId);
         return (
           <div
             key={key}
             onDragOver={(e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = 'move';
+              const index = insertionIndex(e.currentTarget, column, e.clientY);
               if (overCol !== status) setOverCol(status);
+              if (overIndex !== index) setOverIndex(index);
             }}
             onDragLeave={(e) => {
               // Only clear when the pointer actually leaves the column.
@@ -64,8 +81,14 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
             onDrop={(e) => {
               e.preventDefault();
               const id = e.dataTransfer.getData('text/plain');
+              const index = insertionIndex(e.currentTarget, column, e.clientY);
               setOverCol(null);
-              if (id) onMove(id, status);
+              if (!id) return;
+              // Fractional position between the drop point's neighbours.
+              const remaining = column.filter((t) => t.id !== id);
+              const prev = index > 0 ? remaining[index - 1]?.position ?? null : null;
+              const next = remaining[index]?.position ?? null;
+              onMove(id, status, positionBetween(prev, next));
             }}
             style={{
               ...styles.column,
@@ -77,11 +100,18 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
               <span style={styles.headCount}>{column.length}</span>
             </div>
             <div style={styles.body}>
-              {column.map((task) => {
-                const canDrag = canWriteTask(task.space_id);
-                return (
+              {(() => {
+                let filteredIndex = 0;
+                return column.map((task) => {
+                  const canDrag = canWriteTask(task.space_id);
+                  const isDragSource = task.id === draggingId;
+                  const showLine =
+                    isOver && draggingId !== null && !isDragSource && filteredIndex === overIndex;
+                  if (!isDragSource) filteredIndex += 1;
+                  return (
+                    <Fragment key={task.id}>
+                      {showLine ? <div style={styles.dropLine} /> : null}
                   <div
-                    key={task.id}
                     draggable={canDrag}
                     onDragStart={(e) => {
                       e.dataTransfer.setData('text/plain', task.id);
@@ -104,8 +134,13 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
                   >
                     <TaskCard task={task} showSpaceTag={showSpaceTag} onPress={() => onOpen(task.id)} />
                   </div>
-                );
-              })}
+                    </Fragment>
+                  );
+                });
+              })()}
+              {isOver && draggingId !== null && rest.length > 0 && overIndex >= rest.length ? (
+                <div style={styles.dropLine} />
+              ) : null}
               {column.length === 0 ? (
                 <div style={styles.empty}>Drop here</div>
               ) : null}
@@ -160,6 +195,13 @@ const styles: Record<string, CSSProperties> = {
     overflowY: 'auto',
     flex: 1,
     minHeight: 0,
+  },
+  dropLine: {
+    height: 3,
+    borderRadius: 2,
+    background: colors.brand,
+    margin: '-7.5px 2px',
+    flexShrink: 0,
   },
   empty: {
     border: `1px dashed ${colors.hairline}`,

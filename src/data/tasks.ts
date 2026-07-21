@@ -113,10 +113,11 @@ export function useUpdateTask() {
 export function useMoveTaskStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; status: TaskStatus }) => {
+    mutationFn: async (input: { id: string; status: TaskStatus; position?: number }) => {
       const { error } = await supabase
         .from('tasks')
-        .update({ status: input.status, position: Date.now() })
+        // No explicit position (swipe/status change) appends to the column end.
+        .update({ status: input.status, position: input.position ?? Date.now() })
         .eq('id', input.id);
       if (error) throw error;
     },
