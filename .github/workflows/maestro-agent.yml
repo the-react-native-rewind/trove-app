@@ -13,7 +13,7 @@ concurrency:
 jobs:
   generate-and-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -169,7 +169,7 @@ jobs:
             mkdir -p .maestro maestro-results
             adb install -r android/app/build/outputs/apk/release/app-release.apk
             printf 'email: %s\npassword: %s\n' "$MAESTRO_TEST_EMAIL" "$MAESTRO_TEST_PASSWORD" > pr-credentials.md
-            claude -p "$(cat .github/maestro-agent-prompt.md)" --mcp-config .github/mcp.json --allowedTools "mcp__maestro__list_devices,mcp__maestro__inspect_screen,mcp__maestro__take_screenshot,mcp__maestro__run,mcp__maestro__cheat_sheet,Write,Read" --dangerously-skip-permissions --max-turns 40 < /dev/null | tee agent-output.txt
+            claude -p "$(cat .github/maestro-agent-prompt.md)" --mcp-config .github/mcp.json --allowedTools "mcp__maestro__list_devices,mcp__maestro__inspect_screen,mcp__maestro__take_screenshot,mcp__maestro__run,mcp__maestro__cheat_sheet,Write,Read" --dangerously-skip-permissions --max-turns 150 --verbose < /dev/null | tee agent-output.txt
             maestro test .maestro --format junit --output maestro-results/report.xml -e MAESTRO_TEST_EMAIL="$MAESTRO_TEST_EMAIL" -e MAESTRO_TEST_PASSWORD="$MAESTRO_TEST_PASSWORD" 2>&1 | tee maestro-results/run.log || true
 
       # Persist the agent's validated flow onto the PR branch so it becomes part
@@ -235,3 +235,14 @@ jobs:
               issue_number: context.issue.number,
               body,
             });
+
+      # A run that produced no flow is a FAILURE, not a quiet no-op. This gate
+      # runs last so the artifacts and PR comment above still land for debugging.
+      - name: Fail if no flow was produced
+        run: |
+          TARGET=$(cat flow-target.txt 2>/dev/null || true)
+          if [ -z "$TARGET" ] || [ ! -s "$TARGET" ]; then
+            echo "::error::Agent finished without producing $TARGET (check agent-output.txt artifact)"
+            exit 1
+          fi
+          echo "Flow present: $TARGET"
