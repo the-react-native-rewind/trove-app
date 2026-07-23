@@ -1,0 +1,25 @@
+# Deploys Expo Web to EAS Hosting production on every push to main.
+#
+# The `deploy` job type exports the web bundle AND deploys it to EAS Hosting —
+# no separate `npx expo export --platform web` step is needed. `prod: true`
+# promotes the deployment to the production alias (https://<subdomain>.expo.app).
+#
+# `environment: production` makes the export use the *production* EAS environment
+# variables. This app reads EXPO_PUBLIC_SUPABASE_URL and
+# EXPO_PUBLIC_SUPABASE_ANON_KEY at build time, so those must exist in the
+# production environment (see EAS dashboard → Environment variables) or the
+# deployed site won't reach Supabase.
+name: Deploy web to production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy_web:
+    name: Export and deploy web to EAS Hosting
+    type: deploy
+    environment: production
+    params:
+      prod: true

@@ -1,0 +1,43 @@
+appId: com.rewind.trove
+---
+# Change profile photo (Account screen): tap the avatar, pick a photo from the
+# library, crop it, and confirm the upload completes and the avatar updates.
+- launchApp:
+    clearState: true
+
+# Log in (app launches on a logged-out login screen)
+- tapOn:
+    text: "you@example.com"
+- inputText: ${MAESTRO_TEST_EMAIL}
+- tapOn:
+    text: "Your password"
+- inputText: ${MAESTRO_TEST_PASSWORD}
+- tapOn:
+    text: "Sign in"
+- extendedWaitUntil:
+    notVisible:
+      text: "Sign in"
+    timeout: 10000
+
+# Open Account settings
+- tapOn:
+    text: ".*Account.*"
+- assertVisible: "Change profile photo"
+
+# Make a photo available in the library, then tap the avatar to change it
+- addMedia:
+    - "../assets/images/icon.png"
+- tapOn:
+    text: "Change profile photo"
+- tapOn:
+    text: "Photo taken on.*"
+- tapOn:
+    text: "CROP"
+
+# Upload should complete without error and the avatar control should return to its idle state
+- extendedWaitUntil:
+    notVisible:
+      text: "Uploading…"
+    timeout: 15000
+- assertNotVisible: "Upload failed"
+- assertVisible: "Change photo"
