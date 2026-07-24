@@ -13,7 +13,9 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSpaces } from '@/data/spaces';
+import { useWeekTasks } from '@/data/weekPlans';
 import { useIsWide } from '@/hooks/useIsWide';
+import { getCurrentWeekStart } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
 import { AccentDot } from './ui/Indicators';
@@ -31,6 +33,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   const isWide = useIsWide();
   const { selectedSpaceId, setSelectedSpaceId } = useSelectedSpace();
   const { data: spaces = [] } = useSpaces();
+  const { data: weekTasks = [] } = useWeekTasks(getCurrentWeekStart());
 
   const [collapsed, setCollapsed] = useState(false);
   const progress = useSharedValue(1); // 0 = rail, 1 = expanded
@@ -56,6 +59,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   }));
 
   const totalOpen = spaces.reduce((sum, s) => sum + s.openCount, 0);
+  const weekOpen = weekTasks.filter((task) => task.status !== 'done').length;
 
   function select(id: string) {
     setSelectedSpaceId(id);
@@ -105,6 +109,14 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
           leading={<Ionicons name="albums-outline" size={20} color={colors.brandDeep} />}
           label="All tasks"
           count={totalOpen}
+          fade={fade}
+        />
+        <Row
+          active={selectedSpaceId === 'my-week'}
+          onPress={() => select('my-week')}
+          leading={<Ionicons name="calendar-outline" size={20} color={colors.brandDeep} />}
+          label="My Week"
+          count={weekOpen}
           fade={fade}
         />
 

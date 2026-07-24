@@ -1,8 +1,8 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 
-/** Which space the board is showing. 'all' is the adaptive backlog across every space. */
+/** Which board view is showing: all tasks, My Week, or a specific space. */
 type SpaceContextValue = {
-  selectedSpaceId: string; // 'all' | space uuid
+  selectedSpaceId: string; // 'all' | 'my-week' | space uuid
   setSelectedSpaceId: (id: string) => void;
 };
 

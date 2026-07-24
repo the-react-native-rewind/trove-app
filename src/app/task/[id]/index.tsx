@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { TaskMedia } from '@/components/TaskMedia';
 import { Avatar } from '@/components/ui/Avatar';
@@ -10,8 +10,14 @@ import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { useSpaces } from '@/data/spaces';
 import { useTask } from '@/data/tasks';
+import {
+  useRemoveTaskWeekPlan,
+  useSetTaskWeekPlan,
+  useTaskWeekPlan,
+} from '@/data/weekPlans';
 import { formatDueDate, isOverdue } from '@/lib/format';
 import { canWrite, STATUSES, type Priority, type TaskStatus } from '@/lib/types';
+import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
 import { colors, radii, spacing } from '@/theme/tokens';
 
 export default function TaskView() {
@@ -19,6 +25,10 @@ export default function TaskView() {
   const router = useRouter();
   const { data: task, isLoading } = useTask(id);
   const { data: spaces = [] } = useSpaces();
+  const { data: weekPlan, isLoading: isWeekPlanLoading } = useTaskWeekPlan(id);
+  const setWeekPlan = useSetTaskWeekPlan();
+  const removeWeekPlan = useRemoveTaskWeekPlan();
+  const currentWeek = getCurrentWeekStart();
 
   if (isLoading) {
     return (
@@ -108,6 +118,78 @@ export default function TaskView() {
         </Text>
       )}
 
+      <View style={styles.weekPlan}>
+        <View style={styles.weekPlanCopy}>
+          <Text variant="bodyMedium">
+            {weekPlan?.week_start === currentWeek
+              ? 'Planned for My Week'
+              : weekPlan
+                ? `Planned for ${formatWeekRange(weekPlan.week_start)}`
+                : 'Weekly plan'}
+          </Text>
+          <Text variant="meta" color={colors.inkSoft}>
+            This planning choice is private to you.
+          </Text>
+        </View>
+        <Button
+          label={
+            weekPlan?.week_start === currentWeek
+              ? 'Remove from My Week'
+              : weekPlan
+                ? 'Move to My Week'
+                : 'Add to My Week'
+          }
+          variant="secondary"
+          size="md"
+          loading={isWeekPlanLoading || setWeekPlan.isPending || removeWeekPlan.isPending}
+          onPress={() => {
+            if (weekPlan?.week_start === currentWeek) {
+              removeWeekPlan.mutate(task.id);
+            } else {
+              setWeekPlan.mutate({ taskId: task.id, weekStart: currentWeek });
+            }
+          }}
+        />
+        {weekPlan ? (
+          <View style={styles.weekShift}>
+            <Pressable
+              onPress={() =>
+                setWeekPlan.mutate({
+                  taskId: task.id,
+                  weekStart: shiftWeek(weekPlan.week_start, -1),
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Move task to previous week"
+              style={styles.weekShiftButton}
+            >
+              <Ionicons name="chevron-back" size={18} color={colors.brandDeep} />
+            </Pressable>
+            <Text variant="meta" color={colors.inkSoft}>
+              Move to another week
+            </Text>
+            <Pressable
+              onPress={() =>
+                setWeekPlan.mutate({
+                  taskId: task.id,
+                  weekStart: shiftWeek(weekPlan.week_start, 1),
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Move task to next week"
+              style={styles.weekShiftButton}
+            >
+              <Ionicons name="chevron-forward" size={18} color={colors.brandDeep} />
+            </Pressable>
+          </View>
+        ) : null}
+        {setWeekPlan.isError || removeWeekPlan.isError ? (
+          <Text variant="meta" color={colors.priorityHigh} center>
+            Couldn’t update your weekly plan. Please try again.
+          </Text>
+        ) : null}
+      </View>
+
       <TaskMedia taskId={task.id} spaceId={task.space_id} canWrite={writable} />
     </ModalScaffold>
   );
@@ -124,4 +206,25 @@ const styles = StyleSheet.create({
   },
   meta: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
+  weekPlan: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radii.card,
+    backgroundColor: colors.brandSoft,
+  },
+  weekPlanCopy: { gap: spacing.xs },
+  weekShift: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  weekShiftButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
 });

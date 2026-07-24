@@ -207,6 +207,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_task_week_plans: {
+        Row: {
+          created_at: string
+          id: string
+          position: number
+          task_id: string
+          user_id: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          position?: number
+          task_id: string
+          user_id: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          position?: number
+          task_id?: string
+          user_id?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
     }
     Views: { [_ in never]: never }
     Functions: {

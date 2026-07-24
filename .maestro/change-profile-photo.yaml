@@ -25,8 +25,10 @@ appId: com.rewind.trove
 - assertVisible: "Change profile photo"
 
 # Make a photo available in the library, then tap the avatar to change it
+# Media must live INSIDE .maestro/ — that folder is the whole workspace that
+# `maestro test` and Maestro Cloud see; paths escaping it fail.
 - addMedia:
-    - "../assets/images/icon.png"
+    - "media/test-photo.png"
 - tapOn:
     text: "Change profile photo"
 - tapOn:

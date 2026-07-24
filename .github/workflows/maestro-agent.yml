@@ -185,7 +185,9 @@ jobs:
           if [ -z "$TARGET" ] || [ ! -s "$TARGET" ]; then
             echo "No flow produced at '$TARGET'; nothing to commit."; exit 0
           fi
-          git add "$TARGET"
+          # Add the flow AND any fixtures the agent placed in .maestro/ (e.g.
+          # media/ files for addMedia) — a flow without its media is broken.
+          git add "$TARGET" .maestro/
           if git diff --cached --quiet; then
             echo "Flow unchanged; nothing to commit."; exit 0
           fi

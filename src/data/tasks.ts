@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import type { Priority, TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
-const TASK_SELECT =
+export const TASK_SELECT =
   '*, space:spaces(id,name,color), assignee:profiles!tasks_assignee_id_fkey(id,display_name,avatar_url)';
 
 /** spaceId === 'all' gathers tasks across every space the user belongs to (the adaptive backlog). */
@@ -168,5 +168,6 @@ export function positionBetween(prev: number | null, next: number | null): numbe
 
 function invalidateTasks(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['tasks'] });
+  qc.invalidateQueries({ queryKey: ['week-tasks'] });
   qc.invalidateQueries({ queryKey: qk.spaces });
 }

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import DraggableFlatList, {
   type RenderItemParams,
@@ -8,6 +8,7 @@ import DraggableFlatList, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KanbanBoard } from '@/components/KanbanBoard';
+import { MyWeekView } from '@/components/MyWeekView';
 import { StatusSegmented } from '@/components/StatusSegmented';
 import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -16,6 +17,7 @@ import { Text } from '@/components/ui/Text';
 import { positionBetween, useMoveTaskStatus, useReorderTask, useTasks } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
+import { sortTasksByUrgency } from '@/lib/board';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
@@ -28,6 +30,11 @@ const EMPTY_COPY: Record<TaskStatus, { title: string; body: string }> = {
 };
 
 export default function Board() {
+  const { selectedSpaceId } = useSelectedSpace();
+  return selectedSpaceId === 'my-week' ? <MyWeekView /> : <SpaceBoard />;
+}
+
+function SpaceBoard() {
   const navigation = useNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -44,20 +51,35 @@ export default function Board() {
   const moveStatus = useMoveTaskStatus();
   const reorder = useReorderTask();
 
-  const [status, setStatus] = useState<TaskStatus>('todo');
+  const [status, setStatus] = useState<TaskStatus>('in_progress');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [showFilter, setShowFilter] = useState(false);
   const [items, setItems] = useState<TaskWithRefs[]>([]);
 
-  const visibleTasks =
+  const unfilteredTasks =
     isAll && excluded.size ? tasks.filter((t) => !excluded.has(t.space_id)) : tasks;
+  const visibleTasks = sortTasksByUrgency(unfilteredTasks);
 
   const counts: Record<TaskStatus, number> = { backlog: 0, todo: 0, in_progress: 0, done: 0 };
   for (const t of visibleTasks) counts[t.status as TaskStatus]++;
 
-  // Re-sync the visible column only when the underlying data meaningfully changes.
+  // On first load, default to "Doing" unless it's empty, then fall back to "To do".
+  const pickedInitialStatus = useRef(false);
+  useEffect(() => {
+    if (pickedInitialStatus.current || isLoading) return;
+    pickedInitialStatus.current = true;
+    setStatus(counts.in_progress > 0 ? 'in_progress' : 'todo');
+  }, [isLoading, counts.in_progress]);
+
+  // Re-sync the visible column whenever any rendered/sorted field changes so
+  // edits (title, priority, due date, assignee, …) show up without a refresh.
   const signature =
-    visibleTasks.map((t) => `${t.id}:${t.status}:${t.position}`).join('|') + `#${status}`;
+    visibleTasks
+      .map(
+        (t) =>
+          `${t.id}:${t.status}:${t.position}:${t.title}:${t.priority}:${t.due_date}:${t.assignee_id}:${t.updated_at}`,
+      )
+      .join('|') + `#${status}`;
   useEffect(() => {
     setItems(visibleTasks.filter((t) => t.status === status));
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -191,12 +213,17 @@ export default function Board() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           onDragEnd={({ data, to }) => {
-            setItems(data);
             const moved = data[to];
             if (!moved) return;
             const prev = data[to - 1]?.position ?? null;
             const next = data[to + 1]?.position ?? null;
-            reorder.mutate({ id: moved.id, position: positionBetween(prev, next) });
+            const position = positionBetween(prev, next);
+            setItems(
+              sortTasksByUrgency(
+                data.map((task) => (task.id === moved.id ? { ...task, position } : task)),
+              ),
+            );
+            reorder.mutate({ id: moved.id, position });
           }}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={isLoading ? null : <EmptyState {...EMPTY_COPY[status]} />}
