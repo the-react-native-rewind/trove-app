@@ -12,10 +12,12 @@ export default function AppLayout() {
       screenOptions={{
         headerShown: false,
         // Permanent sidebar on wide screens; slide-over drawer on phones.
+        // On wide, width is 'auto' so the drawer follows SpacesDrawer's
+        // animated rail/expanded width.
         drawerType: isWide ? 'permanent' : 'front',
         drawerStyle: {
           backgroundColor: colors.surface,
-          width: 300,
+          width: isWide ? 'auto' : 300,
           borderRightColor: colors.hairline,
           borderRightWidth: isWide ? 1 : 0,
         },

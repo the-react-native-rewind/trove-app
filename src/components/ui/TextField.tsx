@@ -1,4 +1,5 @@
-import { forwardRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { forwardRef, type ReactNode } from 'react';
 import {
   StyleSheet,
   TextInput,
@@ -13,10 +14,12 @@ type TextFieldProps = TextInputProps & {
   label: string;
   helper?: string;
   error?: string | null;
+  leftIcon?: keyof typeof Ionicons.glyphMap;
+  rightElement?: ReactNode;
 };
 
 export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
-  { label, helper, error, style, ...rest },
+  { label, helper, error, leftIcon, rightElement, style, ...rest },
   ref,
 ) {
   return (
@@ -24,12 +27,18 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
       <Text variant="label" color={colors.inkSoft} style={styles.label}>
         {label}
       </Text>
-      <TextInput
-        ref={ref}
-        placeholderTextColor={colors.inkFaint}
-        style={[styles.input, !!error && styles.inputError, style]}
-        {...rest}
-      />
+      <View style={[styles.inputRow, !!error && styles.inputError]}>
+        {leftIcon ? (
+          <Ionicons name={leftIcon} size={18} color={colors.inkFaint} style={styles.leftIcon} />
+        ) : null}
+        <TextInput
+          ref={ref}
+          placeholderTextColor={colors.inkFaint}
+          style={[styles.input, style]}
+          {...rest}
+        />
+        {rightElement}
+      </View>
       {error ? (
         <Text variant="meta" color={colors.priorityHigh} style={styles.helper}>
           {error}
@@ -46,12 +55,18 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
 const styles = StyleSheet.create({
   wrap: { gap: spacing.xs },
   label: { marginLeft: 2 },
-  input: {
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.hairline,
     borderRadius: radii.button,
     paddingHorizontal: spacing.md,
+  },
+  leftIcon: { marginRight: spacing.sm },
+  input: {
+    flex: 1,
     paddingVertical: spacing.md,
     color: colors.ink,
     ...typeScale.body,

@@ -8,15 +8,16 @@ import DraggableFlatList, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KanbanBoard } from '@/components/KanbanBoard';
+import { MyWeekView } from '@/components/MyWeekView';
 import { StatusSegmented } from '@/components/StatusSegmented';
 import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AccentDot } from '@/components/ui/Indicators';
 import { Text } from '@/components/ui/Text';
-import { sortTasks } from '@/lib/board';
 import { positionBetween, useMoveTaskStatus, useReorderTask, useTasks } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
+import { sortTasksByUrgency } from '@/lib/board';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
@@ -29,6 +30,11 @@ const EMPTY_COPY: Record<TaskStatus, { title: string; body: string }> = {
 };
 
 export default function Board() {
+  const { selectedSpaceId } = useSelectedSpace();
+  return selectedSpaceId === 'my-week' ? <MyWeekView /> : <SpaceBoard />;
+}
+
+function SpaceBoard() {
   const navigation = useNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -50,8 +56,9 @@ export default function Board() {
   const [showFilter, setShowFilter] = useState(false);
   const [items, setItems] = useState<TaskWithRefs[]>([]);
 
-  const visibleTasks =
+  const unfilteredTasks =
     isAll && excluded.size ? tasks.filter((t) => !excluded.has(t.space_id)) : tasks;
+  const visibleTasks = sortTasksByUrgency(unfilteredTasks);
 
   const counts: Record<TaskStatus, number> = { backlog: 0, todo: 0, in_progress: 0, done: 0 };
   for (const t of visibleTasks) counts[t.status as TaskStatus]++;
@@ -74,7 +81,8 @@ export default function Board() {
       )
       .join('|') + `#${status}`;
   useEffect(() => {
-    setItems(sortTasks(visibleTasks.filter((t) => t.status === status)));
+    // visibleTasks is already urgency-sorted; filtering preserves that order.
+    setItems(visibleTasks.filter((t) => t.status === status));
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dragEnabled = !isAll && writable && status !== 'done';
@@ -103,7 +111,7 @@ export default function Board() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, isWide && styles.headerWide]}>
         {!isWide ? (
           <Pressable
             onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
@@ -197,7 +205,7 @@ export default function Board() {
           tasks={visibleTasks}
           showSpaceTag={isAll}
           onOpen={(id) => router.push(`/task/${id}` as never)}
-          onMove={(id, next) => moveStatus.mutate({ id, status: next })}
+          onMove={(id, next, position) => moveStatus.mutate({ id, status: next, position })}
           canWriteTask={canWriteTask}
         />
       ) : (
@@ -206,12 +214,17 @@ export default function Board() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           onDragEnd={({ data, to }) => {
-            setItems(data);
             const moved = data[to];
             if (!moved) return;
             const prev = data[to - 1]?.position ?? null;
             const next = data[to + 1]?.position ?? null;
-            reorder.mutate({ id: moved.id, position: positionBetween(prev, next) });
+            const position = positionBetween(prev, next);
+            setItems(
+              sortTasksByUrgency(
+                data.map((task) => (task.id === moved.id ? { ...task, position } : task)),
+              ),
+            );
+            reorder.mutate({ id: moved.id, position });
           }}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={isLoading ? null : <EmptyState {...EMPTY_COPY[status]} />}
@@ -245,6 +258,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
+  // Match the Kanban board's horizontal padding so the title and actions
+  // line up with the first and last columns.
+  headerWide: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
   iconBtn: { padding: spacing.xs },
   titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

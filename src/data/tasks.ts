@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import type { Priority, TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
-const TASK_SELECT =
+export const TASK_SELECT =
   '*, space:spaces(id,name,color), assignee:profiles!tasks_assignee_id_fkey(id,display_name,avatar_url)';
 
 /** spaceId === 'all' gathers tasks across every space the user belongs to (the adaptive backlog). */
@@ -113,10 +113,11 @@ export function useUpdateTask() {
 export function useMoveTaskStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; status: TaskStatus }) => {
+    mutationFn: async (input: { id: string; status: TaskStatus; position?: number }) => {
       const { error } = await supabase
         .from('tasks')
-        .update({ status: input.status, position: Date.now() })
+        // No explicit position (swipe/status change) appends to the column end.
+        .update({ status: input.status, position: input.position ?? Date.now() })
         .eq('id', input.id);
       if (error) throw error;
     },
@@ -167,5 +168,6 @@ export function positionBetween(prev: number | null, next: number | null): numbe
 
 function invalidateTasks(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['tasks'] });
+  qc.invalidateQueries({ queryKey: ['week-tasks'] });
   qc.invalidateQueries({ queryKey: qk.spaces });
 }

@@ -1,32 +1,37 @@
-import type { Priority } from './types';
-import { STATUSES, type TaskStatus, type TaskWithRefs } from './types';
+import { STATUSES, type Priority, type TaskStatus, type TaskWithRefs } from './types';
 
 export { STATUSES };
 
-/** Higher number = more urgent, so it sorts to the top of a column. */
-const PRIORITY_RANK: Record<Priority, number> = { high: 3, medium: 2, low: 1 };
+const PRIORITY_RANK: Record<Priority, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
 
 /**
- * Order tasks within a column: soonest due date first (overdue floats to the
- * top), tasks without a due date last, then break ties by priority (high first).
+ * Order tasks by urgency: earliest due date first, then highest priority.
+ * Manual position and creation time provide stable tie-breakers.
  */
-export function compareTasks(a: TaskWithRefs, b: TaskWithRefs): number {
-  if (a.due_date !== b.due_date) {
-    if (!a.due_date) return 1;
-    if (!b.due_date) return -1;
-    return a.due_date < b.due_date ? -1 : 1;
-  }
-  const pa = a.priority ? PRIORITY_RANK[a.priority as Priority] : 0;
-  const pb = b.priority ? PRIORITY_RANK[b.priority as Priority] : 0;
-  return pb - pa;
+export function sortTasksByUrgency(tasks: TaskWithRefs[]): TaskWithRefs[] {
+  return [...tasks].sort((a, b) => {
+    if (a.due_date !== b.due_date) {
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return a.due_date.localeCompare(b.due_date);
+    }
+
+    const priorityDifference =
+      (a.priority ? PRIORITY_RANK[a.priority as Priority] : 3) -
+      (b.priority ? PRIORITY_RANK[b.priority as Priority] : 3);
+    if (priorityDifference !== 0) return priorityDifference;
+
+    if (a.position !== b.position) return a.position - b.position;
+    const createdDifference = a.created_at.localeCompare(b.created_at);
+    return createdDifference || a.id.localeCompare(b.id);
+  });
 }
 
-/** Sort a flat list of tasks by due date then priority (non-mutating). */
-export function sortTasks(tasks: TaskWithRefs[]): TaskWithRefs[] {
-  return [...tasks].sort(compareTasks);
-}
-
-/** Bucket tasks into the four status columns, sorted by due date then priority. */
+/** Bucket tasks into the four status columns, ordered by urgency. */
 export function groupByStatus(tasks: TaskWithRefs[]): Record<TaskStatus, TaskWithRefs[]> {
   const groups: Record<TaskStatus, TaskWithRefs[]> = {
     backlog: [],
@@ -39,7 +44,7 @@ export function groupByStatus(tasks: TaskWithRefs[]): Record<TaskStatus, TaskWit
     if (groups[s]) groups[s].push(t);
   }
   for (const status of Object.keys(groups) as TaskStatus[]) {
-    groups[status].sort(compareTasks);
+    groups[status] = sortTasksByUrgency(groups[status]);
   }
   return groups;
 }
@@ -48,6 +53,6 @@ export type KanbanProps = {
   tasks: TaskWithRefs[];
   showSpaceTag: boolean;
   onOpen: (id: string) => void;
-  onMove: (id: string, status: TaskStatus) => void;
+  onMove: (id: string, status: TaskStatus, position?: number) => void;
   canWriteTask: (spaceId: string) => boolean;
 };

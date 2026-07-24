@@ -21,4 +21,6 @@ export const qk = {
   // spaceId 'all' => the adaptive backlog across every space
   tasks: (spaceId: string) => ['tasks', spaceId] as const,
   task: (taskId: string) => ['task', taskId] as const,
+  weekTasks: (userId: string, weekStart: string) => ['week-tasks', userId, weekStart] as const,
+  taskWeekPlan: (userId: string, taskId: string) => ['task-week-plan', userId, taskId] as const,
 };
