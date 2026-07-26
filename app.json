@@ -60,7 +60,14 @@
           "photosPermission": "Trove uses your photos to add images and videos to a task."
         }
       ],
-      "expo-build-properties"
+      "expo-build-properties",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Trove uses the microphone so you can dictate a task.",
+          "speechRecognitionPermission": "Trove turns your speech into the task description."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
