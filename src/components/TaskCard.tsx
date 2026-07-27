@@ -1,22 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import type { Priority, TaskWithRefs } from '@/lib/types';
+import type { TaskWithRefs } from '@/lib/types';
 import { formatDueDate, isOverdue } from '@/lib/format';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Avatar } from './ui/Avatar';
-import { PriorityDot, SpaceTag } from './ui/Indicators';
+import { SpaceTag } from './ui/Indicators';
 import { Text } from './ui/Text';
 
 type TaskCardProps = {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
+  /** Colour for the urgency dot, derived from the task's rank in its list. */
+  heat?: string;
   onPress?: () => void;
   onLongPress?: () => void;
   dragging?: boolean;
 };
 
-export function TaskCard({ task, showSpaceTag, onPress, onLongPress, dragging }: TaskCardProps) {
+export function TaskCard({ task, showSpaceTag, heat, onPress, onLongPress, dragging }: TaskCardProps) {
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
   const done = task.status === 'done';
@@ -40,9 +42,9 @@ export function TaskCard({ task, showSpaceTag, onPress, onLongPress, dragging }:
         {task.title}
       </Text>
 
-      {(due || task.assignee || task.priority) && (
+      {(due || task.assignee || heat) && (
         <View style={styles.meta}>
-          {task.priority ? <PriorityDot level={task.priority as Priority} /> : null}
+          {heat ? <View style={[styles.heatDot, { backgroundColor: heat }]} /> : null}
           {due ? (
             <View style={styles.dueWrap}>
               <Ionicons
@@ -79,6 +81,7 @@ const styles = StyleSheet.create({
   dragging: { ...shadows.floating, borderColor: colors.brandSoft },
   tagRow: { flexDirection: 'row' },
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  heatDot: { width: 9, height: 9, borderRadius: 4.5 },
   dueWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   spacer: { flex: 1 },
 });

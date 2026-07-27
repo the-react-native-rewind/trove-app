@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   headerWide: { marginTop: 40 },
   logo: { width: 28, height: 28 },
   logoDot: { position: 'absolute', width: 16, height: 16, borderRadius: 8, mixBlendMode: 'multiply' },
-  wordmark: { fontFamily: fonts.displayBold, fontSize: 26, color: colors.brandDeep },
+  wordmark: { fontFamily: fonts.displayBold, fontSize: 26, lineHeight: 32, color: colors.brandDeep },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.sm, gap: 2 },
   sectionLabel: { marginTop: spacing.lg, marginBottom: spacing.xs, marginLeft: spacing.md },

@@ -11,7 +11,7 @@ import { useIsWide } from '@/hooks/useIsWide';
 import { sortTasksByUrgency } from '@/lib/board';
 import { canWrite } from '@/lib/types';
 import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, heatColor, radii, spacing } from '@/theme/tokens';
 import { TaskRow } from './TaskRow';
 import { EmptyState } from './ui/EmptyState';
 import { Text } from './ui/Text';
@@ -91,10 +91,11 @@ export function MyWeekView() {
           <FlatList
             data={sortedTasks}
             keyExtractor={(task) => task.id}
-            renderItem={({ item }) => (
+            renderItem={({ item, index }) => (
               <TaskRow
                 task={item}
                 showSpaceTag
+                heat={heatColor(index, sortedTasks.length)}
                 canWrite={canWrite(spaces.find((space) => space.id === item.space_id)?.role)}
                 onOpen={() => router.push(`/task/${item.id}` as never)}
                 onMove={(status) => moveStatus.mutate({ id: item.id, status })}

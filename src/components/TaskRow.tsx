@@ -10,7 +10,6 @@ import { TaskCard } from './TaskCard';
 import { Text } from './ui/Text';
 
 const NEXT_ACTIONS: Record<TaskStatus, { label: string; status: TaskStatus; done?: boolean }[]> = {
-  backlog: [{ label: 'To do', status: 'todo' }, { label: 'Done', status: 'done', done: true }],
   todo: [{ label: 'Doing', status: 'in_progress' }, { label: 'Done', status: 'done', done: true }],
   in_progress: [{ label: 'To do', status: 'todo' }, { label: 'Done', status: 'done', done: true }],
   done: [{ label: 'Reopen', status: 'todo' }],
@@ -19,6 +18,7 @@ const NEXT_ACTIONS: Record<TaskStatus, { label: string; status: TaskStatus; done
 export function TaskRow({
   task,
   showSpaceTag,
+  heat,
   canWrite,
   onOpen,
   onMove,
@@ -27,6 +27,7 @@ export function TaskRow({
 }: {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
+  heat?: string;
   canWrite: boolean;
   onOpen: () => void;
   onMove: (status: TaskStatus) => void;
@@ -72,6 +73,7 @@ export function TaskRow({
         <TaskCard
           task={task}
           showSpaceTag={showSpaceTag}
+          heat={heat}
           onPress={onOpen}
           onLongPress={onDrag}
           dragging={dragging}

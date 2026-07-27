@@ -3,7 +3,7 @@ import { type CSSProperties, Fragment, useState } from 'react';
 import { positionBetween } from '@/data/tasks';
 import { groupByStatus, type KanbanProps, STATUSES } from '@/lib/board';
 import type { TaskStatus } from '@/lib/types';
-import { colors, fonts, radii } from '@/theme/tokens';
+import { colors, fonts, heatColor, radii } from '@/theme/tokens';
 import { TaskCard } from './TaskCard';
 
 /**
@@ -102,7 +102,7 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
             <div style={styles.body}>
               {(() => {
                 let filteredIndex = 0;
-                return column.map((task) => {
+                return column.map((task, index) => {
                   const canDrag = canWriteTask(task.space_id);
                   const isDragSource = task.id === draggingId;
                   const showLine =
@@ -132,7 +132,7 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
                       transition: 'opacity 120ms ease',
                     }}
                   >
-                    <TaskCard task={task} showSpaceTag={showSpaceTag} onPress={() => onOpen(task.id)} />
+                    <TaskCard task={task} showSpaceTag={showSpaceTag} heat={heatColor(index, column.length)} onPress={() => onOpen(task.id)} />
                   </div>
                     </Fragment>
                   );

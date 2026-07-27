@@ -20,10 +20,9 @@ import { useIsWide } from '@/hooks/useIsWide';
 import { sortTasksByUrgency } from '@/lib/board';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
-import { colors, radii, shadows, spacing } from '@/theme/tokens';
+import { colors, heatColor, radii, shadows, spacing } from '@/theme/tokens';
 
 const EMPTY_COPY: Record<TaskStatus, { title: string; body: string }> = {
-  backlog: { title: 'Nothing parked here', body: 'Ideas and someday tasks live in the backlog. Add one when it comes to you.' },
   todo: { title: 'All clear', body: 'Nothing to do right now. Tap the plus to add the next thing.' },
   in_progress: { title: 'Nothing in progress', body: 'Swipe a task to Doing when you pick it up.' },
   done: { title: 'Nothing done yet', body: 'Finished tasks land here. A good place to see what got carried.' },
@@ -60,7 +59,7 @@ function SpaceBoard() {
     isAll && excluded.size ? tasks.filter((t) => !excluded.has(t.space_id)) : tasks;
   const visibleTasks = sortTasksByUrgency(unfilteredTasks);
 
-  const counts: Record<TaskStatus, number> = { backlog: 0, todo: 0, in_progress: 0, done: 0 };
+  const counts: Record<TaskStatus, number> = { todo: 0, in_progress: 0, done: 0 };
   for (const t of visibleTasks) counts[t.status as TaskStatus]++;
 
   // On first load, default to "Doing" unless it's empty, then fall back to "To do".
@@ -93,12 +92,14 @@ function SpaceBoard() {
     router.push(`/task-new?${params.toString()}` as never);
   }
 
-  function renderItem({ item, drag, isActive }: RenderItemParams<TaskWithRefs>) {
+  function renderItem({ item, getIndex, drag, isActive }: RenderItemParams<TaskWithRefs>) {
     const rowWritable = isAll ? canWrite(spaces.find((s) => s.id === item.space_id)?.role) : writable;
+    const rank = getIndex() ?? 0;
     return (
       <TaskRow
         task={item}
         showSpaceTag={isAll}
+        heat={heatColor(rank, items.length)}
         canWrite={rowWritable}
         dragging={isActive}
         onOpen={() => router.push(`/task/${item.id}` as never)}

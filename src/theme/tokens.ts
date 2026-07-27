@@ -92,6 +92,31 @@ export const priority = {
 
 export type PriorityLevel = keyof typeof priority;
 
+// Muted red → amber → green ramp used to colour a task's urgency dot by its
+// rank in the visible list (top = most urgent = red, bottom = green).
+const HEAT_STOPS = ['#C04A3C', '#D99A4E', '#4C6444'] as const;
+
+function lerpHex(a: string, b: string, t: number): string {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  const mix = pa.map((v, i) => Math.round(v + (pb[i] - v) * t));
+  return '#' + mix.map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Colour for a task's urgency dot given its position in the list. `rank` 0 is
+ * the top (red); the ramp reaches green at the last item, so the gradient
+ * always spans the full list however many tasks it holds. A lone task shows the
+ * top colour.
+ */
+export function heatColor(rank: number, total: number): string {
+  if (total <= 1) return HEAT_STOPS[0];
+  const t = Math.min(1, Math.max(0, rank / (total - 1)));
+  const scaled = t * (HEAT_STOPS.length - 1);
+  const i = Math.min(HEAT_STOPS.length - 2, Math.floor(scaled));
+  return lerpHex(HEAT_STOPS[i], HEAT_STOPS[i + 1], scaled - i);
+}
+
 export const radii = {
   sm: 8,
   button: 12,

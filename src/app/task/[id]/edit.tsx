@@ -13,18 +13,11 @@ import { TextField } from '@/components/ui/TextField';
 import { useSpaces } from '@/data/spaces';
 import { useDeleteTask, useTask, useUpdateTask } from '@/data/tasks';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
-import { canWrite, STATUSES, type Priority, type TaskStatus } from '@/lib/types';
-import { colors, priority as priorityTokens, spacing } from '@/theme/tokens';
+import { canWrite, STATUSES, type TaskStatus } from '@/lib/types';
+import { colors, spacing } from '@/theme/tokens';
 
 /** Debounce for title/notes autosave — long enough to avoid a write per keystroke. */
 const AUTOSAVE_MS = 600;
-
-const PRIORITY_OPTIONS: { value: Priority | 'none'; label: string; color?: string }[] = [
-  { value: 'none', label: 'None' },
-  { value: 'low', label: 'Low', color: priorityTokens.low.color },
-  { value: 'medium', label: 'Medium', color: priorityTokens.medium.color },
-  { value: 'high', label: 'High', color: priorityTokens.high.color },
-];
 
 export default function TaskEdit() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -202,12 +195,6 @@ export default function TaskEdit() {
         spaceId={task.space_id}
         value={task.assignee_id}
         onChange={(assignee_id) => patch({ id: task.id, assignee_id })}
-      />
-      <OptionChips
-        label="Priority"
-        options={PRIORITY_OPTIONS}
-        value={(task.priority as Priority) ?? 'none'}
-        onChange={(p) => patch({ id: task.id, priority: p === 'none' ? null : p })}
       />
       <DueDatePicker
         value={task.due_date}

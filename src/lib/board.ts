@@ -31,10 +31,9 @@ export function sortTasksByUrgency(tasks: TaskWithRefs[]): TaskWithRefs[] {
   });
 }
 
-/** Bucket tasks into the four status columns, ordered by urgency. */
+/** Bucket tasks into the status columns, ordered by urgency. */
 export function groupByStatus(tasks: TaskWithRefs[]): Record<TaskStatus, TaskWithRefs[]> {
   const groups: Record<TaskStatus, TaskWithRefs[]> = {
-    backlog: [],
     todo: [],
     in_progress: [],
     done: [],
