@@ -4,7 +4,7 @@ import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import type { TaskWithRefs } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
-import { TASK_SELECT } from './tasks';
+import { TASK_SELECT, withTaskMediaPreviews } from './tasks';
 
 export type TaskWeekPlan = {
   id: string;
@@ -42,9 +42,10 @@ export function useWeekTasks(weekStart: string) {
         );
       if (taskError) throw taskError;
 
-      const tasksById = new Map(
-        ((tasks ?? []) as unknown as TaskWithRefs[]).map((task) => [task.id, task]),
+      const tasksWithMedia = await withTaskMediaPreviews(
+        (tasks ?? []) as unknown as TaskWithRefs[],
       );
+      const tasksById = new Map(tasksWithMedia.map((task) => [task.id, task]));
       return plans.flatMap((plan) => {
         const task = tasksById.get(plan.task_id);
         return task

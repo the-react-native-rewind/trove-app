@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { Priority, TaskWithRefs } from '@/lib/types';
@@ -40,6 +42,8 @@ export function TaskCard({ task, showSpaceTag, onPress, onLongPress, dragging }:
         {task.title}
       </Text>
 
+      {task.media ? <TaskCardMedia media={task.media} /> : null}
+
       {(due || task.assignee || task.priority) && (
         <View style={styles.meta}>
           {task.priority ? <PriorityDot level={task.priority as Priority} /> : null}
@@ -65,6 +69,45 @@ export function TaskCard({ task, showSpaceTag, onPress, onLongPress, dragging }:
   );
 }
 
+function TaskCardMedia({ media }: { media: NonNullable<TaskWithRefs['media']> }) {
+  if (media.type === 'video') {
+    return <TaskCardVideo url={media.url} />;
+  }
+
+  return (
+    <View style={styles.mediaWrap}>
+      <Image
+        source={{ uri: media.url }}
+        contentFit="cover"
+        recyclingKey={media.url}
+        transition={150}
+        style={styles.media}
+      />
+    </View>
+  );
+}
+
+function TaskCardVideo({ url }: { url: string }) {
+  const player = useVideoPlayer(url, (videoPlayer) => {
+    videoPlayer.muted = true;
+  });
+
+  return (
+    <View style={styles.mediaWrap}>
+      <VideoView
+        player={player}
+        nativeControls={false}
+        contentFit="cover"
+        surfaceType="textureView"
+        style={styles.media}
+      />
+      <View style={styles.videoBadge}>
+        <Ionicons name="play" size={13} color={colors.white} />
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
@@ -81,4 +124,22 @@ const styles = StyleSheet.create({
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
   dueWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   spacer: { flex: 1 },
+  mediaWrap: {
+    aspectRatio: 16 / 9,
+    marginHorizontal: -spacing.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceAlt,
+  },
+  media: { width: '100%', height: '100%' },
+  videoBadge: {
+    position: 'absolute',
+    right: spacing.sm,
+    bottom: spacing.sm,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(43, 38, 32, 0.72)',
+  },
 });
