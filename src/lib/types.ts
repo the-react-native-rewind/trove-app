@@ -12,6 +12,7 @@ export type Invite = Tables['invites']['Row'];
 export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'done';
 export type SpaceRole = 'owner' | 'admin' | 'member' | 'viewer';
 export type Priority = 'low' | 'medium' | 'high';
+export type TaskMediaType = 'image' | 'video';
 
 export const STATUSES: { key: TaskStatus; label: string }[] = [
   { key: 'backlog', label: 'Backlog' },
@@ -30,6 +31,7 @@ export type SpaceWithMeta = Space & {
 export type TaskWithRefs = Task & {
   space: Pick<Space, 'id' | 'name' | 'color'> | null;
   assignee: Pick<Profile, 'id' | 'display_name' | 'avatar_url'> | null;
+  media: { type: TaskMediaType; url: string } | null;
 };
 
 /** A roster entry: membership joined with the member's profile. */

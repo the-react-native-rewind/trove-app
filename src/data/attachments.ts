@@ -3,6 +3,7 @@ import * as Crypto from 'expo-crypto';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 
+import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -107,7 +108,7 @@ export function useAddAttachment(taskId: string, spaceId: string) {
   return useMutation({
     mutationFn: (input: PickedMedia) =>
       uploadTaskMedia({ taskId, spaceId, uri: input.uri, mediaType: input.mediaType, userId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: taskAttachmentsKey(taskId) }),
+    onSuccess: () => invalidateAttachmentQueries(qc, taskId),
   });
 }
 
@@ -119,6 +120,13 @@ export function useDeleteAttachment(taskId: string) {
       const { error } = await supabase.from('task_attachments').delete().eq('id', attachment.id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: taskAttachmentsKey(taskId) }),
+    onSuccess: () => invalidateAttachmentQueries(qc, taskId),
   });
+}
+
+function invalidateAttachmentQueries(qc: ReturnType<typeof useQueryClient>, taskId: string) {
+  qc.invalidateQueries({ queryKey: taskAttachmentsKey(taskId) });
+  qc.invalidateQueries({ queryKey: ['tasks'] });
+  qc.invalidateQueries({ queryKey: ['week-tasks'] });
+  qc.invalidateQueries({ queryKey: qk.task(taskId) });
 }

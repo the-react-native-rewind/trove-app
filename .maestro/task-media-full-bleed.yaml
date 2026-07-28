@@ -1,0 +1,77 @@
+appId: com.rewind.trove
+---
+# Task media previews: attaching a photo to a task shows a full-bleed
+# preview image on that task's card in the board list.
+- launchApp:
+    clearState: true
+
+# Log in (app launches on a logged-out login screen)
+- tapOn:
+    text: "you@example.com"
+- inputText: ${MAESTRO_TEST_EMAIL}
+- tapOn:
+    text: "Your password"
+- inputText: ${MAESTRO_TEST_PASSWORD}
+- tapOn:
+    text: "Sign in"
+- extendedWaitUntil:
+    notVisible:
+      text: "Sign in"
+    timeout: 10000
+
+# Give this run's task a unique marker, since the backend persists across
+# runs (clearState only resets local app/session state, not the server).
+# Magic capture rewrites whatever we type into a cleaner title, but it
+# preserves a distinct numeric marker like this, so match on that instead
+# of the literal input text.
+- evalScript: ${output.marker = '' + Date.now()}
+- evalScript: ${output.taskRegex = '.*' + output.marker + '.*'}
+
+# Create a plain task first (media is attached afterwards from the task screen)
+- tapOn:
+    text: "Add task"
+- tapOn:
+    text: "What needs doing?"
+- inputText: "Media preview test task ${output.marker}"
+- hideKeyboard
+- tapOn:
+    text: "Add task"
+- extendedWaitUntil:
+    notVisible:
+      text: "New task"
+    timeout: 10000
+
+# Card should show no media preview yet
+- scrollUntilVisible:
+    element:
+      text: ${output.taskRegex}
+    direction: DOWN
+    timeout: 10000
+- assertWithAI:
+    assertion: "The task card whose title mentions '${output.marker}' shows only its title and tags, with no photo or video preview."
+
+# Open the task and attach a photo
+- tapOn:
+    text: ${output.taskRegex}
+- addMedia:
+    - "media/test-photo.png"
+- tapOn:
+    text: "Add photo or video"
+- tapOn:
+    text: "Photo taken on.*"
+- extendedWaitUntil:
+    notVisible:
+      text: "Adding"
+    timeout: 15000
+
+# Back to the board list
+- back
+- scrollUntilVisible:
+    element:
+      text: ${output.taskRegex}
+    direction: DOWN
+    timeout: 10000
+
+# Card should now render a full-bleed media preview beneath the title
+- assertWithAI:
+    assertion: "The task card whose title mentions '${output.marker}' shows a photo/image preview spanning the full width of the card beneath the title, not just plain text."

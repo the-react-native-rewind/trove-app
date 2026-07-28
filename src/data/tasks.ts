@@ -3,11 +3,56 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { celebrate } from '@/lib/celebrate';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
-import type { Priority, TaskStatus, TaskWithRefs } from '@/lib/types';
+import type { Priority, TaskMediaType, TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
 export const TASK_SELECT =
   '*, space:spaces(id,name,color), assignee:profiles!tasks_assignee_id_fkey(id,display_name,avatar_url)';
+
+export async function withTaskMediaPreviews(tasks: TaskWithRefs[]): Promise<TaskWithRefs[]> {
+  if (tasks.length === 0) return [];
+
+  const { data: attachments, error } = await supabase
+    .from('task_attachments')
+    .select('task_id, path, media_type')
+    .in(
+      'task_id',
+      tasks.map((task) => task.id),
+    )
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const previewByTask = new Map<
+    string,
+    { path: string; mediaType: TaskMediaType }
+  >();
+  for (const attachment of attachments ?? []) {
+    if (!previewByTask.has(attachment.task_id)) {
+      previewByTask.set(attachment.task_id, {
+        path: attachment.path,
+        mediaType: attachment.media_type as TaskMediaType,
+      });
+    }
+  }
+
+  const previews = [...previewByTask.values()];
+  const { data: signed } = await supabase.storage
+    .from('task-media')
+    .createSignedUrls(
+      previews.map((preview) => preview.path),
+      60 * 60,
+    );
+  const urlByPath = new Map((signed ?? []).map((item) => [item.path, item.signedUrl]));
+
+  return tasks.map((task) => {
+    const preview = previewByTask.get(task.id);
+    const url = preview ? urlByPath.get(preview.path) : null;
+    return {
+      ...task,
+      media: preview && url ? { type: preview.mediaType, url } : null,
+    };
+  });
+}
 
 /** spaceId === 'all' gathers tasks across every space the user belongs to (the adaptive backlog). */
 export function useTasks(spaceId: string) {
@@ -22,7 +67,7 @@ export function useTasks(spaceId: string) {
         .order('position', { ascending: true })
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as unknown as TaskWithRefs[];
+      return withTaskMediaPreviews((data ?? []) as unknown as TaskWithRefs[]);
     },
   });
 }
@@ -38,7 +83,9 @@ export function useTask(taskId: string) {
         .eq('id', taskId)
         .maybeSingle();
       if (error) throw error;
-      return (data as unknown as TaskWithRefs) ?? null;
+      if (!data) return null;
+      const [task] = await withTaskMediaPreviews([data as unknown as TaskWithRefs]);
+      return task ?? null;
     },
   });
 }
@@ -74,7 +121,7 @@ export function useCreateTask() {
         .select(TASK_SELECT)
         .single();
       if (error) throw error;
-      return data as unknown as TaskWithRefs;
+      return { ...(data as unknown as TaskWithRefs), media: null };
     },
     onSuccess: () => invalidateTasks(qc),
   });
