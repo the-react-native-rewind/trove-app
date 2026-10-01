@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import Toast from 'react-native-toast-message';
 
+import { CirclePicker } from '@/components/form';
 import { TaskMedia } from '@/components/TaskMedia';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -9,7 +12,8 @@ import { PriorityDot, SpaceTag } from '@/components/ui/Indicators';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { useSpaces } from '@/data/spaces';
-import { useTask } from '@/data/tasks';
+import { useMoveTask, useTask } from '@/data/tasks';
+import { confirmDialog } from '@/lib/dialog';
 import {
   useRemoveTaskWeekPlan,
   useSetTaskWeekPlan,
@@ -51,6 +55,7 @@ export default function TaskView() {
   }
 
   const writable = canWrite(spaces.find((s) => s.id === task.space_id)?.role);
+  const destinations = spaces.filter((space) => space.id !== task.space_id);
   const statusLabel = STATUSES.find((s) => s.key === (task.status as TaskStatus))?.label ?? task.status;
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
@@ -107,6 +112,10 @@ export default function TaskView() {
           </View>
         ) : null}
       </View>
+
+      {writable && destinations.length > 0 ? (
+        <MoveToCircle taskId={task.id} destinations={destinations} />
+      ) : null}
 
       {task.description ? (
         <Text variant="body" color={colors.inkSoft}>
@@ -195,6 +204,55 @@ export default function TaskView() {
   );
 }
 
+function MoveToCircle({
+  taskId,
+  destinations,
+}: {
+  taskId: string;
+  destinations: { id: string; name: string; color: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const move = useMoveTask();
+
+  async function onChoose(circleId: string) {
+    const circle = destinations.find((item) => item.id === circleId);
+    if (!circle) return;
+    const confirmed = await confirmDialog({
+      title: `Move to ${circle.name}?`,
+      message:
+        'If the current assignee is not in that circle, the task will be unassigned. Photos and videos stay in the current circle.',
+      confirmLabel: 'Move',
+      cancelLabel: 'Cancel',
+    });
+    if (!confirmed) return;
+    try {
+      const result = await move.mutateAsync({ taskId, targetSpaceId: circle.id });
+      Toast.show({
+        type: 'success',
+        text1: `Moved to ${circle.name}`,
+        text2: result.assignee_cleared ? 'Unassigned — that person is not in this circle.' : undefined,
+      });
+      setOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Please try again.';
+      Toast.show({ type: 'error', text1: 'Could not move', text2: message });
+    }
+  }
+
+  return (
+    <View style={styles.move}>
+      <Button
+        label={open ? 'Hide circles' : 'Move to…'}
+        variant="secondary"
+        size="md"
+        loading={move.isPending}
+        onPress={() => setOpen((value) => !value)}
+      />
+      {open ? <CirclePicker circles={destinations} value={null} onChange={onChoose} /> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -219,6 +277,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
   },
+  move: { gap: spacing.md },
   weekShiftButton: {
     width: 36,
     height: 36,

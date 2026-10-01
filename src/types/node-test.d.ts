@@ -3,6 +3,18 @@ declare module 'node:test' {
   export function test(name: string, fn: () => void | Promise<void>): void;
 }
 
+declare module 'node:crypto' {
+  export function createHash(algorithm: string): {
+    update(data: string): { digest(encoding: 'hex'): string };
+  };
+  export function createHmac(
+    algorithm: string,
+    key: string,
+  ): {
+    update(data: string): { digest(encoding: 'base64url'): string };
+  };
+}
+
 declare module 'node:assert/strict' {
   export function equal(actual: unknown, expected: unknown, message?: string): void;
   export function deepEqual(actual: unknown, expected: unknown, message?: string): void;

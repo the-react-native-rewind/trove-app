@@ -12,6 +12,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+          token_hash: string
+          token_prefix: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          name: string
+          revoked_at?: string | null
+          token_hash: string
+          token_prefix: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          token_hash?: string
+          token_prefix?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       invites: {
         Row: {
           created_at: string
@@ -169,6 +202,7 @@ export type Database = {
           created_by: string | null
           description: string | null
           due_date: string | null
+          external_id: string | null
           id: string
           position: number
           priority: string | null
@@ -183,6 +217,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           due_date?: string | null
+          external_id?: string | null
           id?: string
           position?: number
           priority?: string | null
@@ -197,6 +232,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           due_date?: string | null
+          external_id?: string | null
           id?: string
           position?: number
           priority?: string | null
@@ -241,6 +277,10 @@ export type Database = {
       current_space_role: { Args: { p_space_id: string }; Returns: string }
       delete_account_data: { Args: { p_user_id: string }; Returns: undefined }
       is_space_member: { Args: { p_space_id: string }; Returns: boolean }
+      move_task: {
+        Args: { p_task_id: string; p_target_space_id: string }
+        Returns: Json
+      }
     }
     Enums: { [_ in never]: never }
     CompositeTypes: { [_ in never]: never }

@@ -137,6 +137,34 @@ export function useMoveTaskStatus() {
   });
 }
 
+export type MoveTaskResult = {
+  task_id: string;
+  source_space_id: string;
+  target_space_id: string;
+  assignee_cleared: boolean;
+  already_there: boolean;
+  tags_removed: number;
+};
+
+/** Move a task into another circle. The database enforces edit rights and membership. */
+export function useMoveTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { taskId: string; targetSpaceId: string }): Promise<MoveTaskResult> => {
+      const { data, error } = await supabase.rpc('move_task', {
+        p_task_id: input.taskId,
+        p_target_space_id: input.targetSpaceId,
+      });
+      if (error) throw error;
+      return data as unknown as MoveTaskResult;
+    },
+    onSuccess: (_data, vars) => {
+      invalidateTasks(qc);
+      qc.invalidateQueries({ queryKey: qk.task(vars.taskId) });
+    },
+  });
+}
+
 export function useDeleteTask() {
   const qc = useQueryClient();
   return useMutation({

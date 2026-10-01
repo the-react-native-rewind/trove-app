@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
@@ -13,6 +14,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { colors, radii, spacing } from '@/theme/tokens';
 
 export default function Account() {
+  const router = useRouter();
   const { session, signOut } = useAuth();
   const { data: profile } = useProfile();
   const updateProfile = useUpdateProfile();
@@ -105,6 +107,18 @@ export default function Account() {
         helper={saved ? 'Saved' : 'This is how your people see you.'}
       />
 
+      <View style={styles.connect}>
+        <Text variant="sectionHeading">Connect an AI assistant</Text>
+        <Text variant="body" color={colors.inkSoft}>
+          Create an API token so Claude, Cursor, or ChatGPT can work with your circles and tasks.
+        </Text>
+        <Button
+          label="API tokens"
+          variant="secondary"
+          onPress={() => router.push('/connect')}
+        />
+      </View>
+
       <View style={styles.actions}>
         <Button label="Sign out" variant="secondary" onPress={signOut} />
         <Button
@@ -132,5 +146,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(43, 38, 32, 0.35)',
   },
+  connect: { marginTop: spacing.xl, gap: spacing.md },
   actions: { marginTop: spacing.xl, gap: spacing.md },
 });

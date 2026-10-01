@@ -14,6 +14,7 @@ export const queryClient = new QueryClient({
 export const qk = {
   session: ['session'] as const,
   profile: (userId: string) => ['profile', userId] as const,
+  apiTokens: (userId: string) => ['api-tokens', userId] as const,
   spaces: ['spaces'] as const,
   space: (spaceId: string) => ['space', spaceId] as const,
   roster: (spaceId: string) => ['roster', spaceId] as const,
