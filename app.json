@@ -10,7 +10,6 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.rewind.trove",
-      "buildNumber": "1",
       "supportsTablet": true,
       "requireFullScreen": false,
       "infoPlist": {
