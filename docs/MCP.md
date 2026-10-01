@@ -171,31 +171,23 @@ This is for the person who operates the Supabase project. It is not part of conn
 
 Migration `0011_api_tokens_and_move_task.sql` is already applied. Apply `supabase/migrations/0012_api_token_limits.sql` before deploying this version of the function. Do not run the seed or `supabase/tests/bootstrap.sql` on the hosted project.
 
-The function signs a one-hour user JWT locally and does not create an Auth session. It needs a signing secret you set yourself. Hosted Supabase still injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. Do not commit the JWT secret.
+The function signs a one-hour user JWT locally and does not create an Auth session. It needs a signing secret you set yourself. Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`, and it rejects any function secret whose name starts with `SUPABASE_` (`Secret name must not start with the SUPABASE_ prefix`). Use the `TROVE_` names below. Do not commit the key.
 
-This project still uses the legacy HS256 JWT secret (the anon key is an HS256 JWT). Copy that secret from Dashboard → Settings → API → JWT Settings, then:
+The project's active Auth signing key is ES256. The legacy HS256 secret is `previously_used` and is still accepted for verification, so a token signed with it still works. The key that matches what Auth uses now is the ES256 private JWK you generated and imported (`kid` must match that key). Supabase will not export a private key it generated itself.
 
 ```bash
-supabase secrets set SUPABASE_JWT_SECRET="<legacy JWT secret>"
+supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256","x":"…","y":"…","d":"…"}'
 supabase functions deploy mcp --no-verify-jwt
 ```
 
+To sign with the legacy HS256 secret instead (Dashboard → Settings → API → JWT Settings):
+
+```bash
+supabase secrets set TROVE_JWT_SECRET="<legacy JWT secret>"
+```
+
+`TROVE_JWT_SIGNING_KEY` wins when both are set. Supported signing-key shapes are ES256 (P-256), RS256, and an `oct` HMAC JWK. Local `supabase functions serve` may still inject `SUPABASE_JWT_SECRET` or `SUPABASE_JWT_SIGNING_KEY`; those are read only when the `TROVE_` name is unset. They cannot be set on the hosted project.
+
 `--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
 
-If neither `SUPABASE_JWT_SECRET` nor `SUPABASE_JWT_SIGNING_KEY` is set, or PostgREST rejects the signature, a signed-in token gets HTTP 500 and a JSON-RPC error (`-32603`) whose message is `server_misconfigured`. A request with no Trove token still gets 401.
-
-### Asymmetric signing keys
-
-Supabase will not let you export a private key it generated. If you rotate Auth off the legacy secret, generate a key yourself, import that private JWK as a standby signing key, and rotate to it:
-
-```bash
-supabase gen signing-key --algorithm ES256
-```
-
-Keep the private JWK somewhere safe, then point the function at the same JSON (it must include `kid`, and `kid` must match the imported key):
-
-```bash
-supabase secrets set SUPABASE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256","x":"…","y":"…","d":"…"}'
-```
-
-When `SUPABASE_JWT_SIGNING_KEY` is set, the function uses it instead of `SUPABASE_JWT_SECRET`. Supported shapes are ES256 (P-256), RS256, and an `oct` HMAC JWK. A Supabase-generated asymmetric key cannot be copied into this secret.
+If none of those secrets is set, or PostgREST rejects the signature, a signed-in token gets HTTP 500 and a JSON-RPC error (`-32603`) whose message is `server_misconfigured`. A request with no Trove token still gets 401.

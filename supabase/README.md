@@ -55,16 +55,16 @@ supabase functions deploy delete-account
 
 `supabase/functions/mcp` is the remote MCP server (Streamable HTTP). `verify_jwt` is **false**: callers send a personal access token (`trove_…`), not a Supabase JWT. The function hashes the token, signs a short-lived user JWT, and queries as that user so row level security still applies. It does not create an Auth session. Deploy it only after migration 0012.
 
-Set the legacy JWT secret (Dashboard → Settings → API → JWT Settings) as a function secret. Do not commit it.
+Hosted Supabase rejects function secrets whose names start with `SUPABASE_`. Set `TROVE_JWT_SIGNING_KEY` to the private JWK of the active ES256 signing key (the one you imported; `kid` must match). The legacy HS256 secret is `previously_used` and still verifies, so `TROVE_JWT_SECRET` is the alternative. Do not commit either value. `SUPABASE_JWT_SECRET` and `SUPABASE_JWT_SIGNING_KEY` are read only when the `TROVE_` name is unset, for local dev.
 
 ```bash
-supabase secrets set SUPABASE_JWT_SECRET="<legacy JWT secret>"
+supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256","x":"…","y":"…","d":"…"}'
 supabase functions deploy mcp --no-verify-jwt
 ```
 
 The `--no-verify-jwt` flag is required even though `config.toml` sets `verify_jwt = false`. If the gateway answers `Invalid JWT` or `Missing authorization` before the function logs anything, verification is still on.
 
-Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. If `SUPABASE_JWT_SIGNING_KEY` is set to a private JWK you imported into Auth, that key is used instead of `SUPABASE_JWT_SECRET`. If neither secret is set, the function returns `server_misconfigured`. See `docs/MCP.md`.
+Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. If neither Trove secret is set, the function returns `server_misconfigured`. See `docs/MCP.md`.
 
 Server URL: `https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp`
 
