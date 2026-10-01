@@ -31,6 +31,12 @@ export function sortTasksByUrgency(tasks: TaskWithRefs[]): TaskWithRefs[] {
   });
 }
 
+/** Map stored status onto the three columns. Unknown or legacy values stay visible as To do. */
+export function normalizeStatus(status: string): TaskStatus {
+  if (status === 'in_progress' || status === 'done') return status;
+  return 'todo';
+}
+
 /** Bucket tasks into the status columns, ordered by urgency. */
 export function groupByStatus(tasks: TaskWithRefs[]): Record<TaskStatus, TaskWithRefs[]> {
   const groups: Record<TaskStatus, TaskWithRefs[]> = {
@@ -39,8 +45,7 @@ export function groupByStatus(tasks: TaskWithRefs[]): Record<TaskStatus, TaskWit
     done: [],
   };
   for (const t of tasks) {
-    const s = t.status as TaskStatus;
-    if (groups[s]) groups[s].push(t);
+    groups[normalizeStatus(t.status)].push(t);
   }
   for (const status of Object.keys(groups) as TaskStatus[]) {
     groups[status] = sortTasksByUrgency(groups[status]);

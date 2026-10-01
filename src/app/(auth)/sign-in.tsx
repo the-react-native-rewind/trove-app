@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as Linking from 'expo-linking';
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -45,6 +45,7 @@ function useSignInForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function onSignIn() {
     setError(null);
@@ -70,12 +71,15 @@ function useSignInForm() {
       setError('Enter your email first, then tap reset.');
       return;
     }
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim());
+    setNotice(null);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: Linking.createURL('/reset-password'),
+    });
     if (resetError) {
       setError('We could not send a reset link. Check the email and try again.');
       return;
     }
-    Alert.alert('Check your email', 'We sent a link to reset your password.');
+    setNotice('Check your email. We sent a link to reset your password.');
   }
 
   return {
@@ -87,6 +91,7 @@ function useSignInForm() {
     setShowPassword,
     loading,
     error,
+    notice,
     onSignIn,
     onForgotPassword,
   };
@@ -136,6 +141,11 @@ function SignInFields({ form }: { form: ReturnType<typeof useSignInForm> }) {
       {form.error ? (
         <Text variant="meta" color={colors.priorityHigh}>
           {form.error}
+        </Text>
+      ) : null}
+      {form.notice ? (
+        <Text variant="meta" color={colors.brandDeep}>
+          {form.notice}
         </Text>
       ) : null}
 

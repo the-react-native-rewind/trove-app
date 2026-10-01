@@ -23,7 +23,8 @@ import { colors, radii, spacing, type as typeScale } from '@/theme/tokens';
 /**
  * Capture sheet: one box, a mic, a space. Title, polished description, and
  * due date are inferred (chrono locally for the date, AI for the rest).
- * Status is always "To do"; assignee and priority live on the edit screen.
+ * Status is always "To do". The task starts assigned to you, so it shows
+ * on Mine; hand it to someone else from the task screen.
  */
 export default function NewTask() {
   const router = useRouter();
@@ -96,7 +97,6 @@ export default function NewTask() {
         title,
         description,
         status: 'todo',
-        assignee_id: null,
         priority: null,
         due_date: due,
       });

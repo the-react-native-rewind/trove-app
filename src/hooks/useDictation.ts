@@ -21,7 +21,9 @@ try {
 export function useDictation(onTranscript: DictationHandler) {
   const [listening, setListening] = useState(false);
   const handlerRef = useRef(onTranscript);
-  handlerRef.current = onTranscript;
+  useEffect(() => {
+    handlerRef.current = onTranscript;
+  }, [onTranscript]);
 
   useEffect(() => {
     if (!speech) return;

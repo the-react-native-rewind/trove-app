@@ -4,21 +4,21 @@
 
 <h1 align="center">Trove</h1>
 
-<p align="center"><strong>Cross-community collaboration.</strong><br />
-One shared board for every group in your life. Everyone sees only their part, so no one carries the whole list.</p>
+<p align="center"><strong>Everything that's yours, from every group.</strong><br />
+Shared lists for the groups you belong to, and one personal view of the work that is actually yours.</p>
 
 ---
 
-Most of us don't belong to one team. We belong to a household, a garden crew, a choir, a side project, a volunteer group, and somehow one person ends up holding the list for all of them. Trove is built for exactly that person.
+Most of us don't belong to one team. We belong to a household, a garden crew, a choir, a side project, a volunteer group. The work is scattered across those group spaces, and no tool shows everything that is yours in one place. Trove is built for that.
 
-Make a space for each group. Invite the people who belong in it. Each person opens Trove and sees just their part: their home chores next to their rehearsal logistics next to their project tasks, and nothing that isn't theirs. The mental load stops living in one head and starts living on the board.
+Make a space for each group. Everyone in the group sees the whole shared list. Mine gathers the tasks assigned to you from every group you have joined, so the same person, in the same groups, still has their own pile.
 
-Get it out of your head, and onto everyone's plate.
+Get it out of the group chat, and onto a list you can actually see.
 
 ## What you get
 
 - **A space for every group.** Home, garden, choir, crew, team. Each with its own accent colour, members, and roles (owner, admin, member, viewer).
-- **Your part, all in one place.** The "All tasks" view gathers every space you belong to into one adaptive backlog. Two people in the same spaces see two different boards, by design.
+- **Mine, across every group.** The Mine view is every task assigned to you, from every space you have joined. A group's own board stays the full shared list.
 - **A board that fits the screen.** Kanban columns with drag and drop on desktop and web, a calm single column with swipe gestures on your phone. Same code, same data.
 - **Invites that just work.** Invite by email, share a link, they land in the right space with the right role. Free, no per-person cost.
 - **Real-life tasks.** Notes, priority, due dates, assignees, and photos or videos on any task.
@@ -31,7 +31,7 @@ Trove's visibility is not a UI filter. It is one rule, enforced by the database:
 
 > You can see or change a task only if you are a member of its space.
 
-That rule is a Postgres Row Level Security policy (see [`supabase/migrations`](supabase/migrations)), so it holds for every query the app can possibly make, on every platform. Membership is the boundary. Everything else follows from it.
+That rule is a Postgres Row Level Security policy (see [`supabase/migrations`](supabase/migrations)), so it holds for every query the app can possibly make, on every platform. Membership is the boundary. Mine is an extra filter on top of that: tasks where you are the assignee. It does not hide other people's tasks on a group board you belong to.
 
 ## Built with
 
@@ -47,7 +47,7 @@ One TypeScript codebase, three platforms (iOS, Android, web):
 
 ## Run it locally
 
-You'll need Node 20+ and a [Supabase](https://supabase.com) project. Apply the SQL in [`supabase/migrations`](supabase/migrations) (in order) to create the schema, RLS policies, and storage buckets.
+You'll need Node 20+ and a [Supabase](https://supabase.com) project. Apply the SQL in [`supabase/migrations`](supabase/migrations) in filename order, then set the Auth redirects described in [`supabase/README.md`](supabase/README.md). `supabase/seed.sql` is local demo data only.
 
 Create a `.env` in the project root:
 
@@ -66,7 +66,9 @@ npx expo run:ios         # iOS simulator (dev build; Expo Go won't cover the nat
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep the tone of the product in mind: warm, plain, human. If you're proposing a feature, open an issue first so we can talk it through. Run `npx tsc --noEmit` before pushing.
+Issues and pull requests are welcome. Keep the tone of the product in mind: warm, plain, human. If you're proposing a feature, open an issue first so we can talk it through. Run `npm test` and `npm run typecheck` before pushing.
+
+Store listing copy, the Mac distribution note, and a privacy policy draft live in [`store/`](store/).
 
 ## License
 

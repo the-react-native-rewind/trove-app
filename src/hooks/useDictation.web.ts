@@ -30,7 +30,9 @@ function getRecognizer(): SpeechRecognitionLike | null {
 export function useDictation(onTranscript: DictationHandler) {
   const [listening, setListening] = useState(false);
   const handlerRef = useRef(onTranscript);
-  handlerRef.current = onTranscript;
+  useEffect(() => {
+    handlerRef.current = onTranscript;
+  }, [onTranscript]);
   const recognitionRef = useRef<InstanceType<SpeechRecognitionLike> | null>(null);
   const Recognizer = getRecognizer();
 

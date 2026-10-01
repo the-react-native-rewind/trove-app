@@ -1,7 +1,7 @@
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { OptionChips } from '@/components/form';
 import { Avatar } from '@/components/ui/Avatar';
@@ -58,11 +58,12 @@ export default function Members() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<SpaceRole>('member');
   const [error, setError] = useState<string | null>(null);
+  const [managingId, setManagingId] = useState<string | null>(null);
 
   async function shareInvite(invite: Invite) {
     const url = Linking.createURL(`invite/${invite.token}`);
     await Share.share({
-      message: `Join my space on Trove. Open this link on your phone: ${url}`,
+      message: `Join my space on Trove: ${url}`,
     });
   }
 
@@ -84,13 +85,7 @@ export default function Members() {
 
   function manageMember(member: RosterMember) {
     if (!manager || member.role === 'owner' || member.user_id === userId) return;
-    Alert.alert(member.profile?.display_name ?? 'Member', 'Change role or remove from this space.', [
-      { text: 'Make admin', onPress: () => updateRole.mutate({ memberId: member.id, role: 'admin' }) },
-      { text: 'Make member', onPress: () => updateRole.mutate({ memberId: member.id, role: 'member' }) },
-      { text: 'Make viewer', onPress: () => updateRole.mutate({ memberId: member.id, role: 'viewer' }) },
-      { text: 'Remove', style: 'destructive', onPress: () => removeMember.mutate(member.id) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    setManagingId((current) => (current === member.id ? null : member.id));
   }
 
   return (
@@ -128,8 +123,8 @@ export default function Members() {
           People
         </Text>
         {roster.map((m) => (
+          <View key={m.id}>
           <Pressable
-            key={m.id}
             onPress={() => manageMember(m)}
             style={styles.memberRow}
             accessibilityRole={manager ? 'button' : 'text'}
@@ -146,10 +141,40 @@ export default function Members() {
             </View>
             {manager && m.role !== 'owner' && m.user_id !== userId ? (
               <Text variant="meta" color={colors.brand}>
-                Manage
+                {managingId === m.id ? 'Close' : 'Manage'}
               </Text>
             ) : null}
           </Pressable>
+          {managingId === m.id ? (
+            <View style={styles.manageRow}>
+              {(['admin', 'member', 'viewer'] as SpaceRole[]).map((nextRole) => (
+                <Pressable
+                  key={nextRole}
+                  onPress={() => {
+                    updateRole.mutate({ memberId: m.id, role: nextRole });
+                    setManagingId(null);
+                  }}
+                  style={styles.manageChip}
+                >
+                  <Text variant="meta" color={colors.brandDeep}>
+                    {ROLE_LABELS[nextRole]}
+                  </Text>
+                </Pressable>
+              ))}
+              <Pressable
+                onPress={() => {
+                  removeMember.mutate(m.id);
+                  setManagingId(null);
+                }}
+                style={styles.manageChip}
+              >
+                <Text variant="meta" color={colors.priorityHigh}>
+                  Remove
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+          </View>
         ))}
       </View>
 
@@ -204,4 +229,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   memberText: { flex: 1, gap: 2 },
+  manageRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingLeft: 50 },
+  manageChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+  },
 });

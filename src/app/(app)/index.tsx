@@ -17,7 +17,8 @@ import { Text } from '@/components/ui/Text';
 import { positionBetween, useMoveTaskStatus, useReorderTask, useTasks } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
-import { sortTasksByUrgency } from '@/lib/board';
+import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
+import { MINE_VIEW_ID } from '@/lib/mine';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, heatColor, radii, shadows, spacing } from '@/theme/tokens';
@@ -33,6 +34,21 @@ export default function Board() {
   return selectedSpaceId === 'my-week' ? <MyWeekView /> : <SpaceBoard />;
 }
 
+const MINE_EMPTY: Record<TaskStatus, { title: string; body: string }> = {
+  todo: {
+    title: 'Nothing assigned to you',
+    body: 'Tasks handed to you, in any group, show up here.',
+  },
+  in_progress: {
+    title: 'Nothing in progress',
+    body: 'When you pick up something that is yours, it lands here.',
+  },
+  done: {
+    title: 'Nothing finished yet',
+    body: 'Completed tasks that were yours collect here.',
+  },
+};
+
 function SpaceBoard() {
   const navigation = useNavigation();
   const router = useRouter();
@@ -41,26 +57,25 @@ function SpaceBoard() {
   const { selectedSpaceId } = useSelectedSpace();
   const { data: spaces = [] } = useSpaces();
 
-  const isAll = selectedSpaceId === 'all';
+  const isMine = selectedSpaceId === MINE_VIEW_ID;
   const currentSpace = spaces.find((s) => s.id === selectedSpaceId);
-  const writable = isAll ? true : canWrite(currentSpace?.role);
+  const writable = isMine ? true : canWrite(currentSpace?.role);
   const canWriteTask = (spaceId: string) => canWrite(spaces.find((s) => s.id === spaceId)?.role);
 
-  const { data: tasks = [], isLoading, refetch, isRefetching } = useTasks(selectedSpaceId);
+  const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(selectedSpaceId);
   const moveStatus = useMoveTaskStatus();
   const reorder = useReorderTask();
 
   const [status, setStatus] = useState<TaskStatus>('in_progress');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [showFilter, setShowFilter] = useState(false);
-  const [items, setItems] = useState<TaskWithRefs[]>([]);
 
   const unfilteredTasks =
-    isAll && excluded.size ? tasks.filter((t) => !excluded.has(t.space_id)) : tasks;
+    isMine && excluded.size ? tasks.filter((t) => !excluded.has(t.space_id)) : tasks;
   const visibleTasks = sortTasksByUrgency(unfilteredTasks);
 
   const counts: Record<TaskStatus, number> = { todo: 0, in_progress: 0, done: 0 };
-  for (const t of visibleTasks) counts[t.status as TaskStatus]++;
+  for (const t of visibleTasks) counts[normalizeStatus(t.status)]++;
 
   // On first load, default to "Doing" unless it's empty, then fall back to "To do".
   const pickedInitialStatus = useRef(false);
@@ -70,38 +85,28 @@ function SpaceBoard() {
     setStatus(counts.in_progress > 0 ? 'in_progress' : 'todo');
   }, [isLoading, counts.in_progress]);
 
-  // Re-sync the visible column whenever any rendered/sorted field changes so
-  // edits (title, priority, due date, assignee, …) show up without a refresh.
-  const signature =
-    visibleTasks
-      .map(
-        (t) =>
-          `${t.id}:${t.status}:${t.position}:${t.title}:${t.priority}:${t.due_date}:${t.assignee_id}:${t.updated_at}`,
-      )
-      .join('|') + `#${status}`;
-  useEffect(() => {
-    // visibleTasks is already urgency-sorted; filtering preserves that order.
-    setItems(visibleTasks.filter((t) => t.status === status));
-  }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
+  const items = visibleTasks.filter((t) => normalizeStatus(t.status) === status);
 
-  const dragEnabled = !isAll && writable && status !== 'done';
+  // Display order is urgency, so a drag that writes position snaps back.
+  // Cross-column moves on the wide board still change status.
+  const dragEnabled = false;
 
   function openCreate() {
     const params = new URLSearchParams({ status });
-    if (!isAll) params.set('spaceId', selectedSpaceId);
+    if (!isMine) params.set('spaceId', selectedSpaceId);
     router.push(`/task-new?${params.toString()}` as never);
   }
 
   function renderItem({ item, getIndex, drag, isActive }: RenderItemParams<TaskWithRefs>) {
-    const rowWritable = isAll ? canWrite(spaces.find((s) => s.id === item.space_id)?.role) : writable;
+    const rowWritable = isMine ? canWrite(spaces.find((s) => s.id === item.space_id)?.role) : writable;
     const rank = getIndex() ?? 0;
     return (
       <TaskRow
         task={item}
-        showSpaceTag={isAll}
         heat={heatColor(rank, items.length)}
         canWrite={rowWritable}
         dragging={isActive}
+        showSpaceTag={isMine}
         onOpen={() => router.push(`/task/${item.id}` as never)}
         onMove={(next) => moveStatus.mutate({ id: item.id, status: next })}
         onDrag={dragEnabled ? drag : undefined}
@@ -126,14 +131,21 @@ function SpaceBoard() {
         ) : null}
 
         <View style={styles.titleWrap}>
-          {!isAll && currentSpace ? <AccentDot color={currentSpace.color} size={12} /> : null}
-          <Text variant="screenTitle" numberOfLines={1}>
-            {isAll ? 'All tasks' : currentSpace?.name ?? 'Space'}
-          </Text>
+          {!isMine && currentSpace ? <AccentDot color={currentSpace.color} size={12} /> : null}
+          <View style={styles.titleText}>
+            <Text variant="screenTitle" numberOfLines={1}>
+              {isMine ? 'Mine' : currentSpace?.name ?? 'Space'}
+            </Text>
+            {isMine ? (
+              <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
+                Everything assigned to you
+              </Text>
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.headerActions}>
-          {isAll ? (
+          {isMine ? (
             <Pressable
               onPress={() => setShowFilter((v) => !v)}
               hitSlop={10}
@@ -174,7 +186,7 @@ function SpaceBoard() {
 
       {!isWide ? <StatusSegmented value={status} counts={counts} onChange={setStatus} /> : null}
 
-      {isAll && showFilter ? (
+      {isMine && showFilter ? (
         <View style={styles.filterRow}>
           {spaces.map((s) => {
             const on = !excluded.has(s.id);
@@ -204,7 +216,7 @@ function SpaceBoard() {
       {isWide ? (
         <KanbanBoard
           tasks={visibleTasks}
-          showSpaceTag={isAll}
+          showSpaceTag={isMine}
           onOpen={(id) => router.push(`/task/${id}` as never)}
           onMove={(id, next, position) => moveStatus.mutate({ id, status: next, position })}
           canWriteTask={canWriteTask}
@@ -219,16 +231,20 @@ function SpaceBoard() {
             if (!moved) return;
             const prev = data[to - 1]?.position ?? null;
             const next = data[to + 1]?.position ?? null;
-            const position = positionBetween(prev, next);
-            setItems(
-              sortTasksByUrgency(
-                data.map((task) => (task.id === moved.id ? { ...task, position } : task)),
-              ),
-            );
-            reorder.mutate({ id: moved.id, position });
+            reorder.mutate({ id: moved.id, position: positionBetween(prev, next) });
           }}
           contentContainerStyle={styles.listContent}
-          ListEmptyComponent={isLoading ? null : <EmptyState {...EMPTY_COPY[status]} />}
+          ListEmptyComponent={
+            isLoading ? null : isError ? (
+              <EmptyState
+                icon="cloud-offline-outline"
+                title="Could not load tasks"
+                body="Pull to refresh and try again."
+              />
+            ) : (
+              <EmptyState {...(isMine ? MINE_EMPTY : EMPTY_COPY)[status]} />
+            )
+          }
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brand} />
           }
@@ -264,6 +280,7 @@ const styles = StyleSheet.create({
   headerWide: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
   iconBtn: { padding: spacing.xs },
   titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  titleText: { flex: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   filterRow: {
     flexDirection: 'row',

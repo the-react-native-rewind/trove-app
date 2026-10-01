@@ -13,8 +13,10 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSpaces } from '@/data/spaces';
+import { useTasks } from '@/data/tasks';
 import { useWeekTasks } from '@/data/weekPlans';
 import { useIsWide } from '@/hooks/useIsWide';
+import { normalizeStatus } from '@/lib/board';
 import { getCurrentWeekStart } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
@@ -33,6 +35,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   const isWide = useIsWide();
   const { selectedSpaceId, setSelectedSpaceId } = useSelectedSpace();
   const { data: spaces = [] } = useSpaces();
+  const { data: mineTasks = [] } = useTasks('all');
   const { data: weekTasks = [] } = useWeekTasks(getCurrentWeekStart());
 
   const [collapsed, setCollapsed] = useState(false);
@@ -58,7 +61,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
     left: interpolate(progress.value, [0, 1], [(RAIL_WIDTH - 28) / 2, FULL_WIDTH - 40]),
   }));
 
-  const totalOpen = spaces.reduce((sum, s) => sum + s.openCount, 0);
+  const mineOpen = mineTasks.filter((task) => normalizeStatus(task.status) !== 'done').length;
   const weekOpen = weekTasks.filter((task) => task.status !== 'done').length;
 
   function select(id: string) {
@@ -107,8 +110,8 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
           active={selectedSpaceId === 'all'}
           onPress={() => select('all')}
           leading={<Ionicons name="albums-outline" size={20} color={colors.brandDeep} />}
-          label="All tasks"
-          count={totalOpen}
+          label="Mine"
+          count={mineOpen}
           fade={fade}
         />
         <Row
