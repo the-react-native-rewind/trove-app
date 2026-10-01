@@ -49,7 +49,7 @@ export default function Account() {
     const confirmed = await confirmDialog({
       title: 'Delete your account?',
       message:
-        'Your personal space goes with you. Groups you own are handed to another member, or deleted if you are the only person in them. This cannot be undone.',
+        'Your personal circle goes with you. Circles you own are handed to another member, or deleted if you are the only person in them. This cannot be undone.',
       confirmLabel: 'Delete account',
       cancelLabel: 'Keep account',
       destructive: true,

@@ -125,7 +125,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
 
         <Animated.View style={fade}>
           <Text variant="label" color={colors.inkFaint} style={styles.sectionLabel} numberOfLines={1}>
-            Your spaces
+            Your circles
           </Text>
         </Animated.View>
 
@@ -149,14 +149,14 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
             router.push('/space-new');
           }}
           accessibilityRole="button"
-          accessibilityLabel="New space"
+          accessibilityLabel="New circle"
         >
           <View style={styles.rowLeading}>
             <Ionicons name="add" size={20} color={colors.brand} />
           </View>
           <Animated.View style={[styles.rowRest, fade]}>
             <Text variant="bodyMedium" color={colors.brand} numberOfLines={1}>
-              New space
+              New circle
             </Text>
           </Animated.View>
         </Pressable>

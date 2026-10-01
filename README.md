@@ -4,34 +4,34 @@
 
 <h1 align="center">Trove</h1>
 
-<p align="center"><strong>Everything that's yours, from every group.</strong><br />
-Shared lists for the groups you belong to, and one personal view of the work that is actually yours.</p>
+<p align="center"><strong>Everything that's yours, from every circle.</strong><br />
+Shared lists for the circles you belong to, and one personal view of the work that is actually yours.</p>
 
 ---
 
-Most of us don't belong to one team. We belong to a household, a garden crew, a choir, a side project, a volunteer group. The work is scattered across those group spaces, and no tool shows everything that is yours in one place. Trove is built for that.
+Most of us don't belong to one team. We belong to a household, a garden crew, a choir, a side project, a volunteer circle. The work is scattered across those circles, and no tool shows everything that is yours in one place. Trove is built for that.
 
-Make a space for each group. Everyone in the group sees the whole shared list. Mine gathers the tasks assigned to you from every group you have joined, so the same person, in the same groups, still has their own pile.
+Make a circle for each part of your life. Everyone in the circle sees the whole shared list. Mine gathers the tasks assigned to you from every circle you have joined, so the same person, in the same circles, still has their own pile.
 
-Get it out of the group chat, and onto a list you can actually see.
+Get it out of the chat, and onto a list you can actually see.
 
 ## What you get
 
-- **A space for every group.** Home, garden, choir, crew, team. Each with its own accent colour, members, and roles (owner, admin, member, viewer).
-- **Mine, across every group.** The Mine view is every task assigned to you, from every space you have joined. A group's own board stays the full shared list.
+- **A circle for every part of life.** Home, garden, choir, crew, team. Each with its own accent colour, members, and roles (owner, admin, member, viewer).
+- **Mine, across every circle.** The Mine view is every task assigned to you, from every circle you have joined. A circle's own board stays the full shared list.
 - **A board that fits the screen.** Kanban columns with drag and drop on desktop and web, a calm single column with swipe gestures on your phone. Same code, same data.
-- **Invites that just work.** Invite by email, share a link, they land in the right space with the right role. Free, no per-person cost.
+- **Invites that just work.** Invite by email, share a link, they land in the right circle with the right role. Free, no per-person cost.
 - **Real-life tasks.** Notes, priority, due dates, assignees, and photos or videos on any task.
-- **A private space that stays private.** Every account starts with a Personal space. Nobody sees it until you invite someone. That is not a setting, it is the security model.
+- **A private circle that stays private.** Every account starts with a Personal circle. Nobody sees it until you invite someone. That is not a setting, it is the security model.
 - **Confetti.** Finish something, get confetti. Small joys matter.
 
 ## The one rule
 
 Trove's visibility is not a UI filter. It is one rule, enforced by the database:
 
-> You can see or change a task only if you are a member of its space.
+> You can see or change a task only if you are a member of its circle.
 
-That rule is a Postgres Row Level Security policy (see [`supabase/migrations`](supabase/migrations)), so it holds for every query the app can possibly make, on every platform. Membership is the boundary. Mine is an extra filter on top of that: tasks where you are the assignee. It does not hide other people's tasks on a group board you belong to.
+That rule is a Postgres Row Level Security policy (see [`supabase/migrations`](supabase/migrations)), so it holds for every query the app can possibly make, on every platform. Membership is the boundary. Mine is an extra filter on top of that: tasks where you are the assignee. It does not hide other people's tasks on a circle board you belong to.
 
 ## Built with
 

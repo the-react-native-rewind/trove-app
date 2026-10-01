@@ -35,9 +35,9 @@ const INVITE_ROLES: { value: SpaceRole; label: string }[] = [
 ];
 
 const ROLE_DESCRIPTIONS: Record<SpaceRole, string> = {
-  owner: 'Created the space. Full control, including deleting it.',
+  owner: 'Created the circle. Full control, including deleting it.',
   admin: 'Can add and remove people and invites, and change any task.',
-  member: 'Can add, edit, and complete tasks in this space.',
+  member: 'Can add, edit, and complete tasks in this circle.',
   viewer: 'Can see the board but not change anything.',
 };
 
@@ -63,7 +63,7 @@ export default function Members() {
   async function shareInvite(invite: Invite) {
     const url = Linking.createURL(`invite/${invite.token}`);
     await Share.share({
-      message: `Join my space on Trove: ${url}`,
+      message: `Join my circle on Trove: ${url}`,
     });
   }
 

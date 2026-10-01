@@ -24,7 +24,7 @@ const FEATURES = [
   {
     icon: 'people-outline' as const,
     title: 'Work together',
-    body: 'Create boards and get everyone on the same page.',
+    body: 'Create a circle and get everyone on the same page.',
   },
   {
     icon: 'checkmark-circle-outline' as const,

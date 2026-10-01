@@ -126,7 +126,7 @@ function wide(width, height, mode) {
   }
   const heading = mode === 'mine' ? 'Mine' : mode === 'choir' ? 'Choir' : 'Garden crew';
   const note = mode === 'mine'
-    ? 'Assigned to Alex, from every group'
+    ? 'Assigned to Alex, from every circle'
     : mode === 'choir'
       ? 'The shared list, not only your part'
       : 'Everyone in the crew sees this list';

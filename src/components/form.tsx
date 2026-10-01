@@ -162,7 +162,7 @@ export function SpacePicker({
   const writableSpaces = spaces.filter((s) => canWrite(s.role));
   return (
     <View style={styles.field}>
-      <FieldLabel>Space</FieldLabel>
+      <FieldLabel>Circle</FieldLabel>
       <View style={styles.chipRow}>
         {writableSpaces.map((s) => {
           const selected = s.id === value;

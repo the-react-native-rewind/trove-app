@@ -111,7 +111,7 @@ export default function TaskEdit() {
     const taskId = task.id;
     const ok = await confirmDialog({
       title: 'Delete task',
-      message: 'This removes the task for everyone in the space.',
+      message: 'This removes the task for everyone in the circle.',
       confirmLabel: 'Delete',
       cancelLabel: 'Keep',
       destructive: true,
@@ -131,7 +131,7 @@ export default function TaskEdit() {
     return (
       <ModalScaffold title="Edit task">
         <Text variant="body" color={colors.inkSoft}>
-          You can view this space but not change its tasks.
+          You can view this circle but not change its tasks.
         </Text>
       </ModalScaffold>
     );

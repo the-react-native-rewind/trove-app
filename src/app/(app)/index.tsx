@@ -37,7 +37,7 @@ export default function Board() {
 const MINE_EMPTY: Record<TaskStatus, { title: string; body: string }> = {
   todo: {
     title: 'Nothing assigned to you',
-    body: 'Tasks handed to you, in any group, show up here.',
+    body: 'Tasks handed to you, in any circle, show up here.',
   },
   in_progress: {
     title: 'Nothing in progress',
@@ -123,7 +123,7 @@ function SpaceBoard() {
             onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel="Open spaces"
+            accessibilityLabel="Open circles"
             style={styles.iconBtn}
           >
             <Ionicons name="menu" size={26} color={colors.ink} />
@@ -134,7 +134,7 @@ function SpaceBoard() {
           {!isMine && currentSpace ? <AccentDot color={currentSpace.color} size={12} /> : null}
           <View style={styles.titleText}>
             <Text variant="screenTitle" numberOfLines={1}>
-              {isMine ? 'Mine' : currentSpace?.name ?? 'Space'}
+              {isMine ? 'Mine' : currentSpace?.name ?? 'Circle'}
             </Text>
             {isMine ? (
               <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
@@ -150,7 +150,7 @@ function SpaceBoard() {
               onPress={() => setShowFilter((v) => !v)}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel="Filter spaces"
+              accessibilityLabel="Filter circles"
               style={styles.iconBtn}
             >
               <Ionicons
@@ -174,7 +174,7 @@ function SpaceBoard() {
                 onPress={() => router.push(`/space/${selectedSpaceId}/settings` as never)}
                 hitSlop={10}
                 accessibilityRole="button"
-                accessibilityLabel="Space settings"
+                accessibilityLabel="Circle settings"
                 style={styles.iconBtn}
               >
                 <Ionicons name="ellipsis-horizontal" size={22} color={colors.ink} />

@@ -80,7 +80,7 @@ export default function NewTask() {
       return;
     }
     if (!spaceId) {
-      setError('Choose a space for this task.');
+      setError('Choose a circle for this task.');
       return;
     }
     if (dictation.listening) dictation.stop();
@@ -124,7 +124,7 @@ export default function NewTask() {
     return (
       <ModalScaffold title="New task">
         <Text variant="body" color={colors.inkSoft}>
-          You need a space you can add to first. Create one from the spaces menu.
+          You need a circle you can add to first. Create one from the circles menu.
         </Text>
       </ModalScaffold>
     );

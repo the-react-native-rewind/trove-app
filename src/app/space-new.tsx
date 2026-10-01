@@ -23,7 +23,7 @@ export default function NewSpace() {
   async function onCreate() {
     setError(null);
     if (!name.trim()) {
-      setError('Give your space a name, like Home or Garden.');
+      setError('Give your circle a name, like Home or Garden.');
       return;
     }
     try {
@@ -31,14 +31,14 @@ export default function NewSpace() {
       setSelectedSpaceId(space.id);
       router.back();
     } catch {
-      setError('We could not create that space. Try again.');
+      setError('We could not create that circle. Try again.');
     }
   }
 
   return (
     <ModalScaffold
-      title="New space"
-      footer={<Button label="Create space" onPress={onCreate} loading={createSpace.isPending} />}
+      title="New circle"
+      footer={<Button label="Create circle" onPress={onCreate} loading={createSpace.isPending} />}
     >
       <View style={{ gap: spacing.xs }}>
         <TextField

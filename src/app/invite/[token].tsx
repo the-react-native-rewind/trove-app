@@ -44,10 +44,10 @@ export default function AcceptInvite() {
 
   return (
     <ModalScaffold
-      title="Join a space"
+      title="Join a circle"
       footer={
         session ? (
-          <Button label="Join space" onPress={onJoin} loading={acceptInvite.isPending} />
+          <Button label="Join circle" onPress={onJoin} loading={acceptInvite.isPending} />
         ) : undefined
       }
     >
@@ -55,7 +55,7 @@ export default function AcceptInvite() {
         <EmptyState
           icon="mail-open-outline"
           title="You have been invited"
-          body="Join this group and you will see the whole shared list, plus everything assigned to you across your other groups."
+          body="Join this circle and you will see the whole shared list, plus everything assigned to you across your other circles."
         />
         {session ? null : (
           <View style={styles.auth}>
