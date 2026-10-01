@@ -1,12 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 
-import { apiTokenPrefix, generateApiToken, hashApiToken } from '@/lib/apiToken';
+import { ACTIVE_TOKEN_LIMIT, apiTokenPrefix, generateApiToken, hashApiToken } from '@/lib/apiToken';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
-
-export const ACTIVE_TOKEN_LIMIT = 20;
 
 export type ApiToken = {
   id: string;
@@ -63,7 +61,12 @@ export function useCreateApiToken() {
         token_hash: tokenHash,
         token_prefix: apiTokenPrefix(token),
       });
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('active tokens')) {
+          throw new Error(`You can have ${ACTIVE_TOKEN_LIMIT} active tokens. Revoke one first.`);
+        }
+        throw error;
+      }
       return token;
     },
     onSuccess: () => {

@@ -379,9 +379,37 @@ begin
   end if;
 end $$;
 
--- API tokens: a person sees only their own, cannot un-revoke, and cannot
--- rewrite the hash. last_used_at is service_role only.
+-- Open-task counts follow RLS. Alex sees every demo circle. Priya does not
+-- see Choir. Garden has one done task, so four stay open.
 set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
+
+do $$
+declare
+  n bigint;
+begin
+  select open_count into n from public.open_task_counts()
+  where space_id = 'a4444444-4444-4444-8444-444444444444';
+  if n is distinct from 4 then
+    raise exception 'alex garden open count is %, expected 4', n;
+  end if;
+end $$;
+
+select set_config('request.jwt.claim.sub', 'a3333333-3333-4333-8333-333333333333', false);
+
+do $$
+declare
+  n int;
+begin
+  select count(*) into n from public.open_task_counts()
+  where space_id = 'a5555555-5555-4555-8555-555555555555';
+  if n <> 0 then
+    raise exception 'priya can see choir open tasks';
+  end if;
+end $$;
+
+-- API tokens: a person sees only their own, cannot un-revoke, and cannot
+-- rewrite the hash. last_used_at is service_role, postgres, or the table owner.
 select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
 
 insert into public.api_tokens (user_id, name, token_hash, token_prefix)
@@ -493,8 +521,54 @@ end $$;
 
 reset role;
 
-delete from public.api_tokens
+update public.api_tokens
+set last_used_at = now()
 where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+-- Ten active tokens are allowed. The eleventh is rejected. The revoked token
+-- above does not count.
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
+
+do $$
+declare
+  i int;
+begin
+  for i in 1..10 loop
+    insert into public.api_tokens (user_id, name, token_hash, token_prefix)
+    values (
+      auth.uid(),
+      'limit-' || i,
+      encode(sha256(convert_to('limit-' || i::text, 'UTF8')), 'hex'),
+      'trove_' || lpad(i::text, 6, '0')
+    );
+  end loop;
+end $$;
+
+do $$
+begin
+  insert into public.api_tokens (user_id, name, token_hash, token_prefix)
+  values (
+    auth.uid(),
+    'limit-overflow',
+    encode(sha256(convert_to('limit-overflow', 'UTF8')), 'hex'),
+    'trove_overfl'
+  );
+  raise exception 'eleventh active token was allowed';
+exception when others then
+  if sqlerrm ilike '%eleventh active%' then
+    raise exception '%', sqlerrm;
+  end if;
+  if sqlerrm not ilike '%10 active%' then
+    raise exception 'unexpected token limit error: %', sqlerrm;
+  end if;
+end $$;
+
+reset role;
+
+delete from public.api_tokens
+where name like 'limit-%'
+   or token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 -- storage.protect_delete fires for a delete that matches nothing. The account
 -- function must not take that path; file removal is the delete-account edge

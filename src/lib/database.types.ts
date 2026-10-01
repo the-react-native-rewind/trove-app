@@ -281,6 +281,10 @@ export type Database = {
         Args: { p_task_id: string; p_target_space_id: string }
         Returns: Json
       }
+      open_task_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: { space_id: string; open_count: number }[]
+      }
     }
     Enums: { [_ in never]: never }
     CompositeTypes: { [_ in never]: never }

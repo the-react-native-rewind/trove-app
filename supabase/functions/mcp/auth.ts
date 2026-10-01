@@ -1,14 +1,20 @@
-// Resolve a Trove personal access token to a Supabase user, then to a user
-// access token so later queries run as that person and RLS applies.
+// Resolve a Trove personal access token to a Supabase user, then to a
+// short-lived user JWT signed locally so later queries run as that person
+// and RLS applies.
 //
-// The service role is used only to look up the token hash, stamp last_used_at,
-// and (when the legacy JWT secret is missing or rejected) mint a real session.
-// Task and circle queries never use the service role.
+// The service role is used only to look up the token hash and stamp
+// last_used_at. It never mints a session. Task and circle queries use the
+// user JWT.
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
-import { hashApiToken, tokenAccessDecision } from '../../../src/lib/apiToken.ts';
-import { isJwtAuthError, signSupabaseUserJwt } from '../../../src/lib/userJwt.ts';
+import { hashApiToken, tokenAccessDecision } from '../_shared/apiToken.ts';
+import {
+  isJwtAuthError,
+  resolveJwtSigningConfig,
+  ServerMisconfiguredError,
+  signSupabaseUserJwt,
+} from '../_shared/userJwt.ts';
 
 type Env = {
   url: string;
@@ -20,7 +26,6 @@ type CachedAccess = { token: string; expMs: number };
 
 const accessCache = new Map<string, CachedAccess>();
 const inflight = new Map<string, Promise<string>>();
-let jwtSecretRejected = false;
 
 export type AuthedCaller = { userId: string; accessToken: string };
 
@@ -98,55 +103,18 @@ async function accessTokenFor(env: Env, userId: string): Promise<string> {
 }
 
 async function mintAccessToken(env: Env, userId: string): Promise<string> {
-  const secret = Deno.env.get('SUPABASE_JWT_SECRET');
-  if (secret && !jwtSecretRejected) {
-    const jwt = await signSupabaseUserJwt({ userId, secret, supabaseUrl: env.url });
-    const probe = userClient(env, jwt);
-    const { error } = await probe.from('profiles').select('id').eq('id', userId).limit(1).maybeSingle();
-    if (!error) {
-      const expMs = Date.now() + 55 * 60 * 1000;
-      accessCache.set(userId, { token: jwt, expMs });
-      return jwt;
-    }
-    if (!isJwtAuthError(error)) throw new Error(error.message);
-    jwtSecretRejected = true;
-    console.error('SUPABASE_JWT_SECRET was rejected; falling back to a user session');
-  }
-
-  const session = await mintSession(env, userId);
-  accessCache.set(userId, session);
-  return session.token;
-}
-
-async function mintSession(env: Env, userId: string): Promise<CachedAccess> {
-  const admin = serviceClient(env);
-  const { data: userData, error: userError } = await admin.auth.admin.getUserById(userId);
-  const email = userData?.user?.email;
-  if (userError || !email) {
-    throw new Error('Could not open a session for this token');
-  }
-
-  const { data: link, error: linkError } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email,
+  const signing = resolveJwtSigningConfig({
+    jwtSecret: Deno.env.get('SUPABASE_JWT_SECRET'),
+    signingKey: Deno.env.get('SUPABASE_JWT_SIGNING_KEY'),
   });
-  const tokenHash = link?.properties?.hashed_token;
-  if (linkError || !tokenHash) {
-    throw new Error('Could not open a session for this token');
+  const jwt = await signSupabaseUserJwt({ userId, supabaseUrl: env.url, signing });
+  const probe = userClient(env, jwt);
+  const { error } = await probe.from('profiles').select('id').eq('id', userId).limit(1).maybeSingle();
+  if (error) {
+    if (isJwtAuthError(error)) throw new ServerMisconfiguredError();
+    throw new Error(error.message);
   }
-
-  const anon = createClient(env.url, env.anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-  const { data: verified, error: verifyError } = await anon.auth.verifyOtp({
-    token_hash: tokenHash,
-    type: 'magiclink',
-  });
-  const session = verified?.session;
-  if (verifyError || !session?.access_token) {
-    throw new Error('Could not open a session for this token');
-  }
-
-  const expMs = session.expires_at ? session.expires_at * 1000 : Date.now() + 50 * 60 * 1000;
-  return { token: session.access_token, expMs };
+  const expMs = Date.now() + 55 * 60 * 1000;
+  accessCache.set(userId, { token: jwt, expMs });
+  return jwt;
 }
