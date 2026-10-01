@@ -33,7 +33,7 @@ const dusk = '#5B6E7A';
 const terracotta = '#C16E43';
 
 const mineTasks = [
-  { title: 'Print programmes', space: 'Choir', color: dusk, meta: 'Doing · Fri', overdue: false },
+  { title: 'Print event flyers', space: 'Community', color: dusk, meta: 'Doing · Fri', overdue: false },
   { title: 'Water the greenhouse', space: 'Garden crew', color: moss, meta: 'To do · Tomorrow', overdue: false },
   { title: 'Label the seedlings', space: 'Garden crew', color: moss, meta: 'Doing · in 3 days', overdue: false },
   { title: 'Book the boiler service', space: 'Household', color: terracotta, meta: 'To do · Overdue', overdue: true },
@@ -48,9 +48,9 @@ const gardenTasks = [
   { title: 'Fix the gate', who: 'Priya Shah', meta: 'Done', overdue: false, done: true },
 ];
 
-const choirTasks = [
-  { title: 'Print programmes', who: 'Alex Rivera', space: 'Choir', color: dusk, meta: 'Doing · Fri', overdue: false, done: false },
-  { title: 'Confirm the soloist', who: 'Sam Okonkwo', space: 'Choir', color: dusk, meta: 'To do · in 4 days', overdue: false, done: false },
+const communityTasks = [
+  { title: 'Print event flyers', who: 'Alex Rivera', space: 'Community', color: dusk, meta: 'Doing · Fri', overdue: false, done: false },
+  { title: 'Book the community hall', who: 'Sam Okonkwo', space: 'Community', color: dusk, meta: 'To do · in 4 days', overdue: false, done: false },
 ];
 
 function esc(value) {
@@ -73,8 +73,8 @@ function card(x, y, w, h, task, showWho) {
 }
 
 function phone(width, height, mode) {
-  const tasks = mode === 'garden' ? gardenTasks : mode === 'household' ? choirTasks : mineTasks;
-  const title = mode === 'garden' ? 'Garden crew' : mode === 'household' ? 'Choir' : 'Mine';
+  const tasks = mode === 'garden' ? gardenTasks : mode === 'household' ? communityTasks : mineTasks;
+  const title = mode === 'garden' ? 'Garden crew' : mode === 'household' ? 'Community' : 'Mine';
   const subtitle = mode === 'mine'
     ? 'Everything assigned to you'
     : mode === 'garden'
@@ -86,7 +86,7 @@ function phone(width, height, mode) {
   const x = 48;
   const w = width - 96;
   let y = 280;
-  const cards = tasks.slice(0, mode === 'household' ? 1 : 5).map((task) => {
+  const cards = tasks.slice(0, 5).map((task) => {
     const node = card(x, y, w, cardH, task, showWho);
     y += cardH + gap;
     return node;
@@ -119,15 +119,15 @@ function wide(width, height, mode) {
     }));
     columns[1].items = mineTasks.filter((task) => task.meta.startsWith('Doing')).map((task) => ({ ...task, who: task.space }));
     columns[2].items = [];
-  } else if (mode === 'choir') {
-    columns[0].items = choirTasks.filter((task) => task.meta.startsWith('To do'));
-    columns[1].items = choirTasks.filter((task) => task.meta.startsWith('Doing'));
+  } else if (mode === 'community') {
+    columns[0].items = communityTasks.filter((task) => task.meta.startsWith('To do'));
+    columns[1].items = communityTasks.filter((task) => task.meta.startsWith('Doing'));
     columns[2].items = [];
   }
-  const heading = mode === 'mine' ? 'Mine' : mode === 'choir' ? 'Choir' : 'Garden crew';
+  const heading = mode === 'mine' ? 'Mine' : mode === 'community' ? 'Community' : 'Garden crew';
   const note = mode === 'mine'
     ? 'Assigned to Alex, from every circle'
-    : mode === 'choir'
+    : mode === 'community'
       ? 'The shared list, not only your part'
       : 'Everyone in the crew sees this list';
   const colW = (width - sidebar - 120) / 3;
@@ -152,7 +152,7 @@ function wide(width, height, mode) {
     ['Personal', false],
     ['Household', false],
     ['Garden crew', mode === 'garden'],
-    ['Choir', mode === 'choir'],
+    ['Community', mode === 'community'],
   ].map(([label, active], index) => {
     const y = 220 + index * 72;
     return `
@@ -186,12 +186,14 @@ const shots = [
 
 function flatten(buffer) {
   const src = PNG.sync.read(buffer);
-  const out = new PNG({ width: src.width, height: src.height, colorType: 2, inputHasAlpha: false });
-  for (let i = 0, j = 0; i < src.data.length; i += 4, j += 3) {
+  // pngjs keeps pixel data as RGBA even when writing colorType 2, so fill 4 bytes per pixel.
+  const out = new PNG({ width: src.width, height: src.height, colorType: 2 });
+  for (let i = 0; i < src.data.length; i += 4) {
     const alpha = src.data[i + 3] / 255;
-    out.data[j] = Math.round(src.data[i] * alpha + 0xf2 * (1 - alpha));
-    out.data[j + 1] = Math.round(src.data[i + 1] * alpha + 0xea * (1 - alpha));
-    out.data[j + 2] = Math.round(src.data[i + 2] * alpha + 0xd9 * (1 - alpha));
+    out.data[i] = Math.round(src.data[i] * alpha + 0xf2 * (1 - alpha));
+    out.data[i + 1] = Math.round(src.data[i + 1] * alpha + 0xea * (1 - alpha));
+    out.data[i + 2] = Math.round(src.data[i + 2] * alpha + 0xd9 * (1 - alpha));
+    out.data[i + 3] = 255;
   }
   return PNG.sync.write(out);
 }
@@ -225,9 +227,9 @@ for (const set of sets) {
   const dir = path.join(outRoot, set.dir);
   await mkdir(dir, { recursive: true });
   for (const shot of shots) {
-    const mode = shot.mode === 'household' && set.layout === 'wide' ? 'choir' : shot.mode;
+    const mode = shot.mode === 'household' && set.layout === 'wide' ? 'community' : shot.mode;
     const body = set.layout === 'phone' ? phone(set.width, set.height, shot.mode) : wide(set.width, set.height, mode);
-    const name = shot.mode === 'household' ? '03-choir' : shot.name;
+    const name = shot.mode === 'household' ? '03-community' : shot.name;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${set.width}" height="${set.height}" viewBox="0 0 ${set.width} ${set.height}">${body}</svg>`;
     const file = path.join(dir, `${name}.png`);
     await renderOne(svg, set.width, file);

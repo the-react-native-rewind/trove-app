@@ -45,7 +45,7 @@ export default function NewSpace() {
           label="Name"
           value={name}
           onChangeText={setName}
-          placeholder="Home, Garden, Choir..."
+          placeholder="Home, Garden, Community..."
           autoFocus
           autoCapitalize="words"
           returnKeyType="done"

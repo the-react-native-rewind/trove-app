@@ -4,7 +4,7 @@ Same copy for the iOS App Store and the Mac App Store. The Mac product is this i
 
 ## Name
 
-Trove
+Trove: Shared Lists
 
 ## Subtitle
 
@@ -16,7 +16,7 @@ Your circles each have a list. None of them show you only what is yours. Trove k
 
 ## Description
 
-The work of a household, a garden crew, a choir, or a side project never lives in one place. It is split across chats and shared boards, and the part that is actually yours is mixed in with everyone else's.
+The work of a household, a garden crew, a community project, or a side project never lives in one place. It is split across chats and shared boards, and the part that is actually yours is mixed in with everyone else's.
 
 Trove is a shared list for each circle you belong to. Everyone in the circle sees the whole list. Mine is the other view: every task assigned to you, from every circle, on one screen. Join a circle and that view is already there.
 
@@ -24,7 +24,7 @@ A private Personal circle comes with your account. Hand a task to someone else w
 
 ## Keywords
 
-shared list,circles,household,chores,assigned,personal,family,choir,crew,todo
+shared list,circles,household,chores,assigned,personal,family,community,crew,todo
 
 ## What's new
 
@@ -36,9 +36,19 @@ Primary: Productivity. Secondary: Lifestyle.
 
 ## Support URL
 
-https://github.com/the-react-native-rewind/trove-app
+https://trove-website-sooty.vercel.app/support
 
-Replace this if you host a support page. A privacy policy URL is required before submission. Host `privacy-policy.md` and put that URL in App Store Connect. This repo does not publish it for you.
+## Marketing URL
+
+https://trove-website-sooty.vercel.app
+
+## Privacy policy URL
+
+https://trove-website-sooty.vercel.app/privacy
+
+## Copyright
+
+2026 The React Native Rewind SL
 
 ## Age rating and privacy
 
