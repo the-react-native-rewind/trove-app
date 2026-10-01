@@ -18,7 +18,9 @@ import {
   completeTask,
   createTask,
   createTasksBulk,
+  getCircle,
   inviteToCircle,
+  listCircles,
   listMyTasks,
   moveTask,
   planMove,
@@ -296,6 +298,21 @@ test('invite_to_circle rejects viewers and the owner role', async () => {
   assert.equal(invited.data.invite.url.startsWith('trove://invite/'), true);
 });
 
+test('open-task counts are loaded only for circle reads', async () => {
+  const store = memoryStore();
+  await createTask(store, { title: 'No count' });
+  assert.equal(store.calls.counts, 0);
+  assert.equal(store.calls.plain > 0, true);
+
+  store.calls.plain = 0;
+  const listed = await listCircles(store);
+  assert.equal(listed.ok, true);
+  const fetched = await getCircle(store, { circle_name: 'House' });
+  assert.equal(fetched.ok, true);
+  assert.equal(store.calls.counts, 2);
+  assert.equal(store.calls.plain, 0);
+});
+
 test('update_task replaces tags and does not take a circle id', async () => {
   const store = memoryStore();
   const created = await createTask(store, { title: 'Label me', tags: ['old'], circle_name: 'House' });
@@ -315,6 +332,7 @@ test('update_task replaces tags and does not take a circle id', async () => {
 
 function memoryStore(options?: { houseRole?: Role }): TroveStore & {
   tasks: TaskRecord[];
+  calls: { counts: number; plain: number };
   setRole: (circleId: string, role: Role) => void;
 } {
   const circles: Circle[] = [
@@ -343,11 +361,17 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
     ],
   };
   const tasks: TaskRecord[] = [];
+  const calls = { counts: 0, plain: 0 };
   let counter = 0;
 
-  const store: TroveStore & { tasks: TaskRecord[]; setRole: (circleId: string, role: Role) => void } = {
+  const store: TroveStore & {
+    tasks: TaskRecord[];
+    calls: { counts: number; plain: number };
+    setRole: (circleId: string, role: Role) => void;
+  } = {
     userId: ME,
     tasks,
+    calls,
     setRole(circleId, role) {
       const circle = circles.find((item) => item.id === circleId);
       if (circle) circle.role = role;
@@ -355,7 +379,9 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
       const mine = roster?.find((member) => member.user_id === ME);
       if (mine) mine.role = role;
     },
-    async listCircles() {
+    async listCircles(options) {
+      if (options?.includeOpenCounts) calls.counts += 1;
+      else calls.plain += 1;
       return circles.map((circle) => ({ ...circle }));
     },
     async listMembers(circleId) {

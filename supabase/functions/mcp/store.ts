@@ -17,7 +17,7 @@ import {
   type TaskRecord,
   type TaskWrite,
   type TroveStore,
-} from '../../../src/lib/mcpTools.ts';
+} from '../_shared/mcpTools.ts';
 import { readEnv, userClient } from './auth.ts';
 
 const TASK_SELECT =
@@ -45,7 +45,7 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
 
   return {
     userId,
-    listCircles: () => listCircles(db, userId),
+    listCircles: (options) => listCircles(db, userId, options),
     listMembers: (circleId) => listMembers(db, circleId),
     listTasks: (filter) => listTasks(db, filter),
     getTask: (id) => getTask(db, id),
@@ -57,20 +57,18 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
   };
 }
 
-async function listCircles(db: SupabaseClient, userId: string): Promise<Circle[]> {
+async function listCircles(
+  db: SupabaseClient,
+  userId: string,
+  options?: { includeOpenCounts?: boolean },
+): Promise<Circle[]> {
   const { data: memberships, error } = await db
     .from('space_members')
     .select('role, space:spaces(id,name,color,is_default)')
     .eq('user_id', userId);
   throwIf(error);
 
-  const { data: openTasks, error: taskError } = await db.from('tasks').select('space_id').neq('status', 'done');
-  throwIf(taskError);
-
-  const counts = new Map<string, number>();
-  for (const task of openTasks ?? []) {
-    counts.set(task.space_id, (counts.get(task.space_id) ?? 0) + 1);
-  }
+  const counts = options?.includeOpenCounts ? await openTaskCounts(db) : new Map<string, number>();
 
   const circles: Circle[] = [];
   for (const membership of memberships ?? []) {
@@ -91,6 +89,16 @@ async function listCircles(db: SupabaseClient, userId: string): Promise<Circle[]
     return a.name.localeCompare(b.name);
   });
   return circles;
+}
+
+async function openTaskCounts(db: SupabaseClient): Promise<Map<string, number>> {
+  const { data, error } = await db.rpc('open_task_counts');
+  throwIf(error);
+  const counts = new Map<string, number>();
+  for (const row of (data ?? []) as { space_id: string; open_count: number | string }[]) {
+    counts.set(row.space_id, Number(row.open_count));
+  }
+  return counts;
 }
 
 async function listMembers(db: SupabaseClient, circleId: string): Promise<Member[]> {

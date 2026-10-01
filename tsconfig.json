@@ -19,6 +19,8 @@
   ],
   "exclude": [
     "node_modules",
-    "supabase/functions"
+    "supabase/functions/mcp",
+    "supabase/functions/delete-account",
+    "supabase/functions/enrich-task"
   ]
 }

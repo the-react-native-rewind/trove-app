@@ -9,7 +9,8 @@
 import { createMcpHandler, McpServer } from 'npm:@modelcontextprotocol/server@2.2.0';
 import { z } from 'npm:zod@4.6.5';
 
-import { readBearerToken } from '../../../src/lib/apiToken.ts';
+import { readBearerToken } from '../_shared/apiToken.ts';
+import { jsonRpcErrorBody, readJsonRpcId } from '../_shared/jsonRpc.ts';
 import {
   assignTask,
   completeTask,
@@ -26,7 +27,8 @@ import {
   updateTask,
   type ToolResult,
   type TroveStore,
-} from '../../../src/lib/mcpTools.ts';
+} from '../_shared/mcpTools.ts';
+import { ServerMisconfiguredError } from '../_shared/userJwt.ts';
 import { authenticate } from './auth.ts';
 import { supabaseStore } from './store.ts';
 
@@ -85,6 +87,7 @@ const handler = createMcpHandler((ctx) => {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
 
+  const rpcId = await requestRpcId(req);
   const token = readBearerToken(req.headers.get('Authorization'));
   if (!token) return unauthorized();
 
@@ -103,12 +106,8 @@ Deno.serve(async (req) => {
     return withCors(response);
   } catch (error) {
     console.error('mcp request failed', error instanceof Error ? error.message : error);
-    return withCors(
-      new Response(JSON.stringify({ error: 'server_error' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
+    const message = error instanceof ServerMisconfiguredError ? 'server_misconfigured' : 'Internal error';
+    return withCors(jsonRpcError(rpcId, message));
   }
 });
 
@@ -281,6 +280,22 @@ function unauthorized(): Response {
       },
     },
   );
+}
+
+function jsonRpcError(id: string | number | null, message: string): Response {
+  return new Response(jsonRpcErrorBody(id, message), {
+    status: 500,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+async function requestRpcId(req: Request): Promise<string | number | null> {
+  if (req.method !== 'POST') return null;
+  try {
+    return readJsonRpcId(await req.clone().text());
+  } catch {
+    return null;
+  }
 }
 
 function withCors(response: Response): Response {

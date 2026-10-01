@@ -21,7 +21,7 @@ Authorization: Bearer trove_…
 1. Open Trove and go to **Account → Connect an AI assistant** (API tokens).
 2. Name the token after the app that will use it, for example `Claude` or `Cursor`.
 3. Create it. The full token is shown once. Copy it then. Trove stores only a hash.
-4. You can keep up to 20 active tokens. Revoke one you no longer use. Revoking takes effect immediately and cannot be undone.
+4. You can keep up to 10 active tokens. Revoke one you no longer use. Revoking takes effect immediately and cannot be undone. The database enforces that cap, not only the app.
 
 A token looks like `trove_` followed by a random string. Treat it like a password. Do not commit it, paste it into a shared chat, or send it to anyone else.
 
@@ -169,12 +169,33 @@ A bulk import that sends more than 100 tasks fails the whole call and inserts no
 
 This is for the person who operates the Supabase project. It is not part of connecting an assistant.
 
-1. Apply `supabase/migrations/0011_api_tokens_and_move_task.sql` to the hosted project. Migrations 0001–0010 are already applied. Do not run the seed or `supabase/tests/bootstrap.sql` on that project.
-2. Deploy the function with JWT verification off:
+Migration `0011_api_tokens_and_move_task.sql` is already applied. Apply `supabase/migrations/0012_api_token_limits.sql` before deploying this version of the function. Do not run the seed or `supabase/tests/bootstrap.sql` on the hosted project.
+
+The function signs a one-hour user JWT locally and does not create an Auth session. It needs a signing secret you set yourself. Hosted Supabase still injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. Do not commit the JWT secret.
+
+This project still uses the legacy HS256 JWT secret (the anon key is an HS256 JWT). Copy that secret from Dashboard → Settings → API → JWT Settings, then:
 
 ```bash
+supabase secrets set SUPABASE_JWT_SECRET="<legacy JWT secret>"
 supabase functions deploy mcp --no-verify-jwt
 ```
 
-3. No new secrets are required. Hosted Supabase injects the project URL, anon key, and service role key. If `SUPABASE_JWT_SECRET` is present it is used to mint a user JWT; otherwise the function creates a short-lived session for the token's user.
-4. Confirm the URL above returns 401, with no body, when called without a token. A response of `Invalid JWT` means the gateway is still verifying JWTs. Redeploy with `--no-verify-jwt`.
+`--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
+
+If neither `SUPABASE_JWT_SECRET` nor `SUPABASE_JWT_SIGNING_KEY` is set, or PostgREST rejects the signature, a signed-in token gets HTTP 500 and a JSON-RPC error (`-32603`) whose message is `server_misconfigured`. A request with no Trove token still gets 401.
+
+### Asymmetric signing keys
+
+Supabase will not let you export a private key it generated. If you rotate Auth off the legacy secret, generate a key yourself, import that private JWK as a standby signing key, and rotate to it:
+
+```bash
+supabase gen signing-key --algorithm ES256
+```
+
+Keep the private JWK somewhere safe, then point the function at the same JSON (it must include `kid`, and `kid` must match the imported key):
+
+```bash
+supabase secrets set SUPABASE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256","x":"…","y":"…","d":"…"}'
+```
+
+When `SUPABASE_JWT_SIGNING_KEY` is set, the function uses it instead of `SUPABASE_JWT_SECRET`. Supported shapes are ES256 (P-256), RS256, and an `oct` HMAC JWK. A Supabase-generated asymmetric key cannot be copied into this secret.
