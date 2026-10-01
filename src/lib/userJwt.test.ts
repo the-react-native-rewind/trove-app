@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { test } from 'node:test';
 
-import { isJwtAuthError, resolveJwtSigningConfig, ServerMisconfiguredError, signSupabaseUserJwt } from './userJwt';
+import {
+  isJwtAuthError,
+  resolveJwtSigningConfig,
+  ServerMisconfiguredError,
+  signSupabaseUserJwt,
+  signingConfigFromEnv,
+} from './userJwt';
 
 test('signSupabaseUserJwt is an HS256 token for the authenticated role', async () => {
   const secret = 'test-secret';
@@ -41,6 +47,29 @@ function base64UrlBytes(value: string): Uint8Array {
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+
+test('TROVE_ secret names win over the SUPABASE_ local fallbacks', () => {
+  const trove = signingConfigFromEnv((name) => {
+    if (name === 'TROVE_JWT_SECRET') return 'trove-secret';
+    if (name === 'SUPABASE_JWT_SECRET') return 'supabase-secret';
+    return undefined;
+  });
+  assert.equal(trove.alg, 'HS256');
+  if (trove.alg === 'HS256') assert.equal(trove.secret, 'trove-secret');
+
+  const fallback = signingConfigFromEnv((name) => (name === 'SUPABASE_JWT_SECRET' ? 'local-secret' : undefined));
+  assert.equal(fallback.alg, 'HS256');
+  if (fallback.alg === 'HS256') assert.equal(fallback.secret, 'local-secret');
+
+  const signingKey = signingConfigFromEnv((name) => {
+    if (name === 'TROVE_JWT_SIGNING_KEY') return JSON.stringify({ kty: 'oct', k: btoa('env-key') });
+    if (name === 'TROVE_JWT_SECRET') return 'ignored-secret';
+    if (name === 'SUPABASE_JWT_SIGNING_KEY') return JSON.stringify({ kty: 'oct', k: btoa('other-key') });
+    return undefined;
+  });
+  assert.equal(signingKey.alg, 'HS256');
+  if (signingKey.alg === 'HS256') assert.equal(signingKey.secret, 'env-key');
+});
 
 test('a missing signing secret is server_misconfigured', () => {
   for (const input of [{ jwtSecret: '  ', signingKey: null }, {}]) {

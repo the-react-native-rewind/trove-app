@@ -11,9 +11,9 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { hashApiToken, tokenAccessDecision } from '../_shared/apiToken.ts';
 import {
   isJwtAuthError,
-  resolveJwtSigningConfig,
   ServerMisconfiguredError,
   signSupabaseUserJwt,
+  signingConfigFromEnv,
 } from '../_shared/userJwt.ts';
 
 type Env = {
@@ -103,10 +103,7 @@ async function accessTokenFor(env: Env, userId: string): Promise<string> {
 }
 
 async function mintAccessToken(env: Env, userId: string): Promise<string> {
-  const signing = resolveJwtSigningConfig({
-    jwtSecret: Deno.env.get('SUPABASE_JWT_SECRET'),
-    signingKey: Deno.env.get('SUPABASE_JWT_SIGNING_KEY'),
-  });
+  const signing = signingConfigFromEnv((name) => Deno.env.get(name));
   const jwt = await signSupabaseUserJwt({ userId, supabaseUrl: env.url, signing });
   const probe = userClient(env, jwt);
   const { error } = await probe.from('profiles').select('id').eq('id', userId).limit(1).maybeSingle();

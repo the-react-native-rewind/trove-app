@@ -3,10 +3,14 @@
  * person's RLS. The signing material is a function secret, never a file in
  * the repo, and this never creates an Auth session.
  *
- * SUPABASE_JWT_SECRET is the legacy HS256 JWT secret.
- * SUPABASE_JWT_SIGNING_KEY is a private JWK (ES256, RS256, or oct HS256)
- * for a signing key you generated and imported. When it is set, it wins.
+ * Hosted function secrets cannot start with SUPABASE_. Read TROVE_JWT_SECRET
+ * (legacy HS256) and TROVE_JWT_SIGNING_KEY (private JWK) first. The SUPABASE_
+ * names are only a fallback for local dev, where the CLI injects them.
+ * A signing key wins over the HS256 secret.
  */
+
+const JWT_SIGNING_KEY_NAMES = ['TROVE_JWT_SIGNING_KEY', 'SUPABASE_JWT_SIGNING_KEY'] as const;
+const JWT_SECRET_NAMES = ['TROVE_JWT_SECRET', 'SUPABASE_JWT_SECRET'] as const;
 
 export class ServerMisconfiguredError extends Error {
   constructor() {
@@ -40,6 +44,22 @@ export function resolveJwtSigningConfig(input: {
   const secret = input.jwtSecret?.trim();
   if (secret) return { alg: 'HS256', secret };
   throw new ServerMisconfiguredError();
+}
+
+/** First non-empty TROVE_ secret, then the SUPABASE_ name for local dev. */
+export function signingConfigFromEnv(get: (name: string) => string | undefined): JwtSigningConfig {
+  return resolveJwtSigningConfig({
+    signingKey: firstSet(get, JWT_SIGNING_KEY_NAMES),
+    jwtSecret: firstSet(get, JWT_SECRET_NAMES),
+  });
+}
+
+function firstSet(get: (name: string) => string | undefined, names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const value = get(name)?.trim();
+    if (value) return value;
+  }
+  return undefined;
 }
 
 export async function signSupabaseUserJwt(input: UserJwtInput): Promise<string> {
