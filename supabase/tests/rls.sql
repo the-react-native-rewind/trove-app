@@ -201,6 +201,301 @@ end $$;
 
 reset role;
 
+-- Moving a task, and personal access tokens. Direct updates of tasks.space_id
+-- are rejected for every role unless move_task has set the transaction-local
+-- flag. Restore the compost task before the account-deletion section below.
+
+do $$
+begin
+  begin
+    update public.tasks
+    set space_id = 'a6666666-6666-4666-8666-666666666666'
+    where id = 'b2222222-2222-4222-8222-222222222222';
+    raise exception 'direct space_id update was allowed';
+  exception when others then
+    if sqlerrm ilike '%direct space_id update was allowed%' then
+      raise exception '%', sqlerrm;
+    end if;
+    if sqlerrm not like '%Use move_task%' then
+      raise exception 'unexpected move guard: %', sqlerrm;
+    end if;
+  end;
+end $$;
+
+insert into public.labels (id, space_id, name, color)
+values (
+  'c1111111-1111-4111-8111-111111111111',
+  'a4444444-4444-4444-8444-444444444444',
+  'compost-bin',
+  'sage'
+);
+
+insert into public.task_labels (task_id, label_id)
+values (
+  'b2222222-2222-4222-8222-222222222222',
+  'c1111111-1111-4111-8111-111111111111'
+);
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
+
+do $$
+declare
+  result jsonb;
+begin
+  result := public.move_task(
+    'b2222222-2222-4222-8222-222222222222',
+    'a4444444-4444-4444-8444-444444444444'
+  );
+  if coalesce((result->>'already_there')::boolean, false) is not true then
+    raise exception 'same-circle move should be a no-op, got %', result;
+  end if;
+
+  -- Compost is assigned to Sam, who is not in Household.
+  result := public.move_task(
+    'b2222222-2222-4222-8222-222222222222',
+    'a6666666-6666-4666-8666-666666666666'
+  );
+  if coalesce((result->>'assignee_cleared')::boolean, false) is not true then
+    raise exception 'assignee should be cleared, got %', result;
+  end if;
+  if coalesce((result->>'tags_removed')::int, -1) <> 1 then
+    raise exception 'garden tag should be detached, got %', result;
+  end if;
+  if coalesce((result->>'already_there')::boolean, true) then
+    raise exception 'move reported already_there, got %', result;
+  end if;
+end $$;
+
+select set_config('request.jwt.claim.sub', 'a3333333-3333-4333-8333-333333333333', false);
+
+do $$
+begin
+  begin
+    perform public.move_task(
+      'b8888888-8888-4888-8888-888888888888',
+      'a4444444-4444-4444-8444-444444444444'
+    );
+    raise exception 'priya moved a household task';
+  exception when others then
+    if sqlerrm ilike '%priya moved%' then
+      raise exception '%', sqlerrm;
+    end if;
+    if sqlerrm not ilike '%Task not found%' then
+      raise exception 'unexpected hidden-task error: %', sqlerrm;
+    end if;
+  end;
+
+  begin
+    perform public.move_task(
+      'b3333333-3333-4333-8333-333333333333',
+      'a5555555-5555-4555-8555-555555555555'
+    );
+    raise exception 'priya moved a task into choir';
+  exception when others then
+    if sqlerrm ilike '%priya moved%' then
+      raise exception '%', sqlerrm;
+    end if;
+    if sqlerrm not ilike '%Circle not found%' then
+      raise exception 'unexpected destination error: %', sqlerrm;
+    end if;
+  end;
+end $$;
+
+reset role;
+
+update public.space_members
+set role = 'viewer'
+where space_id = 'a4444444-4444-4444-8444-444444444444'
+  and user_id = 'a3333333-3333-4333-8333-333333333333';
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a3333333-3333-4333-8333-333333333333', false);
+
+do $$
+begin
+  perform public.move_task(
+    'b1111111-1111-4111-8111-111111111111',
+    'a4444444-4444-4444-8444-444444444444'
+  );
+  raise exception 'viewer moved a garden task';
+exception when others then
+  if sqlerrm ilike '%viewer moved%' then
+    raise exception '%', sqlerrm;
+  end if;
+  if sqlerrm not ilike '%cannot edit%' then
+    raise exception 'unexpected viewer error: %', sqlerrm;
+  end if;
+end $$;
+
+reset role;
+
+update public.space_members
+set role = 'member'
+where space_id = 'a4444444-4444-4444-8444-444444444444'
+  and user_id = 'a3333333-3333-4333-8333-333333333333';
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
+
+select public.move_task(
+  'b2222222-2222-4222-8222-222222222222',
+  'a4444444-4444-4444-8444-444444444444'
+);
+
+reset role;
+
+update public.tasks
+set
+  assignee_id = 'a2222222-2222-4222-8222-222222222222',
+  position = 2
+where id = 'b2222222-2222-4222-8222-222222222222';
+
+insert into public.task_labels (task_id, label_id)
+values (
+  'b2222222-2222-4222-8222-222222222222',
+  'c1111111-1111-4111-8111-111111111111'
+);
+
+delete from public.labels where id = 'c1111111-1111-4111-8111-111111111111';
+
+do $$
+declare
+  n int;
+  space uuid;
+  assignee uuid;
+begin
+  select space_id, assignee_id into space, assignee
+  from public.tasks
+  where id = 'b2222222-2222-4222-8222-222222222222';
+  if space <> 'a4444444-4444-4444-8444-444444444444' or assignee <> 'a2222222-2222-4222-8222-222222222222' then
+    raise exception 'compost task was not restored (space %, assignee %)', space, assignee;
+  end if;
+
+  select count(*) into n from public.task_labels
+  where task_id = 'b2222222-2222-4222-8222-222222222222';
+  if n <> 0 then
+    raise exception 'test label was left attached';
+  end if;
+end $$;
+
+-- API tokens: a person sees only their own, cannot un-revoke, and cannot
+-- rewrite the hash. last_used_at is service_role only.
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
+
+insert into public.api_tokens (user_id, name, token_hash, token_prefix)
+values (
+  'a2222222-2222-4222-8222-222222222222',
+  'claude',
+  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  'trove_aaaaaa'
+);
+
+do $$
+declare
+  owner uuid;
+  n int;
+begin
+  select user_id into owner from public.api_tokens
+  where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  if owner <> 'a1111111-1111-4111-8111-111111111111' then
+    raise exception 'insert guard did not force user_id, saw %', owner;
+  end if;
+
+  select count(*) into n from public.api_tokens where last_used_at is not null or revoked_at is not null;
+  if n <> 0 then
+    raise exception 'a new token should have null last_used_at and revoked_at';
+  end if;
+end $$;
+
+select set_config('request.jwt.claim.sub', 'a2222222-2222-4222-8222-222222222222', false);
+
+do $$
+declare
+  n int;
+begin
+  select count(*) into n from public.api_tokens
+  where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  if n <> 0 then
+    raise exception 'sam could read alex''s api token';
+  end if;
+end $$;
+
+select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
+
+update public.api_tokens
+set revoked_at = now()
+where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+do $$
+begin
+  update public.api_tokens
+  set revoked_at = null
+  where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  raise exception 'revoked token was restored';
+exception when others then
+  if sqlerrm ilike '%restored%' and sqlerrm not ilike '%cannot be restored%' then
+    raise exception '%', sqlerrm;
+  end if;
+  if sqlerrm not ilike '%cannot be restored%' then
+    raise exception 'unexpected un-revoke error: %', sqlerrm;
+  end if;
+end $$;
+
+do $$
+begin
+  update public.api_tokens
+  set token_hash = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+  where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  raise exception 'token hash was rewritten';
+exception when others then
+  if sqlerrm ilike '%rewritten%' then
+    raise exception '%', sqlerrm;
+  end if;
+  if sqlerrm not ilike '%immutable%' then
+    raise exception 'unexpected hash error: %', sqlerrm;
+  end if;
+end $$;
+
+do $$
+begin
+  update public.api_tokens
+  set last_used_at = now()
+  where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  raise exception 'authenticated set last_used_at';
+exception when others then
+  if sqlerrm ilike '%authenticated set%' then
+    raise exception '%', sqlerrm;
+  end if;
+  if sqlerrm not ilike '%last_used_at%' then
+    raise exception 'unexpected last_used error: %', sqlerrm;
+  end if;
+end $$;
+
+set role service_role;
+
+update public.api_tokens
+set last_used_at = now()
+where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+do $$
+declare
+  n int;
+begin
+  select count(*) into n from public.api_tokens
+  where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    and last_used_at is not null;
+  if n <> 1 then
+    raise exception 'service_role could not stamp last_used_at';
+  end if;
+end $$;
+
+reset role;
+
+delete from public.api_tokens
+where token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
 -- storage.protect_delete fires for a delete that matches nothing. The account
 -- function must not take that path; file removal is the delete-account edge
 -- function (verify_jwt on) via the Storage API.

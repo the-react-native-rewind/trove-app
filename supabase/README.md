@@ -12,6 +12,9 @@ Apply these files, in this order, to an empty project (the `auth` and `storage` 
 8. `supabase/migrations/0008_account_privacy_and_grants.sql`
 9. `supabase/migrations/0009_account_deletion_via_storage_api.sql`
 10. `supabase/migrations/0010_advisor_rls_and_indexes.sql`
+11. `supabase/migrations/0011_api_tokens_and_move_task.sql`
+
+On the hosted project, migrations 0001–0010 are already applied. Apply `0011_api_tokens_and_move_task.sql` on its own (SQL editor or `supabase db push` against that project). Do not re-run earlier migrations, and do not run `supabase/seed.sql` or `supabase/tests/bootstrap.sql` there.
 
 `supabase/seed.sql` loads demo people with a known password. Use it only on a local database. Do not run it on the production project.
 
@@ -48,3 +51,17 @@ supabase functions deploy delete-account
 `SUPABASE_SERVICE_ROLE_KEY` is provided on hosted Supabase. The function removes the caller's `avatars` and `task-media` files through the Storage API, calls `public.delete_account_data` as the service role, then `auth.admin.deleteUser`. Do not grant `delete_account_data` to `authenticated`. A SQL `DELETE FROM storage.objects` fails on the hosted project even when it matches zero rows (`storage.protect_delete`).
 
 `supabase/functions/enrich-task` polishes a captured task when `OPENAI_API_KEY` is set. `verify_jwt` is true. The app still saves the task if the function is missing or the key is unset.
+
+`supabase/functions/mcp` is the remote MCP server (Streamable HTTP). `verify_jwt` is **false**: callers send a personal access token (`trove_…`), not a Supabase JWT. The function hashes the token, then queries as that user so row level security still applies. Deploy it only after migration 0011:
+
+```bash
+supabase functions deploy mcp --no-verify-jwt
+```
+
+The `--no-verify-jwt` flag is required even though `config.toml` sets `verify_jwt = false`. If the gateway answers `Invalid JWT` or `Missing authorization` before the function logs anything, verification is still on.
+
+Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. No new secret belongs in the repo. If `SUPABASE_JWT_SECRET` is set, the function signs a short-lived user JWT. If that secret is missing or PostgREST rejects the signature, the function mints a magic-link session for the token's user and caches it in the isolate for about an hour.
+
+Server URL: `https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp`
+
+People create tokens in the app under Account → Connect an AI assistant. See `docs/MCP.md`. Do not put the service role key in any client config.

@@ -92,6 +92,7 @@ function RootNavigator() {
       <Stack.Screen name="space/[id]/members" options={modalOptions} />
       <Stack.Screen name="space/[id]/settings" options={modalOptions} />
       <Stack.Screen name="account" options={modalOptions} />
+      <Stack.Screen name="connect" options={modalOptions} />
       <Stack.Screen name="invite/[token]" options={modalOptions} />
       <Stack.Screen name="reset-password" />
     </Stack>

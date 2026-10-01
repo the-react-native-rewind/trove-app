@@ -150,6 +150,45 @@ export function OptionChips<T extends string>({
   );
 }
 
+/** Pick a circle. Unlike SpacePicker, this includes circles the person can only view. */
+export function CirclePicker({
+  circles,
+  value,
+  onChange,
+  label = 'Circle',
+}: {
+  circles: { id: string; name: string; color: string }[];
+  value: string | null;
+  onChange: (circleId: string) => void;
+  label?: string;
+}) {
+  return (
+    <View style={styles.field}>
+      <FieldLabel>{label}</FieldLabel>
+      <View style={styles.chipRow}>
+        {circles.map((circle) => {
+          const selected = circle.id === value;
+          return (
+            <Pressable
+              key={circle.id}
+              onPress={() => onChange(circle.id)}
+              accessibilityRole="button"
+              accessibilityLabel={circle.name}
+              accessibilityState={{ selected }}
+              style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
+            >
+              <AccentDot color={circle.color} size={9} />
+              <Text variant="bodyMedium" color={selected ? colors.onBrand : colors.inkSoft}>
+                {circle.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export function SpacePicker({
   spaces,
   value,
