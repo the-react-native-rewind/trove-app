@@ -69,6 +69,25 @@ $$;
 
 alter table storage.objects enable row level security;
 
+-- Hosted Supabase rejects every SQL delete on storage.objects, including a
+-- delete that matches zero rows, because this trigger is FOR EACH STATEMENT.
+-- Account deletion must use the Storage API. See delete-account.
+create or replace function storage.protect_delete()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception 'Direct deletion from storage tables is not allowed. Use the Storage API instead.'
+    using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists protect_delete on storage.objects;
+create trigger protect_delete
+  before delete on storage.objects
+  for each statement
+  execute function storage.protect_delete();
+
 grant usage on schema auth to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated, service_role;
 

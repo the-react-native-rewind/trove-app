@@ -10,6 +10,8 @@ Apply these files, in this order, to an empty project (the `auth` and `storage` 
 6. `supabase/migrations/0006_avatars.sql`
 7. `supabase/migrations/0007_user_task_week_plans.sql`
 8. `supabase/migrations/0008_account_privacy_and_grants.sql`
+9. `supabase/migrations/0009_account_deletion_via_storage_api.sql`
+10. `supabase/migrations/0010_advisor_rls_and_indexes.sql`
 
 `supabase/seed.sql` loads demo people with a known password. Use it only on a local database. Do not run it on the production project.
 
@@ -35,6 +37,14 @@ Email and password only. Sign in with Apple is not used, so leave that provider 
 
 The deep link scheme is `trove`, from `app.json`.
 
-## Optional
+## Edge functions
 
-`supabase/functions/enrich-task` polishes a captured task when `OPENAI_API_KEY` is set. The app still saves the task if the function is missing or the key is unset.
+`supabase/functions/delete-account` deletes the signed-in account. `verify_jwt` is **true** (`supabase/config.toml`). Deploy it after migration 0009:
+
+```bash
+supabase functions deploy delete-account
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` is provided on hosted Supabase. The function removes the caller's `avatars` and `task-media` files through the Storage API, calls `public.delete_account_data` as the service role, then `auth.admin.deleteUser`. Do not grant `delete_account_data` to `authenticated`. A SQL `DELETE FROM storage.objects` fails on the hosted project even when it matches zero rows (`storage.protect_delete`).
+
+`supabase/functions/enrich-task` polishes a captured task when `OPENAI_API_KEY` is set. `verify_jwt` is true. The app still saves the task if the function is missing or the key is unset.

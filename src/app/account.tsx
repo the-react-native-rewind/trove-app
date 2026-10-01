@@ -56,7 +56,7 @@ export default function Account() {
     });
     if (!confirmed) return;
     setDeleting(true);
-    const { error } = await supabase.rpc('delete_own_account');
+    const { error } = await supabase.functions.invoke('delete-account');
     if (error) {
       setDeleting(false);
       alertDialog('Could not delete account', error.message);

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Apply migrations to a throwaway local database and run the RLS checks.
 # Requires PostgreSQL with a superuser named postgres. Does not touch a hosted project.
+#
+# bootstrap.sql stubs storage.protect_delete (statement-level, so a delete that
+# matches zero rows still fails). rls.sql expects delete_account_data to run
+# under that trigger and to refuse authenticated. File removal itself is
+# supabase/functions/delete-account (verify_jwt true), which this database
+# check cannot call.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

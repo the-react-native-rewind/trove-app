@@ -201,17 +201,55 @@ end $$;
 
 reset role;
 
--- Account deletion transfers a group that has other members, and removes the user.
+-- storage.protect_delete fires for a delete that matches nothing. The account
+-- function must not take that path; file removal is the delete-account edge
+-- function (verify_jwt on) via the Storage API.
+do $$
+begin
+  delete from storage.objects where bucket_id = 'does-not-exist';
+  raise exception 'direct storage delete was allowed';
+exception
+  when insufficient_privilege then
+    if sqlerrm not like '%Storage API%' then
+      raise exception 'unexpected storage error: %', sqlerrm;
+    end if;
+end $$;
+
+-- The signed-in role cannot run the deletion function. The edge function
+-- calls it with the service role.
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
+
+do $$
+begin
+  perform public.delete_account_data('a1111111-1111-4111-8111-111111111111');
+  raise exception 'authenticated was able to run delete_account_data';
+exception
+  when insufficient_privilege then
+    null;
+end $$;
+
+reset role;
+
+-- Account deletion transfers a group that has other members. It must succeed
+-- while storage.protect_delete is in place, and it must leave the auth user
+-- for auth.admin.deleteUser.
+set role service_role;
+select public.delete_account_data('a1111111-1111-4111-8111-111111111111');
+reset role;
+
 do $$
 declare
   n int;
-  owner uuid;
 begin
-  perform set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
-  -- delete_own_account is security definer; call it as the signed-in user.
-  execute 'set local role authenticated';
-  perform public.delete_own_account();
+  select count(*) into n from auth.users where id = 'a1111111-1111-4111-8111-111111111111';
+  if n <> 1 then
+    raise exception 'delete_account_data removed auth.users; the edge function calls auth.admin.deleteUser';
+  end if;
 end $$;
+
+-- Stand-in for auth.admin.deleteUser. Profile and personal space cascade.
+delete from auth.users where id = 'a1111111-1111-4111-8111-111111111111';
 
 set role authenticated;
 select set_config('request.jwt.claim.sub', 'a2222222-2222-4222-8222-222222222222', false);
