@@ -1,0 +1,12 @@
+# Local project name. The hosted ref is whatever `supabase link` points at.
+project_id = "trove"
+
+# Function gateway settings. Deploy with `supabase functions deploy delete-account`.
+# verify_jwt stays on: the caller is the signed-in user, and the function
+# uses the service role only on the server.
+
+[functions.enrich-task]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true

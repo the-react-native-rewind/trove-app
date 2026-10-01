@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import { ColorPicker } from '@/components/form';
 import { Button } from '@/components/ui/Button';
@@ -9,6 +9,7 @@ import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { useLeaveSpace } from '@/data/members';
 import { useDeleteSpace, useSpaces, useUpdateSpace } from '@/data/spaces';
+import { confirmDialog } from '@/lib/dialog';
 import { canManage } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, resolveAccent, spacing } from '@/theme/tokens';
@@ -24,21 +25,20 @@ export default function SpaceSettings() {
   const deleteSpace = useDeleteSpace();
   const leaveSpace = useLeaveSpace();
 
-  const [name, setName] = useState('');
-  const [color, setColor] = useState('sage');
-
-  useEffect(() => {
-    if (space) {
-      setName(space.name);
-      setColor(space.color);
-    }
-  }, [space?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [name, setName] = useState(space?.name ?? '');
+  const [color, setColor] = useState(space?.color ?? 'sage');
+  const [seenSpaceId, setSeenSpaceId] = useState(space?.id);
+  if (space && space.id !== seenSpaceId) {
+    setSeenSpaceId(space.id);
+    setName(space.name);
+    setColor(space.color);
+  }
 
   if (!space) {
     return (
-      <ModalScaffold title="Space settings">
+      <ModalScaffold title="Circle settings">
         <Text variant="body" color={colors.inkSoft}>
-          This space is no longer available.
+          This circle is no longer available.
         </Text>
       </ModalScaffold>
     );
@@ -53,43 +53,38 @@ export default function SpaceSettings() {
     await updateSpace.mutateAsync({ id: space!.id, name, color });
   }
 
-  function onDelete() {
-    Alert.alert(
-      `Delete ${space!.name}?`,
-      'This permanently removes the space and all its tasks for everyone. This cannot be undone.',
-      [
-        { text: 'Keep space', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteSpace.mutateAsync(space!.id);
-            setSelectedSpaceId('all');
-            router.back();
-          },
-        },
-      ],
-    );
+  async function onDelete() {
+    const confirmed = await confirmDialog({
+      title: `Delete ${space!.name}?`,
+      message:
+        'This permanently removes the circle and all its tasks for everyone. This cannot be undone.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep circle',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    await deleteSpace.mutateAsync(space!.id);
+    setSelectedSpaceId('all');
+    router.back();
   }
 
-  function onLeave() {
-    Alert.alert(`Leave ${space!.name}?`, 'You will no longer see this space or its tasks.', [
-      { text: 'Stay', style: 'cancel' },
-      {
-        text: 'Leave',
-        style: 'destructive',
-        onPress: async () => {
-          await leaveSpace.mutateAsync(space!.id);
-          setSelectedSpaceId('all');
-          router.back();
-        },
-      },
-    ]);
+  async function onLeave() {
+    const confirmed = await confirmDialog({
+      title: `Leave ${space!.name}?`,
+      message: 'You will no longer see this circle or its tasks.',
+      confirmLabel: 'Leave',
+      cancelLabel: 'Stay',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    await leaveSpace.mutateAsync(space!.id);
+    setSelectedSpaceId('all');
+    router.back();
   }
 
   return (
     <ModalScaffold
-      title="Space settings"
+      title="Circle settings"
       footer={
         manager && dirty ? (
           <Button label="Save changes" onPress={onSave} loading={updateSpace.isPending} />
@@ -105,7 +100,7 @@ export default function SpaceSettings() {
         <View style={{ gap: spacing.sm }}>
           <Text variant="screenTitle">{space.name}</Text>
           <Text variant="meta" color={colors.inkFaint}>
-            Only owners and admins can change this space.
+            Only owners and admins can change this circle.
           </Text>
         </View>
       )}
@@ -114,13 +109,13 @@ export default function SpaceSettings() {
         {isOwner ? (
           space.is_default ? (
             <Text variant="meta" color={colors.inkFaint}>
-              Personal is your private space. It can't be deleted.
+              Personal is your private circle. It cannot be deleted.
             </Text>
           ) : (
-            <Button label="Delete space" variant="danger" onPress={onDelete} />
+            <Button label="Delete circle" variant="danger" onPress={onDelete} />
           )
         ) : (
-          <Button label="Leave space" variant="danger" onPress={onLeave} />
+          <Button label="Leave circle" variant="danger" onPress={onLeave} />
         )}
       </View>
     </ModalScaffold>

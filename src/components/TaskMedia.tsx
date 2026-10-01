@@ -2,7 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+
+import { alertDialog, confirmDialog } from '@/lib/dialog';
 
 import {
   type Attachment,
@@ -39,20 +41,20 @@ export function TaskMedia({
       // Alert doesn't render on web, so surface the reason inline everywhere.
       const message = e instanceof Error ? e.message : 'That file could not be added.';
       setError(message);
-      Alert.alert('Upload failed', message);
+      alertDialog('Upload failed', message);
     }
   }
 
-  function confirmDelete(item: Attachment) {
+  async function confirmDelete(item: Attachment) {
     if (!canWrite) return;
-    Alert.alert('Remove media', 'Remove this from the task?', [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => deleteAttachment.mutate({ id: item.id, path: item.path }),
-      },
-    ]);
+    const remove = await confirmDialog({
+      title: 'Remove media',
+      message: 'Remove this from the task?',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep',
+      destructive: true,
+    });
+    if (remove) deleteAttachment.mutate({ id: item.id, path: item.path });
   }
 
   return (

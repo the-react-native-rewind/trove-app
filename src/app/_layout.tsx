@@ -25,6 +25,7 @@ import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { toastConfig } from '@/components/ui/AppToast';
 import { Celebration } from '@/components/Celebration';
 import { useIsWide } from '@/hooks/useIsWide';
+import { readPendingInvite } from '@/lib/pendingInvite';
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { SpaceProvider } from '@/providers/SpaceProvider';
@@ -33,19 +34,35 @@ import { colors } from '@/theme/tokens';
 SplashScreen.preventAutoHideAsync();
 
 function useProtectedRoute() {
-  const { session, initializing } = useAuth();
+  const { session, initializing, recovery } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (initializing) return;
-    const inAuthGroup = segments[0] === '(auth)';
-    if (!session && !inAuthGroup) {
-      router.replace('/(auth)/sign-in');
-    } else if (session && inAuthGroup) {
-      router.replace('/');
+    const root = segments[0];
+    const inAuthGroup = root === '(auth)';
+    const onInvite = root === 'invite';
+    const onReset = root === 'reset-password';
+
+    if (recovery) {
+      if (!onReset) router.replace('/reset-password');
+      return;
     }
-  }, [session, initializing, segments, router]);
+
+    if (!session) {
+      if (!inAuthGroup && !onInvite) router.replace('/(auth)/sign-in');
+      return;
+    }
+
+    // Only leave the auth screens automatically. Doing this from every route
+    // would send someone who dismissed an invite straight back to it.
+    if (inAuthGroup) {
+      void readPendingInvite().then((token) => {
+        router.replace(token ? (`/invite/${token}` as never) : '/');
+      });
+    }
+  }, [session, initializing, recovery, segments, router]);
 }
 
 function RootNavigator() {
@@ -76,6 +93,7 @@ function RootNavigator() {
       <Stack.Screen name="space/[id]/settings" options={modalOptions} />
       <Stack.Screen name="account" options={modalOptions} />
       <Stack.Screen name="invite/[token]" options={modalOptions} />
+      <Stack.Screen name="reset-password" />
     </Stack>
   );
 }

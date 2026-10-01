@@ -239,6 +239,7 @@ export type Database = {
     Functions: {
       accept_invite: { Args: { p_token: string }; Returns: string }
       current_space_role: { Args: { p_space_id: string }; Returns: string }
+      delete_account_data: { Args: { p_user_id: string }; Returns: undefined }
       is_space_member: { Args: { p_space_id: string }; Returns: boolean }
     }
     Enums: { [_ in never]: never }

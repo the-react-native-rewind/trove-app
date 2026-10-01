@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -38,7 +39,10 @@ export default function SignUp() {
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { data: { display_name: name.trim() } },
+      options: {
+        data: { display_name: name.trim() },
+        emailRedirectTo: Linking.createURL('/'),
+      },
     });
     setLoading(false);
 
@@ -85,7 +89,7 @@ export default function SignUp() {
           <View style={styles.header}>
             <Text style={styles.wordmark}>Trove</Text>
             <Text variant="body" color={colors.inkSoft} style={styles.tagline}>
-              Get it out of your head, onto everyone's plate.
+              Get it out of your head and onto the shared list.
             </Text>
           </View>
 

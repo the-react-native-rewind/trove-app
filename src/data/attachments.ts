@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 import * as ImagePicker from 'expo-image-picker';
-import { Alert } from 'react-native';
-
+import { alertDialog } from '@/lib/dialog';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -27,7 +26,7 @@ export function taskAttachmentsKey(taskId: string) {
 export async function pickMedia(): Promise<PickedMedia | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert('Allow photo access', 'Trove needs access to your photos to add media to a task.');
+    alertDialog('Allow photo access', 'Trove needs access to your photos to add media to a task.');
     return null;
   }
   const result = await ImagePicker.launchImageLibraryAsync({

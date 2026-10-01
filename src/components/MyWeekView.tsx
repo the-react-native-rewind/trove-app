@@ -37,7 +37,7 @@ export function MyWeekView() {
             onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel="Open spaces"
+            accessibilityLabel="Open circles"
             style={styles.iconButton}
           >
             <Ionicons name="menu" size={26} color={colors.ink} />

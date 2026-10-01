@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 import * as ImagePicker from 'expo-image-picker';
-import { Alert } from 'react-native';
-
+import { alertDialog } from '@/lib/dialog';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/types';
@@ -48,7 +47,7 @@ export function useUpdateProfile() {
 export async function pickAvatarImage(): Promise<string | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert(
+    alertDialog(
       'Allow photo access',
       'Trove needs access to your photos to update your profile photo.',
     );

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -7,6 +7,8 @@ import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { pickAvatarImage, useProfile, useUpdateProfile, useUploadAvatar } from '@/data/profile';
+import { alertDialog, confirmDialog } from '@/lib/dialog';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 import { colors, radii, spacing } from '@/theme/tokens';
 
@@ -16,12 +18,15 @@ export default function Account() {
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
 
-  const [name, setName] = useState('');
+  const profileName = profile?.display_name ?? '';
+  const [name, setName] = useState(profileName);
+  const [seenName, setSeenName] = useState(profileName);
   const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    if (profile?.display_name) setName(profile.display_name);
-  }, [profile?.display_name]);
+  const [deleting, setDeleting] = useState(false);
+  if (profileName !== seenName) {
+    setSeenName(profileName);
+    setName(profileName);
+  }
 
   async function onSaveName() {
     if (!name.trim() || name === profile?.display_name) return;
@@ -36,8 +41,28 @@ export default function Account() {
       if (!uri) return;
       await uploadAvatar.mutateAsync(uri);
     } catch (e) {
-      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Please try again.');
+      alertDialog('Upload failed', e instanceof Error ? e.message : 'Please try again.');
     }
+  }
+
+  async function onDeleteAccount() {
+    const confirmed = await confirmDialog({
+      title: 'Delete your account?',
+      message:
+        'Your personal circle goes with you. Circles you own are handed to another member, or deleted if you are the only person in them. This cannot be undone.',
+      confirmLabel: 'Delete account',
+      cancelLabel: 'Keep account',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setDeleting(true);
+    const { error } = await supabase.functions.invoke('delete-account');
+    if (error) {
+      setDeleting(false);
+      alertDialog('Could not delete account', error.message);
+      return;
+    }
+    await signOut();
   }
 
   const uploading = uploadAvatar.isPending;
@@ -82,6 +107,12 @@ export default function Account() {
 
       <View style={styles.actions}>
         <Button label="Sign out" variant="secondary" onPress={signOut} />
+        <Button
+          label="Delete account"
+          variant="danger"
+          onPress={onDeleteAccount}
+          loading={deleting}
+        />
       </View>
     </ModalScaffold>
   );
@@ -101,5 +132,5 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(43, 38, 32, 0.35)',
   },
-  actions: { marginTop: spacing.xl },
+  actions: { marginTop: spacing.xl, gap: spacing.md },
 });

@@ -11,9 +11,22 @@
     "ios": {
       "bundleIdentifier": "com.rewind.trove",
       "supportsTablet": true,
+      "requireFullScreen": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Trove uses your photos to add images and videos to a task."
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": ["C617.1"]
+          }
+        ]
       }
     },
     "android": {
@@ -60,14 +73,16 @@
           "photosPermission": "Trove uses your photos to add images and videos to a task."
         }
       ],
-      "expo-build-properties",
       [
         "expo-speech-recognition",
         {
           "microphonePermission": "Trove uses the microphone so you can dictate a task.",
           "speechRecognitionPermission": "Trove turns your speech into the task description."
         }
-      ]
+      ],
+      "./plugins/withIpadOrientations",
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

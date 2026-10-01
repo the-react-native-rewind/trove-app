@@ -35,21 +35,23 @@ export default function TaskEdit() {
   const inputRef = useRef({ title: '', description: '' });
   const savedRef = useRef({ title: '', description: null as string | null });
   const taskIdRef = useRef<string | undefined>(undefined);
-  inputRef.current = { title, description };
-  taskIdRef.current = task?.id;
+  const [loadedId, setLoadedId] = useState<string | undefined>(undefined);
+  if (task && task.id !== loadedId) {
+    setLoadedId(task.id);
+    setTitle(task.title);
+    setDescription(task.description ?? '');
+  }
 
   useEffect(() => {
-    if (task) {
-      setTitle(task.title);
-      setDescription(task.description ?? '');
-      savedRef.current = { title: task.title, description: task.description ?? null };
-    }
-  }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    inputRef.current = { title, description };
+    taskIdRef.current = task?.id;
+  }, [title, description, task?.id]);
 
   // Track the latest server value so autosave only fires on genuine changes.
   useEffect(() => {
-    if (task) savedRef.current = { title: task.title, description: task.description ?? null };
-  }, [task?.title, task?.description]);
+    if (!task) return;
+    savedRef.current = { title: task.title, description: task.description ?? null };
+  }, [task]);
 
   // Persist title/notes if (and only if) they differ from what's on the server.
   // Reads from refs so it's safe to call from a debounce timer or on unmount.
@@ -109,7 +111,7 @@ export default function TaskEdit() {
     const taskId = task.id;
     const ok = await confirmDialog({
       title: 'Delete task',
-      message: 'This removes the task for everyone in the space.',
+      message: 'This removes the task for everyone in the circle.',
       confirmLabel: 'Delete',
       cancelLabel: 'Keep',
       destructive: true,
@@ -129,7 +131,7 @@ export default function TaskEdit() {
     return (
       <ModalScaffold title="Edit task">
         <Text variant="body" color={colors.inkSoft}>
-          You can view this space but not change its tasks.
+          You can view this circle but not change its tasks.
         </Text>
       </ModalScaffold>
     );

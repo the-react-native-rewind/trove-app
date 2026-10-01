@@ -1,15 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { celebrate } from '@/lib/celebrate';
+import { MINE_VIEW_ID } from '@/lib/mine';
+import { positionBetween } from '@/lib/position';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import type { Priority, TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
+export { positionBetween };
+
 export const TASK_SELECT =
   '*, space:spaces(id,name,color), assignee:profiles!tasks_assignee_id_fkey(id,display_name,avatar_url)';
 
-/** spaceId === 'all' gathers tasks across every space the user belongs to (the adaptive backlog). */
+/**
+ * spaceId === 'all' is Mine: tasks assigned to the signed-in person, across
+ * every group they belong to. Any other id is that group's whole shared list.
+ */
 export function useTasks(spaceId: string) {
   const { userId } = useAuth();
   return useQuery({
@@ -17,7 +24,8 @@ export function useTasks(spaceId: string) {
     enabled: !!userId,
     queryFn: async (): Promise<TaskWithRefs[]> => {
       let query = supabase.from('tasks').select(TASK_SELECT);
-      if (spaceId !== 'all') query = query.eq('space_id', spaceId);
+      if (spaceId === MINE_VIEW_ID) query = query.eq('assignee_id', userId!);
+      else query = query.eq('space_id', spaceId);
       const { data, error } = await query
         .order('position', { ascending: true })
         .order('created_at', { ascending: true });
@@ -65,9 +73,10 @@ export function useCreateTask() {
           title: input.title.trim(),
           description: input.description?.trim() || null,
           status: input.status,
-          assignee_id: input.assignee_id ?? null,
           priority: input.priority ?? null,
           due_date: input.due_date ?? null,
+          // New captures start on the creator's Mine list. Reassign from the task.
+          assignee_id: input.assignee_id === undefined ? userId : input.assignee_id,
           created_by: userId,
           position: Date.now(), // append to the end of its status column
         })
@@ -156,14 +165,6 @@ export function useReorderTask() {
     },
     onSuccess: () => invalidateTasks(qc),
   });
-}
-
-/** Midpoint between two neighbor positions (handles list edges). */
-export function positionBetween(prev: number | null, next: number | null): number {
-  if (prev === null && next === null) return Date.now();
-  if (prev === null) return (next as number) - 1;
-  if (next === null) return prev + 1;
-  return (prev + next) / 2;
 }
 
 function invalidateTasks(qc: ReturnType<typeof useQueryClient>) {
