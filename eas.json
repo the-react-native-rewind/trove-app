@@ -18,7 +18,11 @@
       }
     },
     "production": {
+      "distribution": "store",
       "autoIncrement": true,
+      "ios": {
+        "image": "macos-tahoe-26.5-xcode-26.6"
+      },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://pxjqqogxemsmufopmlsv.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4anFxb2d4ZW1zbXVmb3BtbHN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4NTI5MzcsImV4cCI6MjEwNjQyODkzN30.jbm5C1Z9d4WBzHXIdpoNYezcZtk0_4ZCnckFFcpPQ3U"
@@ -28,9 +32,8 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "YOUR_APPLE_ID_EMAIL",
-        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "YOUR_APPLE_TEAM_ID"
+        "ascAppId": "6818141231",
+        "appleTeamId": "GRUW4SQ273"
       }
     }
   }

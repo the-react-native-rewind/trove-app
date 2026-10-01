@@ -81,7 +81,9 @@
           "speechRecognitionPermission": "Trove turns your speech into the task description."
         }
       ],
-      "./plugins/withIpadOrientations"
+      "./plugins/withIpadOrientations",
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
