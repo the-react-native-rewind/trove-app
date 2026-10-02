@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
+import { AppVersion } from '@/components/AppVersion';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
@@ -128,6 +129,8 @@ export default function Account() {
           loading={deleting}
         />
       </View>
+
+      <AppVersion />
     </ModalScaffold>
   );
 }

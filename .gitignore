@@ -54,3 +54,6 @@ agent-output.txt
 
 # skia web (regenerate with: npx setup-skia-web public)
 public/canvaskit.wasm
+
+# CodePush release bundles (scripts/codepush-release.sh)
+/build/codepush

@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@code-push-next/react-native-code-push": "10.4.3",
     "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/hanken-grotesk": "^0.4.3",
     "@expo/ui": "~56.0.26",
@@ -65,7 +66,9 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "node --experimental-strip-types --import ./scripts/register-hooks.mjs --test src/lib/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "codepush:ios": "scripts/codepush-release.sh ios",
+    "codepush:android": "scripts/codepush-release.sh android"
   },
   "private": true,
   "license": "AGPL-3.0-only"
