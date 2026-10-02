@@ -1,0 +1,27 @@
+appId: com.rewind.trove
+---
+# This PR (supabase/functions/send-email/index.ts + supabase/README.md) only
+# changes the default Reply-To address used by a Supabase Edge Function that
+# Postgres triggers invoke server-side when sending transactional emails. It
+# has no app UI surface at all, so there is no user-facing behavior to drive
+# through Maestro. This is a minimal smoke test instead: log in and confirm
+# the first authenticated screen renders.
+- launchApp:
+    clearState: true
+
+# Log in (app launches on a logged-out login screen)
+- tapOn:
+    text: "you@example.com"
+- inputText: ${MAESTRO_TEST_EMAIL}
+- tapOn:
+    text: "Your password"
+- inputText: ${MAESTRO_TEST_PASSWORD}
+- tapOn:
+    text: "Sign in"
+- extendedWaitUntil:
+    notVisible:
+      text: "Sign in"
+    timeout: 10000
+
+# First authenticated screen (Board at "/") rendered
+- assertVisible: "Open circles"
