@@ -4,8 +4,10 @@ import { test } from 'node:test';
 
 import {
   API_TOKEN_PREFIX,
+  API_TOKEN_PREFIX_LENGTH,
   TOKEN_TOUCH_INTERVAL_MS,
   apiTokenPrefix,
+  buildApiToken,
   generateApiToken,
   hashApiToken,
   readBearerToken,
@@ -32,6 +34,57 @@ test('generateApiToken is a prefixed high-entropy secret', () => {
   assert.equal(apiTokenPrefix(first), first.slice(0, 12));
   assert.ok(first !== second);
 });
+
+test('buildApiToken encodes caller-supplied bytes into the digest the MCP server stores', async () => {
+  const bytes = Uint8Array.from({ length: 32 }, (_, i) => i);
+  const highBytes = Uint8Array.from({ length: 32 }, (_, i) => 128 + (i % 128));
+
+  for (const sample of [bytes, highBytes]) {
+    const token = generateApiToken(sample);
+    assert.equal(token, legacyBase64UrlToken(sample));
+
+    const { token: built, tokenHash } = await buildApiToken(sample, async (value) =>
+      createHash('sha256').update(value).digest('hex'),
+    );
+    assert.equal(built, token);
+    assert.equal(tokenHash, await hashApiToken(token));
+    assert.equal(/^[0-9a-f]{64}$/.test(tokenHash), true);
+    assert.equal(readBearerToken(`Bearer ${built}`), built);
+    assert.equal(apiTokenPrefix(built), built.slice(0, API_TOKEN_PREFIX_LENGTH));
+  }
+
+  assert.equal(
+    generateApiToken(bytes),
+    'trove_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8',
+  );
+
+  const upper = await buildApiToken(bytes, async (value) =>
+    createHash('sha256').update(value).digest('hex').toUpperCase(),
+  );
+  assert.equal(upper.tokenHash, await hashApiToken(upper.token));
+
+  let shortFailed = false;
+  try {
+    await buildApiToken(bytes.slice(0, 16), async () => 'ab'.repeat(32));
+  } catch {
+    shortFailed = true;
+  }
+  assert.equal(shortFailed, true);
+
+  let badDigest = false;
+  try {
+    await buildApiToken(bytes, async () => 'not-a-sha256');
+  } catch {
+    badDigest = true;
+  }
+  assert.equal(badDigest, true);
+});
+
+function legacyBase64UrlToken(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return 'trove_' + btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
 
 test('readBearerToken accepts only a Trove token', () => {
   const token = generateApiToken();
