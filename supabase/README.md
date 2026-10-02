@@ -14,6 +14,7 @@ Apply these files, in this order, to an empty project (the `auth` and `storage` 
 10. `supabase/migrations/0010_advisor_rls_and_indexes.sql`
 11. `supabase/migrations/0011_api_tokens_and_move_task.sql`
 12. `supabase/migrations/0012_api_token_limits.sql`
+13. `supabase/migrations/0013_transactional_emails.sql`
 
 On the hosted project, migrations 0001–0011 are already applied. Apply `0012_api_token_limits.sql` on its own (SQL editor or `supabase db push` against that project). Do not re-run earlier migrations, and do not run `supabase/seed.sql` or `supabase/tests/bootstrap.sql` there.
 
@@ -37,7 +38,7 @@ Email and password only. Sign in with Apple is not used, so leave that provider 
   - the production web origin, with `/**`, when you have one
 - Password recovery uses `Linking.createURL('/reset-password')`, which is `trove://reset-password` in the native app and the web origin plus `/reset-password` in the browser.
 - Email confirmation uses `Linking.createURL('/')`.
-- Keep `{{ .ConfirmationURL }}` in the confirmation and recovery email templates. The default templates are enough. Do not strip the token from the link.
+- Keep `{{ .ConfirmationURL }}` in the confirmation and recovery email templates. Do not strip the token from the link. The branded templates live in `supabase/templates/` (see Email below).
 
 The deep link scheme is `trove`, from `app.json`.
 
@@ -69,3 +70,37 @@ Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVI
 Server URL: `https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp`
 
 People create tokens in the app under Account → Connect an AI assistant. Do not put the service role key in any client config.
+
+## Email
+
+Trove sends through Resend from its own domain, kept apart from The React Native Rewind newsletter (separate Resend domain and a sending-only API key restricted to it). Today that is `hello@trove.thereactnativerewind.com` (DNS in the thereactnativerewind.com Cloudflare zone). The plan is to move to `troving.app` once it is verified in Resend: create a restricted key for it, then update the SMTP sender/password and the `RESEND_API_KEY` / `TROVE_EMAIL_FROM` function secrets. Replies go to `support@thereactnativerewind.com` (`TROVE_EMAIL_REPLY_TO`).
+
+**Auth emails** (confirm sign-up, password reset, magic link, email change, invite, reauthentication) go through Supabase Auth's custom SMTP:
+
+- Host `smtp.resend.com`, port `465`, user `resend`, password = the Trove-only Resend API key (sending access, restricted to the Trove domain).
+- Sender = the Trove domain address (currently `hello@trove.thereactnativerewind.com`), name `Trove`.
+- Email rate limit raised to 30 per hour (the default mailer allows 2).
+- Templates and subjects: `supabase/templates/*.html`, generated from `supabase/functions/_shared/emailCopy.ts` by `deno run --allow-write supabase/templates/build.ts`. `config.toml` points at them.
+
+Confirm email stays on. The App Review demo account is already confirmed.
+
+**Welcome and circle invite emails** come from the `send-email` edge function:
+
+- Migration 0013 adds triggers: `on_auth_user_confirmed` (email_confirmed_at goes from null to set) and `on_auth_user_created_confirmed` (account created already confirmed) send `{ type: "welcome", user_id }`; `invites_send_email` sends `{ type: "invite", invite_id }` for each new pending invite. They post through `pg_net` with the `x-trove-hook-secret` header.
+- The function reads the address, names and token with the service role, so the trigger payload cannot choose a recipient. Invite emails are capped at 25 per inviter per 24 hours. Resend idempotency keys stop duplicates.
+- Links use the `open` function (`/functions/v1/open?to=invite/<token>` → `trove://invite/<token>`), because email clients drop `trove://` links.
+
+Set once per project (values never committed):
+
+```bash
+supabase secrets set RESEND_API_KEY=re_... TROVE_EMAIL_HOOK_SECRET=<random hex>
+supabase functions deploy send-email --no-verify-jwt
+supabase functions deploy open --no-verify-jwt
+```
+
+```sql
+select vault.create_secret('https://<ref>.supabase.co/functions/v1/send-email', 'trove_email_hook_url');
+select vault.create_secret('<same TROVE_EMAIL_HOOK_SECRET>', 'trove_email_hook_secret');
+```
+
+Optional function secrets: `TROVE_EMAIL_FROM`, `TROVE_EMAIL_REPLY_TO`, `TROVE_SITE_URL` (defaults to the Vercel site until trove.thereactnativerewind.com is attached).

@@ -18,7 +18,27 @@ create table if not exists auth.users (
   email text unique,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
   encrypted_password text,
+  email_confirmed_at timestamptz,
   created_at timestamptz not null default now()
+);
+
+-- pg_net and Vault stand-ins for migration 0013 (transactional emails).
+create schema if not exists net;
+create or replace function net.http_post(
+  url text,
+  body jsonb default '{}'::jsonb,
+  params jsonb default '{}'::jsonb,
+  headers jsonb default '{}'::jsonb,
+  timeout_milliseconds integer default 5000
+)
+returns bigint
+language sql
+as $$ select 0::bigint; $$;
+
+create schema if not exists vault;
+create table if not exists vault.decrypted_secrets (
+  name text primary key,
+  decrypted_secret text
 );
 
 do $$

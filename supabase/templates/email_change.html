@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Confirm your new email for Trove</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Hanken+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; padding:0; background:#F2EAD9; }
+  a { color:#3F5638; }
+  @media (max-width: 600px) {
+    .trove-card-body { padding:28px 22px 26px !important; }
+    .trove-outer { padding:20px 10px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#F2EAD9;">
+<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:#F2EAD9;font-size:1px;line-height:1px;">One tap to move your Trove account to a new address.&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F2EAD9" style="background:#F2EAD9;">
+  <tr><td align="center" class="trove-outer" style="padding:36px 16px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+      <tr><td style="padding:0 6px 18px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td valign="middle" style="padding-right:10px;"><img src="https://trove-website-sooty.vercel.app/mark.png" width="36" height="36" alt="" style="display:block;border:0;border-radius:9px;"></td>
+          <td valign="middle" style="font-family:Fraunces, Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;font-size:28px;line-height:1;font-weight:600;letter-spacing:-0.6px;color:#2F4228;">Trove</td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="background:#FBF6EC;border:1px solid #E0D3BC;border-radius:18px;overflow:hidden;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td height="6" style="height:6px;width:41%;background:#5F7050;font-size:0;line-height:0;border-top-left-radius:18px;">&nbsp;</td>
+          <td height="6" style="height:6px;width:25%;background:#B6832E;font-size:0;line-height:0;">&nbsp;</td>
+          <td height="6" style="height:6px;width:34%;background:#A85A34;font-size:0;line-height:0;border-top-right-radius:18px;">&nbsp;</td>
+        </tr></table>
+        <div class="trove-card-body" style="padding:36px 38px 32px;">
+<h1 style="margin:0 0 18px;font-family:Fraunces, Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;font-size:28px;line-height:1.15;font-weight:600;letter-spacing:-0.5px;color:#2B2620;">New email? Confirm it.</h1>
+<p style="margin:0 0 14px;font-family:'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:16px;line-height:1.55;font-weight:400;color:#2B2620;">You asked to move your Trove account:</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 18px;">
+  <tr><td style="background:#F2EAD9;border:1px solid #E0D3BC;border-radius:14px;padding:16px 18px;"><p style="margin:0;font-family:'Hanken Grotesk',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#2B2620;">From <strong>{{ .Email }}</strong><br>To <strong>{{ .NewEmail }}</strong></p></td></tr>
+</table>
+<p style="margin:0 0 14px;font-family:'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:16px;line-height:1.55;font-weight:400;color:#2B2620;">Tap below to confirm.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 22px;">
+  <tr><td align="center" bgcolor="#3F5638" style="border-radius:12px;background:#3F5638;">
+    <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;padding:15px 26px;font-family:'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:16px;font-weight:600;line-height:1.2;color:#FBF6EC;text-decoration:none;border-radius:12px;">Confirm new email</a>
+  </td></tr>
+</table>
+<p style="margin:0 0 14px;font-family:'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:14px;line-height:1.55;font-weight:400;color:#655B50;">Didn't ask for this? Don't tap. Change your password in Trove instead.</p>
+<p style="margin:0;font-family:'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.5;color:#655B50;">Button not working? Paste this into your browser:<br><a href="{{ .ConfirmationURL }}" style="color:#3F5638;word-break:break-all;">{{ .ConfirmationURL }}</a></p>
+        </div>
+      </td></tr>
+      <tr><td style="padding:20px 8px 0;font-family:'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12.5px;line-height:1.6;color:#655B50;">
+        You got this because someone used {{ .Email }} on Trove.<br>
+        Trove is made by The React Native Rewind.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
