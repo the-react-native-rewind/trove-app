@@ -21,6 +21,10 @@
     "node_modules",
     "supabase/functions/mcp",
     "supabase/functions/delete-account",
-    "supabase/functions/enrich-task"
+    "supabase/functions/enrich-task",
+    "supabase/functions/send-email",
+    "supabase/functions/open",
+    "supabase/functions/_shared/emailCopy.ts",
+    "supabase/templates"
   ]
 }
