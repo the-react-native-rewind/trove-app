@@ -1,0 +1,46 @@
+appId: com.rewind.trove
+---
+# Creating an MCP API token must succeed on Hermes: generateApiToken() used to
+# call global crypto.getRandomValues, which Hermes does not provide, so the
+# "Create token" button on this screen threw instead of revealing a token.
+- launchApp:
+    clearState: true
+
+# Log in (app launches on a logged-out login screen)
+- tapOn:
+    text: "you@example.com"
+- inputText: ${MAESTRO_TEST_EMAIL}
+- tapOn:
+    text: "Your password"
+- inputText: ${MAESTRO_TEST_PASSWORD}
+- tapOn:
+    text: "Sign in"
+- extendedWaitUntil:
+    notVisible:
+      text: "Sign in"
+    timeout: 10000
+
+# Open Account settings, then the API tokens screen
+- tapOn:
+    text: ".*Account.*"
+- assertVisible: "Change profile photo"
+- tapOn:
+    text: "API tokens"
+- assertVisible: "Connect an AI assistant"
+
+# Create a token. On Hermes, buildApiToken() must fill random bytes and hash
+# them without the (absent) global Web Crypto API.
+- tapOn:
+    text: "Claude on my laptop"
+- inputText: "Maestro test token"
+- tapOn:
+    text: "Create token"
+
+# A successful create reveals the one-time secret; a crypto regression would
+# instead throw and leave the reveal panel (and the new token field) hidden.
+- extendedWaitUntil:
+    visible:
+      text: "Copy this token now"
+    timeout: 10000
+- assertVisible:
+    text: "New API token"
