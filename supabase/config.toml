@@ -16,3 +16,42 @@ verify_jwt = true
 # so the gateway does not reject the token before this code runs.
 [functions.mcp]
 verify_jwt = false
+
+# Transactional emails (see supabase/README.md, "Email").
+# send-email is called by Postgres triggers (migration 0013) with a shared
+# secret header, not a user JWT. open only 302s to trove:// deep links.
+# Deploy both with --no-verify-jwt.
+[functions.send-email]
+verify_jwt = false
+
+[functions.open]
+verify_jwt = false
+
+# Branded Auth emails. Rebuild the HTML with
+# `deno run --allow-write supabase/templates/build.ts`.
+# Hosted SMTP is Resend (smtp.resend.com:465, user "resend", password = the
+# Trove-only Resend key). Set it in the dashboard or with the Management API;
+# never commit the key.
+[auth.email.template.confirmation]
+subject = "Confirm your email for Trove"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Trove password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.magic_link]
+subject = "Your Trove sign-in link"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your new email for Trove"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.invite]
+subject = "You're invited to Trove"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.reauthentication]
+subject = "{{ .Token }} is your Trove code"
+content_path = "./supabase/templates/reauthentication.html"
