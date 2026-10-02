@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 
-import { ACTIVE_TOKEN_LIMIT, apiTokenPrefix, generateApiToken, hashApiToken } from '@/lib/apiToken';
+import { ACTIVE_TOKEN_LIMIT, apiTokenPrefix, buildApiToken } from '@/lib/apiToken';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
@@ -51,10 +51,16 @@ export function useCreateApiToken() {
         throw new Error(`You can have ${ACTIVE_TOKEN_LIMIT} active tokens. Revoke one first.`);
       }
 
-      const token = generateApiToken();
-      const tokenHash = globalThis.crypto?.subtle
-        ? await hashApiToken(token)
-        : await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, token);
+      // Hermes has no global Web Crypto (`crypto.getRandomValues` throws
+      // "Property 'crypto' doesn't exist"). expo-crypto is already linked;
+      // its SHA-256 hex matches hashApiToken on the MCP server.
+      const bytes = new Uint8Array(32);
+      Crypto.getRandomValues(bytes);
+      const { token, tokenHash } = await buildApiToken(bytes, (value) =>
+        Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value, {
+          encoding: Crypto.CryptoEncoding.HEX,
+        }),
+      );
       const { error } = await supabase.from('api_tokens').insert({
         user_id: userId,
         name: trimmed,

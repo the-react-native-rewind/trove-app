@@ -4,6 +4,8 @@ export {
   API_TOKEN_PREFIX_LENGTH,
   TOKEN_TOUCH_INTERVAL_MS,
   apiTokenPrefix,
+  buildApiToken,
+  formatApiToken,
   generateApiToken,
   hashApiToken,
   readBearerToken,
