@@ -73,12 +73,12 @@ People create tokens in the app under Account → Connect an AI assistant. Do no
 
 ## Email
 
-Trove sends through Resend from its own domain, kept apart from The React Native Rewind newsletter (separate Resend domain and a sending-only API key restricted to it). Today that is `hello@trove.thereactnativerewind.com` (DNS in the thereactnativerewind.com Cloudflare zone). The plan is to move to `troving.app` once it is verified in Resend: create a restricted key for it, then update the SMTP sender/password and the `RESEND_API_KEY` / `TROVE_EMAIL_FROM` function secrets. Replies go to `support@thereactnativerewind.com` (`TROVE_EMAIL_REPLY_TO`).
+Trove sends through Resend from its own domain, kept apart from The React Native Rewind newsletter (separate Resend domain and a sending-only API key restricted to it). The sender is `hello@trove.thereactnativerewind.com` (DNS in the thereactnativerewind.com Cloudflare zone). Welcome and invite emails set Reply-To `luke@thereactnativerewind.com` (`TROVE_EMAIL_REPLY_TO`). Supabase Auth SMTP has no Reply-To setting, so auth emails carry none.
 
 **Auth emails** (confirm sign-up, password reset, magic link, email change, invite, reauthentication) go through Supabase Auth's custom SMTP:
 
 - Host `smtp.resend.com`, port `465`, user `resend`, password = the Trove-only Resend API key (sending access, restricted to the Trove domain).
-- Sender = the Trove domain address (currently `hello@trove.thereactnativerewind.com`), name `Trove`.
+- Sender `hello@trove.thereactnativerewind.com`, name `Trove`.
 - Email rate limit raised to 30 per hour (the default mailer allows 2).
 - Templates and subjects: `supabase/templates/*.html`, generated from `supabase/functions/_shared/emailCopy.ts` by `deno run --allow-write supabase/templates/build.ts`. `config.toml` points at them.
 

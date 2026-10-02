@@ -20,7 +20,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { DEFAULT_SITE_URL, inviteEmail, welcomeEmail, type RenderedEmail } from '../_shared/emailCopy.ts';
 
 const FROM = Deno.env.get('TROVE_EMAIL_FROM') ?? 'Trove <hello@trove.thereactnativerewind.com>';
-const REPLY_TO = Deno.env.get('TROVE_EMAIL_REPLY_TO') ?? 'support@thereactnativerewind.com';
+const REPLY_TO = Deno.env.get('TROVE_EMAIL_REPLY_TO') ?? 'luke@thereactnativerewind.com';
 const SITE_URL = (Deno.env.get('TROVE_SITE_URL') ?? DEFAULT_SITE_URL).replace(/\/$/, '');
 /** Invite emails one person can trigger per rolling 24 hours. */
 const INVITES_PER_DAY = 25;
