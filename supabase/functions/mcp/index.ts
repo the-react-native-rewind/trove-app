@@ -62,6 +62,29 @@ const dueFields = {
 
 const statusField = z.enum(['todo', 'in_progress', 'done']).optional().describe('todo, in_progress, or done.');
 
+const repeatFields = {
+  repeat_unit: z
+    .enum(['day', 'week', 'month', 'never'])
+    .nullable()
+    .optional()
+    .describe('day, week, month, never, or null. never and null clear the rule. Omit it on update to leave the rule unchanged.'),
+  repeat_interval: z
+    .number()
+    .int()
+    .min(1)
+    .max(99)
+    .optional()
+    .describe('How many days, weeks, or months between occurrences. 1 to 99. Defaults to 1.'),
+  repeat_weekday: z
+    .number()
+    .int()
+    .min(0)
+    .max(6)
+    .nullable()
+    .optional()
+    .describe('0 = Sunday through 6 = Saturday. Used when repeat_unit is week. Omit it and the due date, or today (UTC), is used.'),
+};
+
 const taskInput = z.object({
   title: z.string().describe('What needs doing.'),
   notes: z.string().nullable().optional().describe('Longer notes. Stored as the task description.'),
@@ -79,6 +102,7 @@ const taskInput = z.object({
     .string()
     .optional()
     .describe('Stable id from the source (a Notion page id or Trello card id). Repeating it will not create a duplicate.'),
+  ...repeatFields,
 });
 
 const handler = createMcpHandler((ctx) => {
@@ -201,6 +225,7 @@ function buildServer(store: TroveStore): McpServer {
         due_date: z.string().nullable().optional(),
         assignee: z.string().nullable().optional().describe('Member id, display name, "me", or null.'),
         tags: z.array(z.string()).optional().describe('Replaces the task\'s tags. An empty array clears them.'),
+        ...repeatFields,
       }),
     },
     async (args) => asTool(await updateTask(store, args)),
