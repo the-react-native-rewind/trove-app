@@ -73,41 +73,43 @@ export function usePriorityList(
   items: readonly { id: string }[],
   listRef: { readonly current: ScrollableList | null },
 ) {
-  const viewableIds = useRef(new Set<string>());
-  const sawViewable = useRef(false);
-  const followId = useRef<string | null>(null);
+  const viewableRange = useRef<{ min: number; max: number } | null>(null);
+  const followRef = useRef<{ id: string; min: number; max: number } | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const orderKey = items.map((item) => item.id).join('\0');
 
   const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: readonly { item?: { id?: string } | null }[] }) => {
-      sawViewable.current = true;
-      viewableIds.current = new Set(
-        viewableItems.flatMap((entry) => (entry.item?.id ? [entry.item.id] : [])),
+    ({ viewableItems }: { viewableItems: readonly { index?: number | null }[] }) => {
+      const indexes = viewableItems.flatMap((entry) =>
+        typeof entry.index === 'number' ? [entry.index] : [],
       );
+      if (indexes.length === 0) return;
+      viewableRange.current = { min: Math.min(...indexes), max: Math.max(...indexes) };
     },
     [],
   );
 
   const lift = usePriorityLift((taskId) => {
-    if (!sawViewable.current || viewableIds.current.has(taskId)) return;
-    followId.current = taskId;
+    const range = viewableRange.current;
+    if (!range) return;
+    followRef.current = { id: taskId, min: range.min, max: range.max };
   });
 
   useEffect(() => {
-    const id = followId.current;
-    if (!id) return;
-    const index = items.findIndex((item) => item.id === id);
+    const follow = followRef.current;
+    if (!follow) return;
+    const index = items.findIndex((item) => item.id === follow.id);
     if (index < 0) return;
-    followId.current = null;
+    followRef.current = null;
+    if (index >= follow.min && index <= follow.max) return;
     const scrollTimer = setTimeout(() => {
       listRef.current?.scrollToIndex({ index, viewPosition: 0.35, animated: true });
     }, 60);
-    setHighlightId(id);
+    setHighlightId(follow.id);
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     highlightTimer.current = setTimeout(() => {
-      setHighlightId((current) => (current === id ? null : current));
+      setHighlightId((current) => (current === follow.id ? null : current));
     }, HIGHLIGHT_MS);
     return () => clearTimeout(scrollTimer);
     // items is read only when the visible order changes. A fresh array with
