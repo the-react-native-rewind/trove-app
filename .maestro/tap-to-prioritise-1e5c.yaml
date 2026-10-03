@@ -1,0 +1,49 @@
+appId: com.rewind.trove
+---
+# Tap-to-prioritise: tapping a task card's priority dot ("Raise <title>") lifts
+# that task one place within its due-date group. Confirms the second task in
+# the list moves above the first after a tap and the ~1s settle delay.
+- launchApp:
+    clearState: true
+
+# Log in (app launches on a logged-out login screen)
+- tapOn:
+    text: "you@example.com"
+- inputText: ${MAESTRO_TEST_EMAIL}
+- tapOn:
+    text: "Your password"
+- inputText: ${MAESTRO_TEST_PASSWORD}
+- tapOn:
+    text: "Sign in"
+- extendedWaitUntil:
+    notVisible:
+      text: "Sign in"
+    timeout: 10000
+
+# Deterministic tab: the default tab depends on live data, "To do" does not.
+- tapOn:
+    text: "To do"
+
+# Capture the accessibility labels of the first two priority dots so the
+# assertion below does not depend on hardcoded task titles.
+- copyTextFrom:
+    id: ".*"
+    text: "Raise .*"
+    index: 0
+- evalScript: ${output.firstRaise = maestro.copiedText}
+- copyTextFrom:
+    id: ".*"
+    text: "Raise .*"
+    index: 1
+- evalScript: ${output.secondRaise = maestro.copiedText}
+
+# Tap the second task's dot to lift it one place above the first task.
+- tapOn:
+    text: ${output.secondRaise}
+
+# A lift commits ~1s after the last tap, then the list re-sorts.
+- extendedWaitUntil:
+    visible:
+      text: ${output.secondRaise}
+      index: 0
+    timeout: 3000
