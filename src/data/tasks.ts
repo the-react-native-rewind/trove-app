@@ -202,6 +202,46 @@ export function useDeleteTask() {
  * Uses fractional indexing: the moved row sits at the midpoint of its neighbors,
  * so no other rows need rewriting.
  */
+function patchTaskRank(data: unknown, id: string, rank: string): unknown {
+  if (Array.isArray(data)) {
+    return data.map((item) => patchTaskRank(item, id, rank));
+  }
+  if (data && typeof data === 'object' && 'id' in data && (data as { id: string }).id === id) {
+    return { ...data, rank };
+  }
+  return data;
+}
+
+/** Write the rank chosen by a priority tap. The list order comes from this key. */
+export function useUpdateTaskRank() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; rank: string }) => {
+      const { error } = await supabase.from('tasks').update({ rank: input.rank }).eq('id', input.id);
+      if (error) throw error;
+    },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['tasks'] });
+      await qc.cancelQueries({ queryKey: ['week-tasks'] });
+      const previous = [
+        ...qc.getQueriesData({ queryKey: ['tasks'] }),
+        ...qc.getQueriesData({ queryKey: ['week-tasks'] }),
+      ];
+      const apply = (data: unknown) => patchTaskRank(data, input.id, input.rank);
+      qc.setQueriesData({ queryKey: ['tasks'] }, apply);
+      qc.setQueriesData({ queryKey: ['week-tasks'] }, apply);
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      for (const [key, data] of context?.previous ?? []) qc.setQueryData(key, data);
+    },
+    onSettled: (_data, _error, input) => {
+      invalidateTasks(qc);
+      qc.invalidateQueries({ queryKey: qk.task(input.id) });
+    },
+  });
+}
+
 export function useReorderTask() {
   const qc = useQueryClient();
   return useMutation({

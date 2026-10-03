@@ -27,6 +27,8 @@ export function TaskRow({
   onDrag,
   dragging,
   media,
+  onLift,
+  highlighted,
 }: {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
@@ -37,6 +39,9 @@ export function TaskRow({
   onDrag?: () => void;
   dragging?: boolean;
   media?: Attachment[];
+  /** Writers tap the dot to move this task up one place. */
+  onLift?: () => boolean;
+  highlighted?: boolean;
 }) {
   const ref = useRef<SwipeableMethods>(null);
   const selection = useSelection();
@@ -82,6 +87,8 @@ export function TaskRow({
           selectable={canWrite}
           onPress={onOpen}
           onLongPress={onDrag}
+          onLift={canWrite ? onLift : undefined}
+          highlighted={highlighted}
           dragging={dragging}
           media={media}
         />

@@ -209,6 +209,7 @@ export type Database = {
           id: string
           position: number
           priority: string | null
+          rank: string
           recurrence_series_id: string | null
           recurrence_source_id: string | null
           repeat_interval: number
@@ -229,6 +230,7 @@ export type Database = {
           id?: string
           position?: number
           priority?: string | null
+          rank?: string
           recurrence_series_id?: string | null
           recurrence_source_id?: string | null
           repeat_interval?: number
@@ -249,6 +251,7 @@ export type Database = {
           id?: string
           position?: number
           priority?: string | null
+          rank?: string
           recurrence_series_id?: string | null
           recurrence_source_id?: string | null
           repeat_interval?: number

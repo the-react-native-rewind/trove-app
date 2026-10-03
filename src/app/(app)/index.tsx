@@ -2,9 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList } from 'react-native-gesture-handler';
 import DraggableFlatList, {
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
+import { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
@@ -21,6 +23,7 @@ import { useMyWeekEnabled } from '@/data/profile';
 import { positionBetween, useMoveTaskStatus, useReorderTask, useTasks } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
+import { PRIORITY_VIEWABILITY, usePriorityList } from '@/hooks/usePriorityLift';
 import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
@@ -114,6 +117,8 @@ function SpaceBoard() {
   }, [isLoading, counts.in_progress]);
 
   const items = visibleTasks.filter((t) => normalizeStatus(t.status) === status);
+  const listRef = useRef<FlatList<TaskWithRefs> | null>(null);
+  const priorityList = usePriorityList(items, listRef);
   const selectableIds = (isWide ? visibleTasks : items)
     .filter((task) => canWriteTask(task.space_id))
     .map((task) => task.id);
@@ -141,6 +146,8 @@ function SpaceBoard() {
         showSpaceTag={isMine}
         onOpen={() => router.push(`/task/${item.id}` as never)}
         onMove={(next) => moveStatus.mutate({ id: item.id, status: next })}
+        onLift={rowWritable ? () => priorityList.lift(item.id, items) : undefined}
+        highlighted={priorityList.highlightId === item.id}
         onDrag={dragEnabled ? drag : undefined}
         media={mediaByTask?.[item.id]}
       />
@@ -275,13 +282,19 @@ function SpaceBoard() {
           onOpen={(id) => router.push(`/task/${id}` as never)}
           onMove={(id, next, position) => moveStatus.mutate({ id, status: next, position })}
           canWriteTask={canWriteTask}
+          onLift={priorityList.lift}
           mediaByTaskId={mediaByTask}
         />
       ) : (
         <DraggableFlatList
+          ref={listRef}
           data={items}
+          extraData={priorityList.highlightId}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
+          itemLayoutAnimation={LinearTransition.duration(320)}
+          onViewableItemsChanged={priorityList.onViewableItemsChanged}
+          viewabilityConfig={PRIORITY_VIEWABILITY}
           onScrollOffsetChange={collapse.onScrollOffsetChange}
           onDragEnd={({ data, to }) => {
             const moved = data[to];

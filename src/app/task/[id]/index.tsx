@@ -10,7 +10,7 @@ import { TaskMedia } from '@/components/TaskMedia';
 import { TaskMediaStrip } from '@/components/TaskMediaStrip';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { PriorityDot, SpaceTag } from '@/components/ui/Indicators';
+import { SpaceTag } from '@/components/ui/Indicators';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { useTaskAttachments } from '@/data/attachments';
@@ -29,7 +29,7 @@ import {
   repeatRuleFromTask,
   repeatScheduleCopy,
 } from '@/lib/recurrence';
-import { canWrite, STATUSES, type Priority, type TaskStatus } from '@/lib/types';
+import { canWrite, STATUSES, type TaskStatus } from '@/lib/types';
 import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
 import { colors, radii, spacing } from '@/theme/tokens';
 
@@ -106,14 +106,6 @@ export default function TaskView() {
       <Text variant="screenTitle">{task.title}</Text>
 
       <View style={styles.meta}>
-        {task.priority ? (
-          <View style={styles.metaItem}>
-            <PriorityDot level={task.priority as Priority} />
-            <Text variant="meta" color={colors.inkSoft}>
-              {task.priority[0].toUpperCase() + task.priority.slice(1)} priority
-            </Text>
-          </View>
-        ) : null}
         {due ? (
           <View style={styles.metaItem}>
             <Ionicons

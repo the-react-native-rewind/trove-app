@@ -45,6 +45,7 @@ export function KanbanBoard({
   onOpen,
   onMove,
   canWriteTask,
+  onLift,
   mediaByTaskId,
 }: KanbanProps & { mediaByTaskId?: Record<string, Attachment[]> }) {
   const byStatus = groupByStatus(tasks);
@@ -149,6 +150,11 @@ export function KanbanBoard({
                       selectable={canWriteTask(task.space_id)}
                       media={mediaByTaskId?.[task.id]}
                       onPress={() => onOpen(task.id)}
+                      onLift={
+                        canWriteTask(task.space_id) && onLift
+                          ? () => onLift(task.id, column)
+                          : undefined
+                      }
                     />
                   </div>
                     </Fragment>

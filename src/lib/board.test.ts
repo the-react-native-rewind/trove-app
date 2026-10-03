@@ -12,6 +12,7 @@ function task(overrides: Partial<TaskWithRefs> & { id: string }): TaskWithRefs {
     status: 'todo',
     assignee_id: null,
     priority: null,
+    rank: 'a0',
     due_date: null,
     position: 1,
     created_by: null,
@@ -30,16 +31,28 @@ test('legacy and unknown statuses stay visible as To do', () => {
   assert.equal(normalizeStatus('done'), 'done');
 });
 
-test('urgency puts the earliest due date first, then priority', () => {
+test('urgency puts the earliest due date first, then the higher rank', () => {
   const sorted = sortTasksByUrgency([
-    task({ id: 'later', due_date: '2026-05-02', priority: 'high' }),
-    task({ id: 'sooner-low', due_date: '2026-05-01', priority: 'low' }),
-    task({ id: 'sooner-high', due_date: '2026-05-01', priority: 'high' }),
-    task({ id: 'undated', due_date: null, priority: 'high' }),
+    task({ id: 'later', due_date: '2026-05-02', rank: 'a9' }),
+    task({ id: 'sooner-low', due_date: '2026-05-01', rank: 'a0' }),
+    task({ id: 'sooner-high', due_date: '2026-05-01', rank: 'a5' }),
+    task({ id: 'undated', due_date: null, rank: 'b00' }),
   ]);
   assert.deepEqual(
     sorted.map((item) => item.id),
     ['sooner-high', 'sooner-low', 'later', 'undated'],
+  );
+});
+
+test('equal due date and rank keep position, then creation time, then id', () => {
+  const sorted = sortTasksByUrgency([
+    task({ id: 'b', rank: 'a0', position: 2, created_at: '2026-01-01T00:00:00.000Z' }),
+    task({ id: 'a', rank: 'a0', position: 1, created_at: '2026-02-01T00:00:00.000Z' }),
+    task({ id: 'c', rank: 'a0', position: 2, created_at: '2026-01-01T00:00:00.000Z' }),
+  ]);
+  assert.deepEqual(
+    sorted.map((item) => item.id),
+    ['a', 'b', 'c'],
   );
 });
 
