@@ -92,9 +92,13 @@ export const priority = {
 
 export type PriorityLevel = keyof typeof priority;
 
-// Muted red → amber → green ramp used to colour a task's urgency dot by its
-// rank in the visible list (top = most urgent = red, bottom = green).
-const HEAT_STOPS = ['#C04A3C', '#D99A4E', '#4C6444'] as const;
+// Hottest red, then amber, then the warm neutral used for the bottom of a list.
+// The top fifth of a list stays hottest so a short list still reads as urgent,
+// and the rest eases to neutral. Colours are relative, so they cool when other
+// tasks are lifted above.
+const HEAT_HOT = '#C04A3C';
+const HEAT_WARM = '#D99A4E';
+const HEAT_NEUTRAL = '#C9BCA4';
 
 function lerpHex(a: string, b: string, t: number): string {
   const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
@@ -104,17 +108,17 @@ function lerpHex(a: string, b: string, t: number): string {
 }
 
 /**
- * Colour for a task's urgency dot given its position in the list. `rank` 0 is
- * the top (red); the ramp reaches green at the last item, so the gradient
- * always spans the full list however many tasks it holds. A lone task shows the
- * top colour.
+ * Colour for a task's urgency dot from its place in the visible list.
+ * `rank` 0 is the top. The first fifth stays the hot colour; the rest is a
+ * smooth ramp to neutral at the last item. A lone task is hottest.
  */
 export function heatColor(rank: number, total: number): string {
-  if (total <= 1) return HEAT_STOPS[0];
+  if (total <= 1 || rank <= 0) return HEAT_HOT;
   const t = Math.min(1, Math.max(0, rank / (total - 1)));
-  const scaled = t * (HEAT_STOPS.length - 1);
-  const i = Math.min(HEAT_STOPS.length - 2, Math.floor(scaled));
-  return lerpHex(HEAT_STOPS[i], HEAT_STOPS[i + 1], scaled - i);
+  if (t <= 0.2) return HEAT_HOT;
+  const stretch = (t - 0.2) / 0.8;
+  if (stretch <= 0.5) return lerpHex(HEAT_HOT, HEAT_WARM, stretch / 0.5);
+  return lerpHex(HEAT_WARM, HEAT_NEUTRAL, (stretch - 0.5) / 0.5);
 }
 
 export const radii = {

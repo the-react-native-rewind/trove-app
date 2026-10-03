@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, View, type FlatList } from 'react-native';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskMediaForTasks } from '@/data/attachments';
@@ -10,9 +10,10 @@ import { useSpaces } from '@/data/spaces';
 import { useMoveTaskStatus } from '@/data/tasks';
 import { useWeekTasks } from '@/data/weekPlans';
 import { useIsWide } from '@/hooks/useIsWide';
+import { PRIORITY_VIEWABILITY, usePriorityList } from '@/hooks/usePriorityLift';
 import { sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
-import { canWrite } from '@/lib/types';
+import { canWrite, type TaskWithRefs } from '@/lib/types';
 import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, heatColor, radii, spacing } from '@/theme/tokens';
@@ -37,6 +38,8 @@ export function MyWeekView() {
   const { data: mediaByTask } = useTaskMediaForTasks(mediaTaskIds);
 
   const sortedTasks = useMemo(() => sortTasksByUrgency(tasks), [tasks]);
+  const listRef = useRef<FlatList<TaskWithRefs> | null>(null);
+  const priorityList = usePriorityList(sortedTasks, listRef);
   const selection = useSelection();
   const selectableIds = sortedTasks
     .filter((task) => canWrite(spaces.find((space) => space.id === task.space_id)?.role))
@@ -134,21 +137,31 @@ export function MyWeekView() {
           </View>
         ) : (
           <Animated.FlatList
+            ref={listRef}
             data={sortedTasks}
+            extraData={priorityList.highlightId}
             keyExtractor={(task) => task.id}
             onScroll={collapse.onScroll}
             scrollEventThrottle={16}
-            renderItem={({ item, index }) => (
+            itemLayoutAnimation={LinearTransition.duration(320)}
+            onViewableItemsChanged={priorityList.onViewableItemsChanged}
+            viewabilityConfig={PRIORITY_VIEWABILITY}
+            renderItem={({ item, index }) => {
+              const writable = canWrite(spaces.find((space) => space.id === item.space_id)?.role);
+              return (
               <TaskRow
                 task={item}
                 showSpaceTag
                 heat={heatColor(index, sortedTasks.length)}
-                canWrite={canWrite(spaces.find((space) => space.id === item.space_id)?.role)}
+                canWrite={writable}
                 onOpen={() => router.push(`/task/${item.id}` as never)}
                 onMove={(status) => moveStatus.mutate({ id: item.id, status })}
+                onLift={writable ? () => priorityList.lift(item.id, sortedTasks) : undefined}
+                highlighted={priorityList.highlightId === item.id}
                 media={mediaByTask?.[item.id]}
               />
-            )}
+              );
+            }}
             contentContainerStyle={[
               styles.listContent,
               !selection.active && { paddingTop: collapse.contentOffset + spacing.sm },

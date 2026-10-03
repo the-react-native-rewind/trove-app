@@ -746,6 +746,7 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         notes: input.notes,
         status: input.status,
         priority: input.priority,
+        rank: 'a0',
         due_date: input.dueDate,
         circle_id: input.circleId,
         circle_name: circle?.name ?? '',

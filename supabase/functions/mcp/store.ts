@@ -3,10 +3,12 @@
 // security-definer RPC from migration 0011.
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import { generateKeyBetween } from 'npm:fractional-indexing@3.2.0';
 
 import {
   TroveError,
   type RepeatUnit,
+  type Priority,
   type Circle,
   type AttachmentRecord,
   type AttachmentWrite,
@@ -26,7 +28,7 @@ import {
 import { readEnv, userClient } from './auth.ts';
 
 const TASK_SELECT =
-  'id, title, description, status, priority, due_date, space_id, assignee_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignee:profiles!tasks_assignee_id_fkey(id,display_name), task_labels(label:labels(name))';
+  'id, title, description, status, priority, rank, due_date, space_id, assignee_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignee:profiles!tasks_assignee_id_fkey(id,display_name), task_labels(label:labels(name))';
 
 type TaskRow = {
   id: string;
@@ -34,6 +36,7 @@ type TaskRow = {
   description: string | null;
   status: string;
   priority: string | null;
+  rank: string;
   due_date: string | null;
   space_id: string;
   assignee_id: string | null;
@@ -138,6 +141,8 @@ async function listTasks(db: SupabaseClient, filter: TaskFilter): Promise<TaskRe
   if (filter.dueBefore) query = query.lte('due_date', filter.dueBefore);
   if (filter.dueAfter) query = query.gte('due_date', filter.dueAfter);
   const { data, error } = await query
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('rank', { ascending: false })
     .order('position', { ascending: true })
     .order('created_at', { ascending: true })
     .limit(filter.limit);
@@ -167,6 +172,7 @@ async function findByExternalId(
 }
 
 async function insertTask(db: SupabaseClient, userId: string, input: TaskWrite): Promise<TaskRecord> {
+  const ranks = await ranksInGroup(db, input.circleId, input.dueDate);
   const { data, error } = await db
     .from('tasks')
     .insert({
@@ -175,6 +181,7 @@ async function insertTask(db: SupabaseClient, userId: string, input: TaskWrite):
       description: input.notes,
       status: input.status,
       priority: input.priority,
+      rank: rankForPriority(input.priority, ranks),
       due_date: input.dueDate,
       assignee_id: input.assigneeId,
       external_id: input.externalId,
@@ -204,7 +211,14 @@ async function updateTask(db: SupabaseClient, id: string, patch: TaskPatch): Pro
   if (patch.title !== undefined) row.title = patch.title;
   if (patch.notes !== undefined) row.description = patch.notes;
   if (patch.status !== undefined) row.status = patch.status;
-  if (patch.priority !== undefined) row.priority = patch.priority;
+  if (patch.priority !== undefined) {
+    const current = await getTask(db, id);
+    if (!current) return null;
+    const due = patch.dueDate !== undefined ? patch.dueDate : current.due_date;
+    const ranks = (await ranksInGroup(db, current.circle_id, due)).filter((rank) => rank !== current.rank);
+    row.priority = patch.priority;
+    row.rank = rankForPriority(patch.priority, ranks);
+  }
   if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
   if (patch.assigneeId !== undefined) row.assignee_id = patch.assigneeId;
   if (patch.repeatUnit !== undefined) {
@@ -416,6 +430,7 @@ function toTask(row: TaskRow): TaskRecord {
     notes: row.description,
     status: row.status as Status,
     priority: (row.priority as TaskRecord['priority']) ?? null,
+    rank: row.rank,
     due_date: row.due_date,
     circle_id: row.space_id,
     circle_name: space?.name ?? '',
@@ -431,6 +446,35 @@ function toTask(row: TaskRow): TaskRecord {
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+async function ranksInGroup(
+  db: SupabaseClient,
+  spaceId: string,
+  dueDate: string | null,
+): Promise<string[]> {
+  let query = db.from('tasks').select('rank').eq('space_id', spaceId);
+  query = dueDate ? query.eq('due_date', dueDate) : query.is('due_date', null);
+  const { data, error } = await query;
+  throwIf(error);
+  return (data ?? [])
+    .map((row) => (row as { rank?: string | null }).rank ?? '')
+    .filter((rank) => rank.length > 0);
+}
+
+/** Same placement as src/lib/rank.ts. Kept here so the edge function can import the Deno package. */
+function rankForPriority(priority: Priority | null, groupRanks: string[]): string {
+  const ranks = groupRanks.filter((rank) => rank.length > 0).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  if (ranks.length === 0) return generateKeyBetween(null, null);
+  const lowest = ranks[0];
+  const highest = ranks[ranks.length - 1];
+  if (priority === 'high') return generateKeyBetween(highest, null);
+  if (priority !== 'medium') return generateKeyBetween(null, lowest);
+  const mid = Math.floor(ranks.length / 2);
+  const lower = ranks[Math.max(0, mid - 1)];
+  const upper = ranks[mid];
+  if (lower === upper) return generateKeyBetween(null, upper);
+  return generateKeyBetween(lower, upper);
 }
 
 function isRepeatUnit(value: string | null | undefined): value is RepeatUnit {

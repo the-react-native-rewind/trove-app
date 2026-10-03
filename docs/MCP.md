@@ -118,7 +118,7 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 | `list_circle_tasks` | Every task in one circle, including ones assigned to other people. |
 | `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. Optional repeat rule. |
 | `create_tasks_bulk` | Create up to 100 tasks. Safe to retry when each item has an `external_id`. Each item can repeat. |
-| `update_task` | Change title, notes, status, priority, due date, assignee, tags, or the repeat rule. Does not change the circle. |
+| `update_task` | Change title, notes, status, priority, due date, assignee, tags, or the repeat rule. Priority sets the task's rank in its due-date group. Does not change the circle. |
 | `complete_task` | Mark a task done. A repeating task stays done, and the database adds the next occurrence. |
 | `assign_task` | Set or clear the assignee. The person must already be in that circle. |
 | `move_task` | Move a task to another circle, including from your personal circle into a shared one. |
@@ -128,7 +128,7 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 
 Circle arguments are `circle_id`, `circle_name` (case-insensitive, must match one of yours), or `personal: true`. The name **Mine** is not a circle. Ask for `list_my_tasks`, or set `personal: true` for the private circle.
 
-Statuses are `todo`, `in_progress`, and `done`. Priority is `low`, `medium`, or `high`. Due filters are `due_on`, `due_before`, and `due_after` as `YYYY-MM-DD`. Lists return 50 tasks unless you set `limit` (maximum 200).
+Statuses are `todo`, `in_progress`, and `done`. Priority is `low`, `medium`, or `high`. It is not a fixed level on the task: it chooses a rank in that circle's due-date group. `high` places the task above the current top, `medium` between the two central tasks, and `low` or `null` at the bottom. New tasks with no priority start at the bottom. Lists return `rank`, a fractional index string. A larger rank sorts first within the same due date. Order is due date (earliest first, no date last), then rank, then position and creation time. Due filters are `due_on`, `due_before`, and `due_after` as `YYYY-MM-DD`. Lists return 50 tasks unless you set `limit` (maximum 200).
 
 Assignee is a member id, a display name (unique in that circle, case-insensitive), `"me"`, or `null`.
 
@@ -150,7 +150,7 @@ A week with no weekday uses the due date's weekday. With no due date, it uses to
 
 Task results from list, create, update, complete, assign, and move include `repeat_unit`, `repeat_interval`, `repeat_weekday`, and `recurrence_series_id`. The series id is shared by each occurrence of one repeating task. It is the first task's id. `recurrence_source_id` is not returned and cannot be set. The database uses it so completing the same occurrence twice does not insert two successors.
 
-`complete_task`, or `update_task` with `status: done`, marks that row done. If it repeats, the database inserts the next To do occurrence with the same title, notes, priority, tags, circle, assignee, and rule. The tool result is the completed row, not the new one. List the circle again to see the next occurrence. Photos stay attached to both, because the new row points at the same file. `external_id` stays on the original row only.
+`complete_task`, or `update_task` with `status: done`, marks that row done. If it repeats, the database inserts the next To do occurrence with the same title, notes, priority, tags, circle, assignee, and rule. The new occurrence starts at the bottom of its due-date group, so it does not keep the completed row's rank. The tool result is the completed row, not the new one. List the circle again to see the next occurrence. Photos stay attached to both, because the new row points at the same file. `external_id` stays on the original row only.
 
 `invite_to_circle` takes `email` and an optional `role` of `admin`, `member`, or `viewer` (default `member`). You cannot invite someone as owner. One pending invite per email per circle. The link expires in 14 days.
 

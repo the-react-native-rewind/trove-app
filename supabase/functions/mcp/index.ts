@@ -97,7 +97,11 @@ const taskInput = z.object({
   due_date: z.string().nullable().optional().describe('Due date as YYYY-MM-DD, or null.'),
   tags: z.array(z.string()).optional().describe('Label names in this circle. Created if they do not exist yet.'),
   status: statusField,
-  priority: z.enum(['low', 'medium', 'high']).nullable().optional().describe('low, medium, high, or null.'),
+  priority: z
+    .enum(['low', 'medium', 'high'])
+    .nullable()
+    .optional()
+    .describe('Places rank in the due-date group: high above the top, medium in the middle, low or null at the bottom.'),
   external_id: z
     .string()
     .optional()
@@ -221,7 +225,11 @@ function buildServer(store: TroveStore): McpServer {
         title: z.string().optional(),
         notes: z.string().nullable().optional(),
         status: statusField,
-        priority: z.enum(['low', 'medium', 'high']).nullable().optional(),
+        priority: z
+          .enum(['low', 'medium', 'high'])
+          .nullable()
+          .optional()
+          .describe('Sets rank in the due-date group. high is above the current top, medium is in the middle, low or null is the bottom. Omit it when changing the due date to leave the task at the bottom of the new group.'),
         due_date: z.string().nullable().optional(),
         assignee: z.string().nullable().optional().describe('Member id, display name, "me", or null.'),
         tags: z.array(z.string()).optional().describe('Replaces the task\'s tags. An empty array clears them.'),
