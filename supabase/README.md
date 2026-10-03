@@ -57,7 +57,7 @@ supabase functions deploy delete-account
 
 `supabase/functions/enrich-task` polishes a captured task when `OPENAI_API_KEY` is set. `verify_jwt` is true. The app still saves the task if the function is missing or the key is unset.
 
-`supabase/functions/mcp` is the remote MCP server (Streamable HTTP). `verify_jwt` is **false**: callers send a personal access token (`trove_…`), not a Supabase JWT. The function hashes the token, signs a short-lived user JWT, and queries as that user so row level security still applies. It does not create an Auth session. Deploy it only after migration 0012.
+`supabase/functions/mcp` is the remote MCP server (Streamable HTTP). `verify_jwt` is **false**: callers send a personal access token (`trove_…`), not a Supabase JWT. The function hashes the token, signs a short-lived user JWT, and queries as that user so row level security still applies. It does not create an Auth session. `create_circle` inserts a space the way the app does, and `add_task_attachment` uploads to the private `task-media` bucket as that user. Deploy it only after migration 0012. No later migration is required for those two tools.
 
 Hosted Supabase rejects function secrets whose names start with `SUPABASE_`. Set `TROVE_JWT_SIGNING_KEY` to the private JWK of the active ES256 signing key (the one you imported; `kid` must match). The legacy HS256 secret is `previously_used` and still verifies, so `TROVE_JWT_SECRET` is the alternative. Do not commit either value. `SUPABASE_JWT_SECRET` and `SUPABASE_JWT_SIGNING_KEY` are read only when the `TROVE_` name is unset, for local dev.
 

@@ -3,7 +3,9 @@ import { test } from 'node:test';
 
 import {
   MCP_TOOL_NAMES,
+  TASK_MEDIA_MAX_BYTES,
   TroveError,
+  type AttachmentRecord,
   type Circle,
   type CreateTaskInput,
   type InviteResult,
@@ -14,8 +16,12 @@ import {
   type TaskRecord,
   type TaskWrite,
   type TroveStore,
+  addTaskAttachment,
   assignTask,
+  bytesMatchContentType,
+  checkAttachmentSize,
   completeTask,
+  createCircle,
   createTask,
   createTasksBulk,
   getCircle,
@@ -36,6 +42,7 @@ test('the tool catalog matches the handlers we ship', () => {
   assert.deepEqual(MCP_TOOL_NAMES, [
     'list_circles',
     'get_circle',
+    'create_circle',
     'list_my_tasks',
     'list_circle_tasks',
     'create_task',
@@ -44,6 +51,7 @@ test('the tool catalog matches the handlers we ship', () => {
     'complete_task',
     'assign_task',
     'move_task',
+    'add_task_attachment',
     'list_members',
     'invite_to_circle',
   ]);
@@ -313,6 +321,179 @@ test('open-task counts are loaded only for circle reads', async () => {
   assert.equal(store.calls.plain, 0);
 });
 
+test('create_circle makes the caller the owner and keeps the personal circle', async () => {
+  const store = memoryStore();
+  const created = await createCircle(store, { name: '  Garden  ', color: 'Terracotta' });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  assert.equal(created.data.circle.name, 'Garden');
+  assert.equal(created.data.circle.color, 'terracotta');
+  assert.equal(created.data.circle.role, 'owner');
+  assert.equal(created.data.circle.is_personal, false);
+  assert.equal(created.data.circle.open_task_count, 0);
+  assert.equal(/^circle-/.test(created.data.circle.id), true);
+
+  const listed = await listCircles(store);
+  assert.equal(listed.ok, true);
+  if (!listed.ok) return;
+  assert.equal(listed.data.circles.some((circle) => circle.id === created.data.circle.id), true);
+  assert.equal(store.membersOf(created.data.circle.id).some((member) => member.user_id === ME && member.role === 'owner'), true);
+
+  const personal = await createCircle(store, { name: 'Notes', color: '#C16E43' });
+  assert.equal(personal.ok, true);
+  if (!personal.ok) return;
+  assert.equal(personal.data.circle.color, '#c16e43');
+  assert.equal(personal.data.circle.is_personal, false);
+
+  const unnamed = await createCircle(store, { name: '   ' });
+  assert.deepEqual(unnamed, { ok: false, error: 'Give your circle a name, like Home or Garden.' });
+
+  const emoji = await createCircle(store, { name: 'Garden', color: '🌿' });
+  assert.equal(emoji.ok, false);
+});
+
+test('add_task_attachment stores images in app order and rejects viewers', async () => {
+  const store = memoryStore();
+  const created = await createTask(store, { title: 'Call the plumber', personal: true });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const taskId = created.data.task.id;
+
+  const first = await addTaskAttachment(store, {
+    task_id: taskId,
+    content_type: 'image/jpeg',
+    filename: 'leak.JPEG',
+    data_base64: toBase64(jpegBytes()),
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.equal(new RegExp(`^${PERSONAL}/${taskId}/[0-9a-f-]{36}\\.jpeg$`).test(first.data.attachment.path), true);
+  assert.equal(first.data.attachment.media_type, 'image');
+  assert.equal(first.data.attachment.id.length > 0, true);
+
+  const second = await addTaskAttachment(store, {
+    task_id: taskId,
+    content_type: 'video/mp4',
+    filename: 'clip.mp4',
+    data_base64: toBase64(mp4Bytes()),
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  assert.equal(/\.mp4$/.test(second.data.attachment.path), true);
+  assert.equal(second.data.attachment.media_type, 'video');
+  assert.deepEqual(
+    store.attachments.map((item) => item.id),
+    [first.data.attachment.id, second.data.attachment.id],
+  );
+  assert.equal(store.attachments[0]?.created_at < store.attachments[1]?.created_at, true);
+
+  const mismatch = await addTaskAttachment(store, {
+    task_id: taskId,
+    content_type: 'image/png',
+    data_base64: toBase64(jpegBytes()),
+  });
+  assert.deepEqual(mismatch, { ok: false, error: 'File contents do not match content_type.' });
+
+  store.setRole(PERSONAL, 'viewer');
+  const denied = await addTaskAttachment(store, {
+    task_id: taskId,
+    content_type: 'image/jpeg',
+    data_base64: toBase64(jpegBytes()),
+  });
+  assert.deepEqual(denied, { ok: false, error: 'You cannot edit tasks in this circle' });
+  assert.equal(store.attachments.length, 2);
+
+  const missing = await addTaskAttachment(store, {
+    task_id: 'task-missing',
+    content_type: 'image/png',
+    url: 'https://cdn.example/secret.png',
+  });
+  assert.deepEqual(missing, { ok: false, error: 'Task not found' });
+});
+
+test('add_task_attachment downloads a public https file and rejects private URLs', async () => {
+  const store = memoryStore();
+  const created = await createTask(store, { title: 'Photo', circle_name: 'House' });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const taskId = created.data.task.id;
+  const fetched: string[] = [];
+
+  const saved = await addTaskAttachment(
+    store,
+    {
+      task_id: taskId,
+      content_type: 'image/png',
+      filename: 'shot.png',
+      url: 'https://cdn.example/start',
+    },
+    {
+      resolveDns: async () => ['1.1.1.1'],
+      fetch: async (input, init) => {
+        const href = String(input);
+        fetched.push(href);
+        assert.equal(init?.redirect, 'manual');
+        if (href.endsWith('/start')) {
+          return new Response(null, { status: 302, headers: { location: 'https://cdn.example/shot.png' } });
+        }
+        return new Response(asBody(pngBytes()), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        });
+      },
+    },
+  );
+  assert.equal(saved.ok, true);
+  if (!saved.ok) return;
+  assert.equal(saved.data.attachment.circle_id, HOUSE);
+  assert.equal(new RegExp(`^${HOUSE}/${taskId}/`).test(saved.data.attachment.path), true);
+  assert.deepEqual(fetched, ['https://cdn.example/start', 'https://cdn.example/shot.png']);
+
+  const blocked = await addTaskAttachment(
+    store,
+    { task_id: taskId, content_type: 'image/png', url: 'https://127.0.0.1/photo.png' },
+    { fetch: async () => { throw new Error('should not fetch'); } },
+  );
+  assert.deepEqual(blocked, { ok: false, error: 'That URL is not allowed.' });
+
+  const http = await addTaskAttachment(store, {
+    task_id: taskId,
+    content_type: 'image/png',
+    url: 'http://cdn.example/shot.png',
+  });
+  assert.equal(http.ok, false);
+
+  const both = await addTaskAttachment(store, {
+    task_id: taskId,
+    content_type: 'image/png',
+    url: 'https://cdn.example/shot.png',
+    data_base64: toBase64(pngBytes()),
+  });
+  assert.deepEqual(both, { ok: false, error: 'Pass a public https URL or base64 data, not both.' });
+
+  const rebinding = await addTaskAttachment(
+    store,
+    { task_id: taskId, content_type: 'image/png', url: 'https://cdn.example/shot.png' },
+    {
+      resolveDns: async () => ['10.1.2.3'],
+      fetch: async () => {
+        throw new Error('should not fetch');
+      },
+    },
+  );
+  assert.deepEqual(rebinding, { ok: false, error: 'That URL is not allowed.' });
+});
+
+test('attachment bytes must match an allowed image or video', () => {
+  assert.equal(bytesMatchContentType(jpegBytes(), 'image/jpeg'), true);
+  assert.equal(bytesMatchContentType(pngBytes(), 'image/png'), true);
+  assert.equal(bytesMatchContentType(mp4Bytes(), 'video/mp4'), true);
+  assert.equal(bytesMatchContentType(jpegBytes(), 'image/png'), false);
+  assert.equal(checkAttachmentSize(0), 'The file is empty.');
+  assert.equal(checkAttachmentSize(TASK_MEDIA_MAX_BYTES), null);
+  assert.equal(checkAttachmentSize(TASK_MEDIA_MAX_BYTES + 1), 'File must be 50 MB or smaller.');
+});
+
 test('update_task replaces tags and does not take a circle id', async () => {
   const store = memoryStore();
   const created = await createTask(store, { title: 'Label me', tags: ['old'], circle_name: 'House' });
@@ -332,8 +513,10 @@ test('update_task replaces tags and does not take a circle id', async () => {
 
 function memoryStore(options?: { houseRole?: Role }): TroveStore & {
   tasks: TaskRecord[];
+  attachments: AttachmentRecord[];
   calls: { counts: number; plain: number };
   setRole: (circleId: string, role: Role) => void;
+  membersOf: (circleId: string) => Member[];
 } {
   const circles: Circle[] = [
     {
@@ -361,17 +544,24 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
     ],
   };
   const tasks: TaskRecord[] = [];
+  const attachments: AttachmentRecord[] = [];
   const calls = { counts: 0, plain: 0 };
   let counter = 0;
 
   const store: TroveStore & {
     tasks: TaskRecord[];
+    attachments: AttachmentRecord[];
     calls: { counts: number; plain: number };
     setRole: (circleId: string, role: Role) => void;
+    membersOf: (circleId: string) => Member[];
   } = {
     userId: ME,
     tasks,
+    attachments,
     calls,
+    membersOf(circleId) {
+      return (members[circleId] ?? []).map((member) => ({ ...member }));
+    },
     setRole(circleId, role) {
       const circle = circles.find((item) => item.id === circleId);
       if (circle) circle.role = role;
@@ -492,7 +682,66 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         url: 'trove://invite/invite-token',
       };
     },
+    async createCircle(input) {
+      counter += 1;
+      const circle: Circle = {
+        id: `circle-${counter}`,
+        name: input.name,
+        color: input.color,
+        role: 'owner',
+        is_personal: false,
+        open_task_count: 0,
+      };
+      circles.push(circle);
+      members[circle.id] = [{ user_id: ME, display_name: 'Luke', role: 'owner' }];
+      return circle;
+    },
+    async addTaskAttachment(input) {
+      counter += 1;
+      const record: AttachmentRecord = {
+        id: `attachment-${counter}`,
+        task_id: input.taskId,
+        circle_id: input.spaceId,
+        path: `${input.spaceId}/${input.taskId}/00000000-0000-4000-8000-${String(counter).padStart(12, '0')}.${input.extension}`,
+        media_type: input.mediaType,
+        content_type: input.contentType,
+        byte_length: input.bytes.byteLength,
+        created_at: new Date(Date.UTC(2026, 9, 3, 0, 0, counter)).toISOString(),
+      };
+      attachments.push(record);
+      return record;
+    },
   };
 
   return store;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function asBody(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function jpegBytes(): Uint8Array {
+  const bytes = new Uint8Array(16);
+  bytes.set([0xff, 0xd8, 0xff, 0xe0]);
+  return bytes;
+}
+
+function pngBytes(): Uint8Array {
+  const bytes = new Uint8Array(16);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return bytes;
+}
+
+function mp4Bytes(): Uint8Array {
+  const bytes = new Uint8Array(16);
+  bytes.set([0x00, 0x00, 0x00, 0x18], 0);
+  bytes.set([0x66, 0x74, 0x79, 0x70], 4); // ftyp
+  bytes.set([0x69, 0x73, 0x6f, 0x6d], 8); // isom
+  return bytes;
 }
