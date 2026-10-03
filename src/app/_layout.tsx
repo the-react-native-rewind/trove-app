@@ -25,6 +25,7 @@ import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { toastConfig } from '@/components/ui/AppToast';
 import { Celebration } from '@/components/Celebration';
 import { useIsWide } from '@/hooks/useIsWide';
+import { withCodePush } from '@/lib/codePush';
 import { readPendingInvite } from '@/lib/pendingInvite';
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
@@ -99,7 +100,7 @@ function RootNavigator() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const [splashDone, setSplashDone] = useState(false);
   const [fontsLoaded, fontError] = useFonts({
     Fraunces_400Regular,
@@ -139,3 +140,7 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+// CodePush wraps the root component: it checks Codemagic's CodePush server for
+// OTA updates and swaps in the new JavaScript bundle (see src/lib/codePush.ts).
+export default withCodePush(RootLayout);
