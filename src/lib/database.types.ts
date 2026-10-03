@@ -206,6 +206,11 @@ export type Database = {
           id: string
           position: number
           priority: string | null
+          recurrence_series_id: string | null
+          recurrence_source_id: string | null
+          repeat_interval: number
+          repeat_unit: string | null
+          repeat_weekday: number | null
           space_id: string
           status: string
           title: string
@@ -221,6 +226,11 @@ export type Database = {
           id?: string
           position?: number
           priority?: string | null
+          recurrence_series_id?: string | null
+          recurrence_source_id?: string | null
+          repeat_interval?: number
+          repeat_unit?: string | null
+          repeat_weekday?: number | null
           space_id: string
           status?: string
           title: string
@@ -236,6 +246,11 @@ export type Database = {
           id?: string
           position?: number
           priority?: string | null
+          recurrence_series_id?: string | null
+          recurrence_source_id?: string | null
+          repeat_interval?: number
+          repeat_unit?: string | null
+          repeat_weekday?: number | null
           space_id?: string
           status?: string
           title?: string
@@ -274,6 +289,10 @@ export type Database = {
     Views: { [_ in never]: never }
     Functions: {
       accept_invite: { Args: { p_token: string }; Returns: string }
+      attachment_path_in_use: {
+        Args: { p_except_id: string; p_path: string }
+        Returns: boolean
+      }
       current_space_role: { Args: { p_space_id: string }; Returns: string }
       delete_account_data: { Args: { p_user_id: string }; Returns: undefined }
       is_space_member: { Args: { p_space_id: string }; Returns: boolean }

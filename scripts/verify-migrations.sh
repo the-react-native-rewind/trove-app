@@ -26,5 +26,6 @@ for file in "$ROOT"/supabase/migrations/*.sql; do
   psql_as -d "$DB" -f "$file"
 done
 psql_as -d "$DB" -f "$ROOT/supabase/seed.sql"
+psql_as -d "$DB" -f "$ROOT/supabase/tests/recurrence.sql"
 psql_as -d "$DB" -f "$ROOT/supabase/tests/rls.sql"
 echo "Migrations, seed, and RLS checks passed."

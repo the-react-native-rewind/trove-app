@@ -4,6 +4,17 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { useRoster } from '@/data/members';
 import { formatDueDate } from '@/lib/format';
+import {
+  defaultWeekday,
+  nextRecurrenceDate,
+  repeatChoice,
+  repeatRuleFromTask,
+  repeatScheduleCopy,
+  WEEKDAY_CHOICES,
+  type RepeatChoice,
+  type RepeatRule,
+  type RepeatUnit,
+} from '@/lib/recurrence';
 import { DateSpinner } from './DateSpinner';
 import type { SpaceWithMeta } from '@/lib/types';
 import { canWrite } from '@/lib/types';
@@ -272,6 +283,174 @@ export function AssigneePicker({
   );
 }
 
+const REPEAT_CHOICES: { value: RepeatChoice; label: string }[] = [
+  { value: 'never', label: 'Never' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'custom', label: 'Custom' },
+];
+
+const CUSTOM_UNITS: { value: RepeatUnit; label: string }[] = [
+  { value: 'day', label: 'Days' },
+  { value: 'week', label: 'Weeks' },
+  { value: 'month', label: 'Months' },
+];
+
+export function RepeatPicker({
+  task,
+  finished,
+  onChange,
+}: {
+  task: {
+    repeat_unit?: string | null;
+    repeat_interval?: number | null;
+    repeat_weekday?: number | null;
+    due_date: string | null;
+  };
+  /** This occurrence is already done. Editing its rule does not rewrite the next one. */
+  finished?: boolean;
+  onChange: (rule: RepeatRule) => void;
+}) {
+  const rule = repeatRuleFromTask(task);
+  const choice = repeatChoice(rule);
+  const showWeekday = rule.unit === 'week';
+  const nextLabel = task.due_date
+    ? formatDueDate(nextRecurrenceDate(task.due_date, rule))
+    : null;
+  const summary = repeatScheduleCopy(rule, nextLabel, task.due_date != null);
+
+  function choose(next: RepeatChoice) {
+    if (next === 'never') {
+      onChange({ unit: null, interval: 1, weekday: null });
+      return;
+    }
+    if (next === 'daily') {
+      onChange({ unit: 'day', interval: 1, weekday: null });
+      return;
+    }
+    if (next === 'weekly') {
+      onChange({
+        unit: 'week',
+        interval: 1,
+        weekday: rule.unit === 'week' && rule.weekday != null ? rule.weekday : defaultWeekday(task.due_date),
+      });
+      return;
+    }
+    if (next === 'monthly') {
+      onChange({ unit: 'month', interval: 1, weekday: null });
+      return;
+    }
+    if (choice === 'custom') return;
+    const unit = rule.unit ?? 'day';
+    onChange({
+      unit,
+      interval: 2,
+      weekday: unit === 'week' ? (rule.weekday ?? defaultWeekday(task.due_date)) : null,
+    });
+  }
+
+  function setUnit(unit: RepeatUnit) {
+    onChange({
+      unit,
+      interval: rule.interval,
+      weekday: unit === 'week' ? (rule.weekday ?? defaultWeekday(task.due_date)) : null,
+    });
+  }
+
+  return (
+    <View style={styles.field}>
+      <OptionChips label="Repeat" options={REPEAT_CHOICES} value={choice} onChange={choose} />
+      {choice === 'custom' ? (
+        <View style={styles.field}>
+          <FieldLabel>Every</FieldLabel>
+          <View style={styles.stepper}>
+            <Pressable
+              onPress={() => {
+                if (rule.interval <= 1) return;
+                onChange({ ...rule, interval: rule.interval - 1 });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Decrease interval"
+              accessibilityState={{ disabled: rule.interval <= 1 }}
+              style={[styles.stepperButton, rule.interval <= 1 && styles.stepperButtonDisabled]}
+            >
+              <Ionicons name="remove" size={18} color={colors.brandDeep} />
+            </Pressable>
+            <Text variant="bodyMedium" style={styles.stepperValue}>
+              {rule.interval}
+            </Text>
+            <Pressable
+              onPress={() => {
+                if (rule.interval >= 99) return;
+                onChange({ ...rule, interval: rule.interval + 1 });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Increase interval"
+              accessibilityState={{ disabled: rule.interval >= 99 }}
+              style={[styles.stepperButton, rule.interval >= 99 && styles.stepperButtonDisabled]}
+            >
+              <Ionicons name="add" size={18} color={colors.brandDeep} />
+            </Pressable>
+          </View>
+          <View style={styles.chipRow}>
+            {CUSTOM_UNITS.map((unit) => {
+              const selected = rule.unit === unit.value;
+              return (
+                <Pressable
+                  key={unit.value}
+                  onPress={() => setUnit(unit.value)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
+                >
+                  <Text variant="bodyMedium" color={selected ? colors.onBrand : colors.inkSoft}>
+                    {unit.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+      {showWeekday ? (
+        <View style={styles.field}>
+          <FieldLabel>On</FieldLabel>
+          <View style={styles.chipRow}>
+            {WEEKDAY_CHOICES.map((day) => {
+              const selected = rule.weekday === day.value;
+              return (
+                <Pressable
+                  key={day.name}
+                  onPress={() => onChange({ ...rule, weekday: day.value })}
+                  accessibilityRole="button"
+                  accessibilityLabel={day.name}
+                  accessibilityState={{ selected }}
+                  style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
+                >
+                  <Text variant="bodyMedium" color={selected ? colors.onBrand : colors.inkSoft}>
+                    {day.short}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+      {summary ? (
+        <Text variant="meta" color={colors.inkSoft}>
+          {summary}
+        </Text>
+      ) : null}
+      {finished && rule.unit ? (
+        <Text variant="meta" color={colors.inkFaint}>
+          This occurrence is finished. The next one keeps its own repeat rule.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export function DueDatePicker({
   value,
   onChange,
@@ -353,4 +532,15 @@ const styles = StyleSheet.create({
   chipIdle: { backgroundColor: colors.surface, borderColor: colors.hairline },
   chipSelected: { backgroundColor: colors.brand, borderColor: colors.brand },
   dueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  stepperButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.brandSoft,
+  },
+  stepperButtonDisabled: { opacity: 0.4 },
+  stepperValue: { minWidth: 24, textAlign: 'center' },
 });

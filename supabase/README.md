@@ -15,8 +15,11 @@ Apply these files, in this order, to an empty project (the `auth` and `storage` 
 11. `supabase/migrations/0011_api_tokens_and_move_task.sql`
 12. `supabase/migrations/0012_api_token_limits.sql`
 13. `supabase/migrations/0013_transactional_emails.sql`
+14. `supabase/migrations/0014_task_recurrence.sql`
 
 On the hosted project, migrations 0001–0011 are already applied. Apply `0012_api_token_limits.sql` on its own (SQL editor or `supabase db push` against that project). Do not re-run earlier migrations, and do not run `supabase/seed.sql` or `supabase/tests/bootstrap.sql` there.
+
+`0014_task_recurrence.sql` adds repeating tasks. Apply that file on its own when it is not already on the hosted project. Completing a repeating task inserts the next occurrence in the database, including when it is completed through the MCP server. The MCP tool arguments are unchanged.
 
 `supabase/seed.sql` loads demo people with a known password. Use it only on a local database. Do not run it on the production project.
 

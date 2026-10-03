@@ -5,6 +5,7 @@ import { MINE_VIEW_ID } from '@/lib/mine';
 import { positionBetween } from '@/lib/position';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
+import type { RepeatUnit } from '@/lib/recurrence';
 import type { Priority, TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -61,6 +62,12 @@ export type TaskInput = {
   due_date?: string | null;
 };
 
+export type TaskPatch = Partial<TaskInput> & {
+  repeat_unit?: RepeatUnit | null;
+  repeat_interval?: number;
+  repeat_weekday?: number | null;
+};
+
 export function useCreateTask() {
   const { userId } = useAuth();
   const qc = useQueryClient();
@@ -92,7 +99,7 @@ export function useCreateTask() {
 export function useUpdateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string } & Partial<TaskInput>) => {
+    mutationFn: async (input: { id: string } & TaskPatch) => {
       const { id, ...rest } = input;
       const patch: {
         title?: string;
@@ -101,6 +108,9 @@ export function useUpdateTask() {
         assignee_id?: string | null;
         priority?: Priority | null;
         due_date?: string | null;
+        repeat_unit?: RepeatUnit | null;
+        repeat_interval?: number;
+        repeat_weekday?: number | null;
       } = {};
       if (rest.title !== undefined) patch.title = rest.title.trim();
       if (rest.description !== undefined) patch.description = rest.description?.trim() || null;
@@ -108,6 +118,9 @@ export function useUpdateTask() {
       if (rest.assignee_id !== undefined) patch.assignee_id = rest.assignee_id;
       if (rest.priority !== undefined) patch.priority = rest.priority;
       if (rest.due_date !== undefined) patch.due_date = rest.due_date;
+      if (rest.repeat_unit !== undefined) patch.repeat_unit = rest.repeat_unit;
+      if (rest.repeat_interval !== undefined) patch.repeat_interval = rest.repeat_interval;
+      if (rest.repeat_weekday !== undefined) patch.repeat_weekday = rest.repeat_weekday;
       const { error } = await supabase.from('tasks').update(patch).eq('id', id);
       if (error) throw error;
     },

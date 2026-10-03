@@ -20,6 +20,11 @@ import {
   useTaskWeekPlan,
 } from '@/data/weekPlans';
 import { formatDueDate, isOverdue } from '@/lib/format';
+import {
+  nextRecurrenceDate,
+  repeatRuleFromTask,
+  repeatScheduleCopy,
+} from '@/lib/recurrence';
 import { canWrite, STATUSES, type Priority, type TaskStatus } from '@/lib/types';
 import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
 import { colors, radii, spacing } from '@/theme/tokens';
@@ -59,6 +64,12 @@ export default function TaskView() {
   const statusLabel = STATUSES.find((s) => s.key === (task.status as TaskStatus))?.label ?? task.status;
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
+  const repeatRule = repeatRuleFromTask(task);
+  const repeatCopy = repeatScheduleCopy(
+    repeatRule,
+    task.due_date ? formatDueDate(nextRecurrenceDate(task.due_date, repeatRule)) : null,
+    task.due_date != null,
+  );
 
   return (
     <ModalScaffold
@@ -100,6 +111,14 @@ export default function TaskView() {
             />
             <Text variant="meta" color={overdue ? colors.priorityHigh : colors.inkSoft}>
               {due}
+            </Text>
+          </View>
+        ) : null}
+        {repeatCopy ? (
+          <View style={styles.metaItem}>
+            <Ionicons name="repeat" size={14} color={colors.inkFaint} />
+            <Text variant="meta" color={colors.inkSoft}>
+              {repeatCopy}
             </Text>
           </View>
         ) : null}

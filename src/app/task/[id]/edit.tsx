@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 
-import { AssigneePicker, DueDatePicker, OptionChips } from '@/components/form';
+import { AssigneePicker, DueDatePicker, OptionChips, RepeatPicker } from '@/components/form';
 import { TaskMedia } from '@/components/TaskMedia';
 import { Button } from '@/components/ui/Button';
 import { SpaceTag } from '@/components/ui/Indicators';
@@ -201,6 +201,18 @@ export default function TaskEdit() {
       <DueDatePicker
         value={task.due_date}
         onChange={(due_date) => patch({ id: task.id, due_date })}
+      />
+      <RepeatPicker
+        task={task}
+        finished={task.status === 'done'}
+        onChange={(rule) =>
+          patch({
+            id: task.id,
+            repeat_unit: rule.unit,
+            repeat_interval: rule.interval,
+            repeat_weekday: rule.weekday,
+          })
+        }
       />
       <TaskMedia taskId={task.id} spaceId={task.space_id} canWrite />
     </ModalScaffold>
