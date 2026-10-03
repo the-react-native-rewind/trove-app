@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import DraggableFlatList, {
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { MyWeekView } from '@/components/MyWeekView';
 import { SelectionActionBar, SelectionHeader } from '@/components/SelectionChrome';
@@ -15,12 +16,16 @@ import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AccentDot } from '@/components/ui/Indicators';
 import { Text } from '@/components/ui/Text';
+import { useTaskMediaForTasks } from '@/data/attachments';
+import { useMyWeekEnabled } from '@/data/profile';
 import { positionBetween, useMoveTaskStatus, useReorderTask, useTasks } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
+import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
+import { MY_WEEK_VIEW_ID } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { SelectionProvider, useSelection } from '@/providers/SelectionProvider';
 import { colors, heatColor, radii, shadows, spacing } from '@/theme/tokens';
@@ -32,10 +37,21 @@ const EMPTY_COPY: Record<TaskStatus, { title: string; body: string }> = {
 };
 
 export default function Board() {
-  const { selectedSpaceId } = useSelectedSpace();
+  const { selectedSpaceId, setSelectedSpaceId } = useSelectedSpace();
+  const myWeekEnabled = useMyWeekEnabled();
+
+  useEffect(() => {
+    if (!myWeekEnabled && selectedSpaceId === MY_WEEK_VIEW_ID) {
+      setSelectedSpaceId(MINE_VIEW_ID);
+    }
+  }, [myWeekEnabled, selectedSpaceId, setSelectedSpaceId]);
+
+  const viewId =
+    !myWeekEnabled && selectedSpaceId === MY_WEEK_VIEW_ID ? MINE_VIEW_ID : selectedSpaceId;
+
   return (
-    <SelectionProvider key={selectedSpaceId}>
-      {selectedSpaceId === 'my-week' ? <MyWeekView /> : <SpaceBoard />}
+    <SelectionProvider key={viewId}>
+      {viewId === MY_WEEK_VIEW_ID ? <MyWeekView /> : <SpaceBoard />}
     </SelectionProvider>
   );
 }
@@ -69,6 +85,7 @@ function SpaceBoard() {
   const canWriteTask = (spaceId: string) => canWrite(spaces.find((s) => s.id === spaceId)?.role);
 
   const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(selectedSpaceId);
+  const collapse = useCollapsingHeader(insets.top);
   const moveStatus = useMoveTaskStatus();
   const reorder = useReorderTask();
   const selection = useSelection();
@@ -77,9 +94,13 @@ function SpaceBoard() {
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [showFilter, setShowFilter] = useState(false);
 
-  const unfilteredTasks =
-    isMine && excluded.size ? tasks.filter((t) => !excluded.has(t.space_id)) : tasks;
-  const visibleTasks = sortTasksByUrgency(unfilteredTasks);
+  const visibleTasks = useMemo(() => {
+    const unfiltered =
+      isMine && excluded.size ? tasks.filter((t) => !excluded.has(t.space_id)) : tasks;
+    return sortTasksByUrgency(unfiltered);
+  }, [tasks, isMine, excluded]);
+  const mediaTaskIds = useMemo(() => visibleTasks.map((task) => task.id), [visibleTasks]);
+  const { data: mediaByTask } = useTaskMediaForTasks(mediaTaskIds);
 
   const counts: Record<TaskStatus, number> = { todo: 0, in_progress: 0, done: 0 };
   for (const t of visibleTasks) counts[normalizeStatus(t.status)]++;
@@ -102,6 +123,7 @@ function SpaceBoard() {
   const dragEnabled = false;
 
   function openCreate() {
+    hapticLight();
     const params = new URLSearchParams({ status });
     if (!isMine) params.set('spaceId', selectedSpaceId);
     router.push(`/task-new?${params.toString()}` as never);
@@ -120,15 +142,13 @@ function SpaceBoard() {
         onOpen={() => router.push(`/task/${item.id}` as never)}
         onMove={(next) => moveStatus.mutate({ id: item.id, status: next })}
         onDrag={dragEnabled ? drag : undefined}
+        media={mediaByTask?.[item.id]}
       />
     );
   }
 
-  return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {selection.active ? (
-        <SelectionHeader listIds={selectableIds} wide={isWide} />
-      ) : (
+  const headerBody = (
+    <>
       <View style={[styles.header, isWide && styles.headerWide]}>
         {!isWide ? (
           <Pressable
@@ -159,7 +179,10 @@ function SpaceBoard() {
         <View style={styles.headerActions}>
           {isMine ? (
             <Pressable
-              onPress={() => setShowFilter((v) => !v)}
+              onPress={() => {
+                hapticLight();
+                setShowFilter((v) => !v);
+              }}
               hitSlop={10}
               accessibilityRole="button"
               accessibilityLabel="Filter circles"
@@ -195,7 +218,6 @@ function SpaceBoard() {
           )}
         </View>
       </View>
-      )}
 
       {!isWide ? <StatusSegmented value={status} counts={counts} onChange={setStatus} /> : null}
 
@@ -206,14 +228,15 @@ function SpaceBoard() {
             return (
               <Pressable
                 key={s.id}
-                onPress={() =>
+                onPress={() => {
+                  hapticLight();
                   setExcluded((prev) => {
                     const nextSet = new Set(prev);
                     if (nextSet.has(s.id)) nextSet.delete(s.id);
                     else nextSet.add(s.id);
                     return nextSet;
-                  })
-                }
+                  });
+                }}
                 style={[styles.chip, on ? styles.chipOn : styles.chipOff]}
               >
                 <AccentDot color={s.color} size={8} />
@@ -225,6 +248,25 @@ function SpaceBoard() {
           })}
         </View>
       ) : null}
+    </>
+  );
+
+  return (
+    <View style={[styles.container, (isWide || selection.active) && { paddingTop: insets.top }]}>
+      {selection.active ? (
+        <SelectionHeader listIds={selectableIds} wide={isWide} />
+      ) : isWide ? (
+        headerBody
+      ) : (
+        <CollapsingScreenHeader
+          topInset={insets.top}
+          onLayout={collapse.onLayout}
+          animatedStyle={collapse.animatedStyle}
+          pointerEvents={collapse.pointerEvents}
+        >
+          {headerBody}
+        </CollapsingScreenHeader>
+      )}
 
       {isWide ? (
         <KanbanBoard
@@ -233,12 +275,14 @@ function SpaceBoard() {
           onOpen={(id) => router.push(`/task/${id}` as never)}
           onMove={(id, next, position) => moveStatus.mutate({ id, status: next, position })}
           canWriteTask={canWriteTask}
+          mediaByTaskId={mediaByTask}
         />
       ) : (
         <DraggableFlatList
           data={items}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
+          onScrollOffsetChange={collapse.onScrollOffsetChange}
           onDragEnd={({ data, to }) => {
             const moved = data[to];
             if (!moved) return;
@@ -246,7 +290,10 @@ function SpaceBoard() {
             const next = data[to + 1]?.position ?? null;
             reorder.mutate({ id: moved.id, position: positionBetween(prev, next) });
           }}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            !selection.active && { paddingTop: collapse.contentOffset + spacing.sm },
+          ]}
           ListEmptyComponent={
             isLoading ? null : isError ? (
               <EmptyState

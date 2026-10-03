@@ -1,18 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTaskMediaForTasks } from '@/data/attachments';
 import { useSpaces } from '@/data/spaces';
 import { useMoveTaskStatus } from '@/data/tasks';
 import { useWeekTasks } from '@/data/weekPlans';
 import { useIsWide } from '@/hooks/useIsWide';
 import { sortTasksByUrgency } from '@/lib/board';
+import { hapticLight } from '@/lib/haptics';
 import { canWrite } from '@/lib/types';
 import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, heatColor, radii, spacing } from '@/theme/tokens';
+import { CollapsingScreenHeader, useCollapsingHeader } from './CollapsingHeader';
 import { SelectionActionBar, SelectionHeader } from './SelectionChrome';
 import { TaskRow } from './TaskRow';
 import { EmptyState } from './ui/EmptyState';
@@ -23,11 +27,14 @@ export function MyWeekView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isWide = useIsWide();
+  const collapse = useCollapsingHeader(insets.top, 128);
   const [weekStart, setWeekStart] = useState(getCurrentWeekStart);
   const currentWeek = getCurrentWeekStart();
   const { data: spaces = [] } = useSpaces();
   const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useWeekTasks(weekStart);
   const moveStatus = useMoveTaskStatus();
+  const mediaTaskIds = useMemo(() => tasks.map((task) => task.id), [tasks]);
+  const { data: mediaByTask } = useTaskMediaForTasks(mediaTaskIds);
 
   const sortedTasks = useMemo(() => sortTasksByUrgency(tasks), [tasks]);
   const selection = useSelection();
@@ -41,11 +48,8 @@ export function MyWeekView() {
     selection.exit();
   }, [weekStart, selection]);
 
-  return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {selection.active ? (
-        <SelectionHeader listIds={selectableIds} wide={isWide} />
-      ) : (
+  const weekHeader = (
+    <>
       <View style={[styles.header, isWide && styles.headerWide]}>
         {!isWide ? (
           <Pressable
@@ -63,7 +67,10 @@ export function MyWeekView() {
         </Text>
         {weekStart !== currentWeek ? (
           <Pressable
-            onPress={() => setWeekStart(currentWeek)}
+            onPress={() => {
+              hapticLight();
+              setWeekStart(currentWeek);
+            }}
             accessibilityRole="button"
             accessibilityLabel="Go to current week"
             style={styles.currentButton}
@@ -74,11 +81,13 @@ export function MyWeekView() {
           </Pressable>
         ) : null}
       </View>
-      )}
 
       <View style={styles.weekNavigation}>
         <Pressable
-          onPress={() => setWeekStart((week) => shiftWeek(week, -1))}
+          onPress={() => {
+            hapticLight();
+            setWeekStart((week) => shiftWeek(week, -1));
+          }}
           accessibilityRole="button"
           accessibilityLabel="Previous week"
           style={styles.weekButton}
@@ -89,7 +98,10 @@ export function MyWeekView() {
           {formatWeekRange(weekStart)}
         </Text>
         <Pressable
-          onPress={() => setWeekStart((week) => shiftWeek(week, 1))}
+          onPress={() => {
+            hapticLight();
+            setWeekStart((week) => shiftWeek(week, 1));
+          }}
           accessibilityRole="button"
           accessibilityLabel="Next week"
           style={styles.weekButton}
@@ -97,6 +109,23 @@ export function MyWeekView() {
           <Ionicons name="chevron-forward" size={20} color={colors.brandDeep} />
         </Pressable>
       </View>
+    </>
+  );
+
+  return (
+    <View style={[styles.container, selection.active && { paddingTop: insets.top }]}>
+      {selection.active ? (
+        <SelectionHeader listIds={selectableIds} wide={isWide} />
+      ) : (
+        <CollapsingScreenHeader
+          topInset={insets.top}
+          onLayout={collapse.onLayout}
+          animatedStyle={collapse.animatedStyle}
+          pointerEvents={collapse.pointerEvents}
+        >
+          {weekHeader}
+        </CollapsingScreenHeader>
+      )}
 
       <View style={styles.listFrame}>
         {isLoading ? (
@@ -104,9 +133,11 @@ export function MyWeekView() {
             <ActivityIndicator color={colors.brand} />
           </View>
         ) : (
-          <FlatList
+          <Animated.FlatList
             data={sortedTasks}
             keyExtractor={(task) => task.id}
+            onScroll={collapse.onScroll}
+            scrollEventThrottle={16}
             renderItem={({ item, index }) => (
               <TaskRow
                 task={item}
@@ -115,9 +146,14 @@ export function MyWeekView() {
                 canWrite={canWrite(spaces.find((space) => space.id === item.space_id)?.role)}
                 onOpen={() => router.push(`/task/${item.id}` as never)}
                 onMove={(status) => moveStatus.mutate({ id: item.id, status })}
+                media={mediaByTask?.[item.id]}
               />
             )}
-            contentContainerStyle={[styles.listContent, selection.active && styles.listContentSelecting]}
+            contentContainerStyle={[
+              styles.listContent,
+              !selection.active && { paddingTop: collapse.contentOffset + spacing.sm },
+              selection.active && styles.listContentSelecting,
+            ]}
             ListEmptyComponent={
               <EmptyState
                 icon="calendar-outline"

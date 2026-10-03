@@ -15,6 +15,7 @@ import {
   type RepeatRule,
   type RepeatUnit,
 } from '@/lib/recurrence';
+import { hapticLight } from '@/lib/haptics';
 import { DateSpinner } from './DateSpinner';
 import type { SpaceWithMeta } from '@/lib/types';
 import { canWrite } from '@/lib/types';
@@ -52,7 +53,10 @@ export function ColorPicker({
           return (
             <Pressable
               key={name}
-              onPress={() => onChange(name)}
+              onPress={() => {
+                if (!selected) hapticLight();
+                onChange(name);
+              }}
               accessibilityRole="button"
               accessibilityLabel={`${name} accent`}
               accessibilityState={{ selected }}
@@ -144,7 +148,10 @@ export function OptionChips<T extends string>({
           return (
             <Pressable
               key={opt.value}
-              onPress={() => onChange(opt.value)}
+              onPress={() => {
+                if (!selected) hapticLight();
+                onChange(opt.value);
+              }}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
@@ -182,7 +189,10 @@ export function CirclePicker({
           return (
             <Pressable
               key={circle.id}
-              onPress={() => onChange(circle.id)}
+              onPress={() => {
+                if (!selected) hapticLight();
+                onChange(circle.id);
+              }}
               accessibilityRole="button"
               accessibilityLabel={circle.name}
               accessibilityState={{ selected }}
@@ -219,7 +229,10 @@ export function SpacePicker({
           return (
             <Pressable
               key={s.id}
-              onPress={() => onChange(s.id)}
+              onPress={() => {
+                if (!selected) hapticLight();
+                onChange(s.id);
+              }}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
@@ -251,7 +264,10 @@ export function AssigneePicker({
       <FieldLabel>Assignee</FieldLabel>
       <View style={styles.chipRow}>
         <Pressable
-          onPress={() => onChange(null)}
+          onPress={() => {
+            if (value !== null) hapticLight();
+            onChange(null);
+          }}
           accessibilityRole="button"
           accessibilityState={{ selected: value === null }}
           style={[styles.chip, value === null ? styles.chipSelected : styles.chipIdle]}
@@ -266,7 +282,10 @@ export function AssigneePicker({
           return (
             <Pressable
               key={m.id}
-              onPress={() => onChange(m.user_id)}
+              onPress={() => {
+                if (!selected) hapticLight();
+                onChange(m.user_id);
+              }}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
@@ -399,7 +418,10 @@ export function RepeatPicker({
               return (
                 <Pressable
                   key={unit.value}
-                  onPress={() => setUnit(unit.value)}
+                  onPress={() => {
+                    if (!selected) hapticLight();
+                    setUnit(unit.value);
+                  }}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                   style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
@@ -422,7 +444,10 @@ export function RepeatPicker({
               return (
                 <Pressable
                   key={day.name}
-                  onPress={() => onChange({ ...rule, weekday: day.value })}
+                  onPress={() => {
+                    if (!selected) hapticLight();
+                    onChange({ ...rule, weekday: day.value });
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel={day.name}
                   accessibilityState={{ selected }}
@@ -466,7 +491,10 @@ export function DueDatePicker({
       <FieldLabel>Due date</FieldLabel>
       <View style={styles.dueRow}>
         <Pressable
-          onPress={() => setShow((v) => !v)}
+          onPress={() => {
+            hapticLight();
+            setShow((v) => !v);
+          }}
           accessibilityRole="button"
           style={[styles.chip, value ? styles.chipSelected : styles.chipIdle]}
         >

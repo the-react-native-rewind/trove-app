@@ -1,5 +1,6 @@
 import { type CSSProperties, Fragment, useState } from 'react';
 
+import type { Attachment } from '@/data/attachments';
 import { positionBetween } from '@/data/tasks';
 import { groupByStatus, type KanbanProps, STATUSES } from '@/lib/board';
 import type { TaskStatus } from '@/lib/types';
@@ -38,7 +39,14 @@ function setCardDragImage(e: React.DragEvent<HTMLDivElement>) {
   setTimeout(() => clone.remove(), 0);
 }
 
-export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask }: KanbanProps) {
+export function KanbanBoard({
+  tasks,
+  showSpaceTag,
+  onOpen,
+  onMove,
+  canWriteTask,
+  mediaByTaskId,
+}: KanbanProps & { mediaByTaskId?: Record<string, Attachment[]> }) {
   const byStatus = groupByStatus(tasks);
   const [overCol, setOverCol] = useState<TaskStatus | null>(null);
   const [overIndex, setOverIndex] = useState<number>(0);
@@ -139,6 +147,7 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
                       showSpaceTag={showSpaceTag}
                       heat={heatColor(index, column.length)}
                       selectable={canWriteTask(task.space_id)}
+                      media={mediaByTaskId?.[task.id]}
                       onPress={() => onOpen(task.id)}
                     />
                   </div>

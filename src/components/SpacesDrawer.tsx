@@ -12,12 +12,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useMyWeekEnabled } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
 import { useTasks } from '@/data/tasks';
 import { useWeekTasks } from '@/data/weekPlans';
 import { useIsWide } from '@/hooks/useIsWide';
 import { normalizeStatus } from '@/lib/board';
-import { getCurrentWeekStart } from '@/lib/week';
+import { hapticLight } from '@/lib/haptics';
+import { getCurrentWeekStart, MY_WEEK_VIEW_ID } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
 import { AccentDot } from './ui/Indicators';
@@ -34,9 +36,10 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   const router = useRouter();
   const isWide = useIsWide();
   const { selectedSpaceId, setSelectedSpaceId } = useSelectedSpace();
+  const myWeekEnabled = useMyWeekEnabled();
   const { data: spaces = [] } = useSpaces();
   const { data: mineTasks = [] } = useTasks('all');
-  const { data: weekTasks = [] } = useWeekTasks(getCurrentWeekStart());
+  const { data: weekTasks = [] } = useWeekTasks(getCurrentWeekStart(), myWeekEnabled);
 
   const [collapsed, setCollapsed] = useState(false);
   const progress = useSharedValue(1); // 0 = rail, 1 = expanded
@@ -65,6 +68,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   const weekOpen = weekTasks.filter((task) => task.status !== 'done').length;
 
   function select(id: string) {
+    if (id !== selectedSpaceId) hapticLight();
     setSelectedSpaceId(id);
     navigation.closeDrawer();
   }
@@ -114,14 +118,16 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
           count={mineOpen}
           fade={fade}
         />
-        <Row
-          active={selectedSpaceId === 'my-week'}
-          onPress={() => select('my-week')}
-          leading={<Ionicons name="calendar-outline" size={20} color={colors.brandDeep} />}
-          label="My Week"
-          count={weekOpen}
-          fade={fade}
-        />
+        {myWeekEnabled ? (
+          <Row
+            active={selectedSpaceId === MY_WEEK_VIEW_ID}
+            onPress={() => select(MY_WEEK_VIEW_ID)}
+            leading={<Ionicons name="calendar-outline" size={20} color={colors.brandDeep} />}
+            label="My Week"
+            count={weekOpen}
+            fade={fade}
+          />
+        ) : null}
 
         <Animated.View style={fade}>
           <Text variant="label" color={colors.inkFaint} style={styles.sectionLabel} numberOfLines={1}>

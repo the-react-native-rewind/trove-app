@@ -7,11 +7,14 @@ import Toast from 'react-native-toast-message';
 import { CirclePicker } from '@/components/form';
 import { MarkdownNotes } from '@/components/MarkdownNotes';
 import { TaskMedia } from '@/components/TaskMedia';
+import { TaskMediaStrip } from '@/components/TaskMediaStrip';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { PriorityDot, SpaceTag } from '@/components/ui/Indicators';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
+import { useTaskAttachments } from '@/data/attachments';
+import { useMyWeekEnabled } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
 import { useMoveTask, useTask } from '@/data/tasks';
 import { confirmDialog } from '@/lib/dialog';
@@ -35,7 +38,9 @@ export default function TaskView() {
   const router = useRouter();
   const { data: task, isLoading } = useTask(id);
   const { data: spaces = [] } = useSpaces();
-  const { data: weekPlan, isLoading: isWeekPlanLoading } = useTaskWeekPlan(id);
+  const myWeekEnabled = useMyWeekEnabled();
+  const { data: weekPlan, isLoading: isWeekPlanLoading } = useTaskWeekPlan(id, myWeekEnabled);
+  const { data: media = [] } = useTaskAttachments(id ?? '');
   const setWeekPlan = useSetTaskWeekPlan();
   const removeWeekPlan = useRemoveTaskWeekPlan();
   const currentWeek = getCurrentWeekStart();
@@ -81,6 +86,12 @@ export default function TaskView() {
         ) : undefined
       }
     >
+      {media.length > 0 ? (
+        <View style={styles.heroBleed}>
+          <TaskMediaStrip items={media} maxHeight={260} />
+        </View>
+      ) : null}
+
       {task.space ? (
         <View style={styles.tagRow}>
           <SpaceTag name={task.space.name} color={task.space.color} />
@@ -145,6 +156,7 @@ export default function TaskView() {
         </Text>
       )}
 
+      {myWeekEnabled ? (
       <View style={styles.weekPlan}>
         <View style={styles.weekPlanCopy}>
           <Text variant="bodyMedium">
@@ -216,6 +228,7 @@ export default function TaskView() {
           </Text>
         ) : null}
       </View>
+      ) : null}
 
       <TaskMedia taskId={task.id} spaceId={task.space_id} canWrite={writable} />
     </ModalScaffold>
@@ -273,6 +286,7 @@ function MoveToCircle({
 
 const styles = StyleSheet.create({
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
+  heroBleed: { marginHorizontal: -spacing.lg, marginTop: -spacing.lg },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statusPill: {
     backgroundColor: colors.brandSoft,

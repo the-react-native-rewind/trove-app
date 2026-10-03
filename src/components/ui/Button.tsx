@@ -6,11 +6,13 @@ import {
   View,
 } from 'react-native';
 
+import { hapticLight, hapticMedium } from '@/lib/haptics';
 import { colors, radii, shadows, spacing, type as typeScale } from '@/theme/tokens';
 import { Text } from './Text';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'md' | 'lg';
+type Haptic = 'light' | 'medium' | 'none';
 
 type ButtonProps = Omit<PressableProps, 'children'> & {
   label: string;
@@ -18,6 +20,8 @@ type ButtonProps = Omit<PressableProps, 'children'> & {
   size?: Size;
   loading?: boolean;
   fullWidth?: boolean;
+  /** Primary buttons tick lightly. Pass `none` when the handler plays its own. */
+  haptic?: Haptic;
 };
 
 export function Button({
@@ -26,17 +30,25 @@ export function Button({
   size = 'lg',
   loading = false,
   fullWidth = true,
+  haptic,
   disabled,
+  onPress,
   style,
   ...rest
 }: ButtonProps) {
   const isDisabled = disabled || loading;
+  const resolvedHaptic = haptic ?? (variant === 'primary' ? 'light' : 'none');
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: !!isDisabled, busy: loading }}
       disabled={isDisabled}
+      onPress={(event) => {
+        if (resolvedHaptic === 'light') hapticLight();
+        else if (resolvedHaptic === 'medium') hapticMedium();
+        onPress?.(event);
+      }}
       style={(state) => [
         styles.base,
         size === 'lg' ? styles.lg : styles.md,

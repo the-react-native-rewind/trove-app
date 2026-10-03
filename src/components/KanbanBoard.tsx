@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import type { Attachment } from '@/data/attachments';
 import { groupByStatus, type KanbanProps, STATUSES } from '@/lib/board';
 import type { TaskStatus } from '@/lib/types';
 import { colors, heatColor, radii, spacing } from '@/theme/tokens';
@@ -10,7 +11,14 @@ import { Text } from './ui/Text';
  * Native Kanban: four columns side by side. Cross-column moves use the card's
  * swipe actions (the web build gets true drag-and-drop via KanbanBoard.web).
  */
-export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask }: KanbanProps) {
+export function KanbanBoard({
+  tasks,
+  showSpaceTag,
+  onOpen,
+  onMove,
+  canWriteTask,
+  mediaByTaskId,
+}: KanbanProps & { mediaByTaskId?: Record<string, Attachment[]> }) {
   const byStatus = groupByStatus(tasks);
   return (
     <ScrollView
@@ -45,6 +53,7 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
                   canWrite={canWriteTask(task.space_id)}
                   onOpen={() => onOpen(task.id)}
                   onMove={(status) => onMove(task.id, status)}
+                  media={mediaByTaskId?.[task.id]}
                 />
               ))}
             </ScrollView>

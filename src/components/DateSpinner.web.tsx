@@ -1,3 +1,4 @@
+import { hapticSelection } from '@/lib/haptics';
 import { colors, fonts, radii } from '@/theme/tokens';
 import type { DateSpinnerProps } from './DateSpinner';
 
@@ -11,7 +12,10 @@ export function DateSpinner({ visible, value, onChange }: DateSpinnerProps) {
     <input
       type="date"
       value={value ?? ''}
-      onChange={(e) => onChange(e.target.value || null)}
+      onChange={(e) => {
+        hapticSelection();
+        onChange(e.target.value || null);
+      }}
       style={{
         fontSize: 16,
         padding: '10px 12px',

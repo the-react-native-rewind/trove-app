@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -9,6 +9,7 @@ import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { pickAvatarImage, useProfile, useUpdateProfile, useUploadAvatar } from '@/data/profile';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
+import { hapticLight } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 import { colors, radii, spacing } from '@/theme/tokens';
@@ -107,6 +108,44 @@ export default function Account() {
         helper={saved ? 'Saved' : 'This is how your people see you.'}
       />
 
+      <View style={styles.beta}>
+        <Text variant="sectionHeading">Beta features</Text>
+        <Text variant="body" color={colors.inkSoft}>
+          These are still settling in. They stay off for anyone you invite until that person turns
+          them on here.
+        </Text>
+        <View style={styles.betaRow}>
+          <View style={styles.betaCopy}>
+            <Text variant="bodyMedium">My Week</Text>
+            <Text variant="meta" color={colors.inkFaint}>
+              A private weekly plan, kept apart from the shared list.
+            </Text>
+          </View>
+          <Switch
+            value={profile?.my_week_enabled === true}
+            disabled={!profile || updateProfile.isPending}
+            onValueChange={(value) => {
+              hapticLight();
+              updateProfile.mutate(
+                { my_week_enabled: value },
+                {
+                  onError: (error) => {
+                    alertDialog(
+                      'Could not save',
+                      error instanceof Error ? error.message : 'Please try again.',
+                    );
+                  },
+                },
+              );
+            }}
+            trackColor={{ false: colors.hairline, true: colors.brand }}
+            thumbColor={colors.surface}
+            ios_backgroundColor={colors.hairline}
+            accessibilityLabel="My Week beta"
+          />
+        </View>
+      </View>
+
       <View style={styles.connect}>
         <Text variant="sectionHeading">Connect an AI assistant</Text>
         <Text variant="body" color={colors.inkSoft}>
@@ -146,6 +185,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(43, 38, 32, 0.35)',
   },
+  beta: { marginTop: spacing.xl, gap: spacing.md },
+  betaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  betaCopy: { flex: 1, gap: spacing.xs },
   connect: { marginTop: spacing.xl, gap: spacing.md },
   actions: { marginTop: spacing.xl, gap: spacing.md },
 });

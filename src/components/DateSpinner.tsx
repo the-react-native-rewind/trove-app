@@ -2,6 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Platform } from 'react-native';
 
 import { toDateString } from '@/lib/format';
+import { hapticSelection } from '@/lib/haptics';
 import { colors } from '@/theme/tokens';
 
 export type DateSpinnerProps = {
@@ -23,7 +24,10 @@ export function DateSpinner({ visible, value, onChange, onClose }: DateSpinnerPr
       accentColor={colors.brand}
       onChange={(event, date) => {
         if (Platform.OS !== 'ios') onClose();
-        if (event.type === 'set' && date) onChange(toDateString(date));
+        if (event.type === 'set' && date) {
+          hapticSelection();
+          onChange(toDateString(date));
+        }
       }}
     />
   );
