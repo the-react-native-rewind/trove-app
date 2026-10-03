@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { MyWeekView } from '@/components/MyWeekView';
+import { SelectionActionBar, SelectionHeader } from '@/components/SelectionChrome';
 import { StatusSegmented } from '@/components/StatusSegmented';
 import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -21,6 +22,7 @@ import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
+import { SelectionProvider, useSelection } from '@/providers/SelectionProvider';
 import { colors, heatColor, radii, shadows, spacing } from '@/theme/tokens';
 
 const EMPTY_COPY: Record<TaskStatus, { title: string; body: string }> = {
@@ -31,7 +33,11 @@ const EMPTY_COPY: Record<TaskStatus, { title: string; body: string }> = {
 
 export default function Board() {
   const { selectedSpaceId } = useSelectedSpace();
-  return selectedSpaceId === 'my-week' ? <MyWeekView /> : <SpaceBoard />;
+  return (
+    <SelectionProvider key={selectedSpaceId}>
+      {selectedSpaceId === 'my-week' ? <MyWeekView /> : <SpaceBoard />}
+    </SelectionProvider>
+  );
 }
 
 const MINE_EMPTY: Record<TaskStatus, { title: string; body: string }> = {
@@ -65,6 +71,7 @@ function SpaceBoard() {
   const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(selectedSpaceId);
   const moveStatus = useMoveTaskStatus();
   const reorder = useReorderTask();
+  const selection = useSelection();
 
   const [status, setStatus] = useState<TaskStatus>('in_progress');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -86,6 +93,9 @@ function SpaceBoard() {
   }, [isLoading, counts.in_progress]);
 
   const items = visibleTasks.filter((t) => normalizeStatus(t.status) === status);
+  const selectableIds = (isWide ? visibleTasks : items)
+    .filter((task) => canWriteTask(task.space_id))
+    .map((task) => task.id);
 
   // Display order is urgency, so a drag that writes position snaps back.
   // Cross-column moves on the wide board still change status.
@@ -116,7 +126,9 @@ function SpaceBoard() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
+      {selection.active ? (
+        <SelectionHeader listIds={selectableIds} wide={isWide} />
+      ) : (
       <View style={[styles.header, isWide && styles.headerWide]}>
         {!isWide ? (
           <Pressable
@@ -183,6 +195,7 @@ function SpaceBoard() {
           )}
         </View>
       </View>
+      )}
 
       {!isWide ? <StatusSegmented value={status} counts={counts} onChange={setStatus} /> : null}
 
@@ -252,7 +265,9 @@ function SpaceBoard() {
         />
       )}
 
-      {writable ? (
+      <SelectionActionBar tasks={tasks} />
+
+      {writable && !selection.active ? (
         <Pressable
           onPress={openCreate}
           accessibilityRole="button"

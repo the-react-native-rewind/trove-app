@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,7 +11,9 @@ import { useIsWide } from '@/hooks/useIsWide';
 import { sortTasksByUrgency } from '@/lib/board';
 import { canWrite } from '@/lib/types';
 import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
+import { useSelection } from '@/providers/SelectionProvider';
 import { colors, heatColor, radii, spacing } from '@/theme/tokens';
+import { SelectionActionBar, SelectionHeader } from './SelectionChrome';
 import { TaskRow } from './TaskRow';
 import { EmptyState } from './ui/EmptyState';
 import { Text } from './ui/Text';
@@ -28,9 +30,22 @@ export function MyWeekView() {
   const moveStatus = useMoveTaskStatus();
 
   const sortedTasks = useMemo(() => sortTasksByUrgency(tasks), [tasks]);
+  const selection = useSelection();
+  const selectableIds = sortedTasks
+    .filter((task) => canWrite(spaces.find((space) => space.id === task.space_id)?.role))
+    .map((task) => task.id);
+  const weekRef = useRef(weekStart);
+  useEffect(() => {
+    if (weekRef.current === weekStart) return;
+    weekRef.current = weekStart;
+    selection.exit();
+  }, [weekStart, selection]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {selection.active ? (
+        <SelectionHeader listIds={selectableIds} wide={isWide} />
+      ) : (
       <View style={[styles.header, isWide && styles.headerWide]}>
         {!isWide ? (
           <Pressable
@@ -59,6 +74,7 @@ export function MyWeekView() {
           </Pressable>
         ) : null}
       </View>
+      )}
 
       <View style={styles.weekNavigation}>
         <Pressable
@@ -101,7 +117,7 @@ export function MyWeekView() {
                 onMove={(status) => moveStatus.mutate({ id: item.id, status })}
               />
             )}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[styles.listContent, selection.active && styles.listContentSelecting]}
             ListEmptyComponent={
               <EmptyState
                 icon="calendar-outline"
@@ -123,6 +139,7 @@ export function MyWeekView() {
           />
         )}
       </View>
+      <SelectionActionBar tasks={sortedTasks} />
     </View>
   );
 }
@@ -170,5 +187,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xxl,
   },
+  listContentSelecting: { paddingBottom: 120 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

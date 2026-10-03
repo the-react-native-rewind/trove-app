@@ -5,19 +5,21 @@ import { supabase } from '@/lib/supabase';
 import type { Invite, RosterMember, SpaceRole } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
+export async function fetchRoster(spaceId: string): Promise<RosterMember[]> {
+  const { data, error } = await supabase
+    .from('space_members')
+    .select('*, profile:profiles(id,display_name,avatar_url)')
+    .eq('space_id', spaceId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as unknown as RosterMember[];
+}
+
 export function useRoster(spaceId: string) {
   return useQuery({
     queryKey: qk.roster(spaceId),
     enabled: spaceId !== 'all',
-    queryFn: async (): Promise<RosterMember[]> => {
-      const { data, error } = await supabase
-        .from('space_members')
-        .select('*, profile:profiles(id,display_name,avatar_url)')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as unknown as RosterMember[];
-    },
+    queryFn: () => fetchRoster(spaceId),
   });
 }
 

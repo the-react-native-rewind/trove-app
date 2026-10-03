@@ -4,6 +4,7 @@ import { positionBetween } from '@/data/tasks';
 import { groupByStatus, type KanbanProps, STATUSES } from '@/lib/board';
 import type { TaskStatus } from '@/lib/types';
 import { colors, fonts, heatColor, radii } from '@/theme/tokens';
+import { useSelection } from '@/providers/SelectionProvider';
 import { TaskCard } from './TaskCard';
 
 /**
@@ -42,6 +43,7 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
   const [overCol, setOverCol] = useState<TaskStatus | null>(null);
   const [overIndex, setOverIndex] = useState<number>(0);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const selection = useSelection();
 
   /** Insertion index in `column` for a pointer at clientY (dragged card excluded). */
   function insertionIndex(columnEl: HTMLElement, column: typeof tasks, clientY: number): number {
@@ -103,7 +105,7 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
               {(() => {
                 let filteredIndex = 0;
                 return column.map((task, index) => {
-                  const canDrag = canWriteTask(task.space_id);
+                  const canDrag = canWriteTask(task.space_id) && !selection.active;
                   const isDragSource = task.id === draggingId;
                   const showLine =
                     isOver && draggingId !== null && !isDragSource && filteredIndex === overIndex;
@@ -132,7 +134,13 @@ export function KanbanBoard({ tasks, showSpaceTag, onOpen, onMove, canWriteTask 
                       transition: 'opacity 120ms ease',
                     }}
                   >
-                    <TaskCard task={task} showSpaceTag={showSpaceTag} heat={heatColor(index, column.length)} onPress={() => onOpen(task.id)} />
+                    <TaskCard
+                      task={task}
+                      showSpaceTag={showSpaceTag}
+                      heat={heatColor(index, column.length)}
+                      selectable={canWriteTask(task.space_id)}
+                      onPress={() => onOpen(task.id)}
+                    />
                   </div>
                     </Fragment>
                   );

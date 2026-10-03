@@ -296,6 +296,15 @@ export type Database = {
       current_space_role: { Args: { p_space_id: string }; Returns: string }
       delete_account_data: { Args: { p_user_id: string }; Returns: undefined }
       is_space_member: { Args: { p_space_id: string }; Returns: boolean }
+      bulk_update_tasks: {
+        Args: {
+          p_task_ids: string[]
+          p_status?: string | null
+          p_assignee_id?: string | null
+          p_set_assignee?: boolean
+        }
+        Returns: number
+      }
       move_task: {
         Args: { p_task_id: string; p_target_space_id: string }
         Returns: Json

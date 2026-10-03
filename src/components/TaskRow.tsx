@@ -5,6 +5,7 @@ import ReanimatedSwipeable, {
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import type { TaskStatus, TaskWithRefs } from '@/lib/types';
+import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { TaskCard } from './TaskCard';
 import { Text } from './ui/Text';
@@ -35,6 +36,7 @@ export function TaskRow({
   dragging?: boolean;
 }) {
   const ref = useRef<SwipeableMethods>(null);
+  const selection = useSelection();
   const actions = NEXT_ACTIONS[task.status as TaskStatus];
 
   function renderRightActions() {
@@ -64,7 +66,7 @@ export function TaskRow({
     <View style={styles.wrap}>
       <ReanimatedSwipeable
         ref={ref}
-        enabled={canWrite}
+        enabled={canWrite && !selection.active}
         friction={1.6}
         rightThreshold={36}
         overshootRight={false}
@@ -74,6 +76,7 @@ export function TaskRow({
           task={task}
           showSpaceTag={showSpaceTag}
           heat={heat}
+          selectable={canWrite}
           onPress={onOpen}
           onLongPress={onDrag}
           dragging={dragging}

@@ -16,8 +16,11 @@ Apply these files, in this order, to an empty project (the `auth` and `storage` 
 12. `supabase/migrations/0012_api_token_limits.sql`
 13. `supabase/migrations/0013_transactional_emails.sql`
 14. `supabase/migrations/0014_task_recurrence.sql`
+15. `supabase/migrations/0015_bulk_update_tasks.sql`
 
 On the hosted project, migrations 0001–0011 are already applied. Apply `0012_api_token_limits.sql` on its own (SQL editor or `supabase db push` against that project). Do not re-run earlier migrations, and do not run `supabase/seed.sql` or `supabase/tests/bootstrap.sql` there.
+
+`0015_bulk_update_tasks.sql` adds `bulk_update_tasks`, one update for assigning or completing many tasks. It runs as the caller, so row level security still applies. Completing a repeating task is a normal status update and still spawns the next occurrence.
 
 `0014_task_recurrence.sql` adds repeating tasks. It is applied on the hosted project. Completing a repeating task inserts the next occurrence in the database, including when it is completed through the MCP server. `create_task`, `create_tasks_bulk`, and `update_task` accept `repeat_unit`, `repeat_interval`, and `repeat_weekday`. Task results include those fields and `recurrence_series_id`. `recurrence_source_id` stays server-only.
 

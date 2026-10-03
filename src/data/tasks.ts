@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { type BulkAssignee, type BulkPatch, patchCachedTasks } from '@/lib/bulk';
 import { celebrate } from '@/lib/celebrate';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { positionBetween } from '@/lib/position';
@@ -205,6 +206,68 @@ export function useReorderTask() {
       if (error) throw error;
     },
     onSuccess: () => invalidateTasks(qc),
+  });
+}
+
+export type BulkUpdateInput = {
+  ids: string[];
+  status?: TaskStatus;
+  setAssignee?: boolean;
+  assigneeId?: string | null;
+  assignee?: BulkAssignee;
+  /** Confetti when this completion newly finishes at least one task. */
+  celebrateCompletion?: boolean;
+};
+
+/**
+ * Assign or complete many tasks in one database call. The cache updates
+ * immediately and rolls back if the server rejects the batch.
+ */
+export function useBulkUpdateTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: BulkUpdateInput) => {
+      const { data, error } = await supabase.rpc('bulk_update_tasks', {
+        p_task_ids: input.ids,
+        p_status: input.status ?? null,
+        p_assignee_id: input.setAssignee ? (input.assigneeId ?? null) : null,
+        p_set_assignee: input.setAssignee ?? false,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['tasks'] });
+      await qc.cancelQueries({ queryKey: ['week-tasks'] });
+      await qc.cancelQueries({ queryKey: ['task'] });
+      const previous = [
+        ...qc.getQueriesData({ queryKey: ['tasks'] }),
+        ...qc.getQueriesData({ queryKey: ['week-tasks'] }),
+        ...qc.getQueriesData({ queryKey: ['task'] }),
+      ];
+      const patch: BulkPatch = {
+        ids: new Set(input.ids),
+        status: input.status,
+        setAssignee: input.setAssignee,
+        assigneeId: input.assigneeId,
+        assignee: input.setAssignee ? (input.assignee ?? null) : undefined,
+      };
+      const apply = (data: unknown) => patchCachedTasks(data, patch);
+      qc.setQueriesData({ queryKey: ['tasks'] }, apply);
+      qc.setQueriesData({ queryKey: ['week-tasks'] }, apply);
+      qc.setQueriesData({ queryKey: ['task'] }, apply);
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      for (const [key, data] of context?.previous ?? []) qc.setQueryData(key, data);
+    },
+    onSuccess: (_data, input) => {
+      if (input.status === 'done' && input.celebrateCompletion) celebrate();
+    },
+    onSettled: (_data, _error, input) => {
+      invalidateTasks(qc);
+      for (const id of input.ids) qc.invalidateQueries({ queryKey: qk.task(id) });
+    },
   });
 }
 

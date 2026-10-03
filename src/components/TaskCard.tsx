@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { plainTextFromMarkdown } from '@/lib/markdown';
 import type { TaskWithRefs } from '@/lib/types';
 import { formatDueDate, isOverdue } from '@/lib/format';
 import { describeRepeat, repeatRuleFromTask } from '@/lib/recurrence';
+import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Avatar } from './ui/Avatar';
 import { SpaceTag } from './ui/Indicators';
@@ -14,25 +16,65 @@ type TaskCardProps = {
   showSpaceTag?: boolean;
   /** Colour for the urgency dot, derived from the task's rank in its list. */
   heat?: string;
+  /** The signed-in person can change this task. Long-press selects it. */
+  selectable?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
   dragging?: boolean;
 };
 
-export function TaskCard({ task, showSpaceTag, heat, onPress, onLongPress, dragging }: TaskCardProps) {
+export function TaskCard({
+  task,
+  showSpaceTag,
+  heat,
+  selectable = false,
+  onPress,
+  onLongPress,
+  dragging,
+}: TaskCardProps) {
+  const selection = useSelection();
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
   const done = task.status === 'done';
   const repeats = describeRepeat(repeatRuleFromTask(task));
+  const notes = plainTextFromMarkdown(task.description ?? '');
+  const selecting = selection.active;
+  const selected = selecting && selection.isSelected(task.id);
+
+  function handlePress() {
+    if (selecting) {
+      if (selectable) selection.toggle(task.id);
+      return;
+    }
+    onPress?.();
+  }
+
+  function handleLongPress() {
+    if (selectable) {
+      if (selecting) selection.toggle(task.id);
+      else selection.enter(task.id);
+      return;
+    }
+    onLongPress?.();
+  }
+
+  const label = [
+    selected ? 'Selected' : selecting && selectable ? 'Not selected' : null,
+    task.title,
+    repeats,
+  ]
+    .filter(Boolean)
+    .join('. ');
 
   return (
     <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={180}
+      onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={selectable ? 400 : 180}
       accessibilityRole="button"
-      accessibilityLabel={repeats ? `${task.title}. ${repeats}` : task.title}
-      style={[styles.card, overdue && styles.overdue, dragging && styles.dragging]}
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      style={[styles.card, overdue && styles.overdue, selected && styles.selected, dragging && styles.dragging]}
     >
       {showSpaceTag && task.space ? (
         <View style={styles.tagRow}>
@@ -40,9 +82,27 @@ export function TaskCard({ task, showSpaceTag, heat, onPress, onLongPress, dragg
         </View>
       ) : null}
 
-      <Text variant="cardTitle" color={done ? colors.inkFaint : colors.ink} numberOfLines={3}>
-        {task.title}
-      </Text>
+      <View style={styles.titleRow}>
+        {selecting && selectable ? (
+          <View style={[styles.check, selected && styles.checkOn]}>
+            {selected ? <Ionicons name="checkmark" size={14} color={colors.onBrand} /> : null}
+          </View>
+        ) : null}
+        <Text
+          variant="cardTitle"
+          color={done ? colors.inkFaint : colors.ink}
+          numberOfLines={3}
+          style={styles.title}
+        >
+          {task.title}
+        </Text>
+      </View>
+
+      {notes ? (
+        <Text variant="meta" color={colors.inkSoft} numberOfLines={2}>
+          {notes}
+        </Text>
+      ) : null}
 
       {(due || task.assignee || heat || repeats) && (
         <View style={styles.meta}>
@@ -89,6 +149,21 @@ const styles = StyleSheet.create({
   },
   overdue: { backgroundColor: colors.overdueSurface, borderColor: colors.overdueBorder },
   dragging: { ...shadows.floating, borderColor: colors.brandSoft },
+  selected: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  title: { flex: 1 },
+  check: {
+    width: 22,
+    height: 22,
+    marginTop: 1,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: colors.inkFaint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  checkOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   tagRow: { flexDirection: 'row' },
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
   heatDot: { width: 9, height: 9, borderRadius: 4.5 },

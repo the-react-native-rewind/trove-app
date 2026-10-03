@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 
 import { CirclePicker } from '@/components/form';
+import { MarkdownNotes } from '@/components/MarkdownNotes';
 import { TaskMedia } from '@/components/TaskMedia';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -136,10 +137,8 @@ export default function TaskView() {
         <MoveToCircle taskId={task.id} destinations={destinations} />
       ) : null}
 
-      {task.description ? (
-        <Text variant="body" color={colors.inkSoft}>
-          {task.description}
-        </Text>
+      {task.description?.trim() ? (
+        <MarkdownNotes markdown={task.description} />
       ) : (
         <Text variant="body" color={colors.inkFaint}>
           No notes yet.
