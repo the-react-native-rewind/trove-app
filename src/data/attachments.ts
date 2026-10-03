@@ -114,7 +114,16 @@ export function useDeleteAttachment(taskId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (attachment: { id: string; path: string }) => {
-      await supabase.storage.from(BUCKET).remove([attachment.path]);
+      // Recurring tasks share one storage object across occurrences. Remove the
+      // file only when this is the last row pointing at it. If the check fails,
+      // keep the file: a sibling occurrence may still display it.
+      const { data: shared, error: sharedError } = await supabase.rpc('attachment_path_in_use', {
+        p_path: attachment.path,
+        p_except_id: attachment.id,
+      });
+      if (!sharedError && !shared) {
+        await supabase.storage.from(BUCKET).remove([attachment.path]);
+      }
       const { error } = await supabase.from('task_attachments').delete().eq('id', attachment.id);
       if (error) throw error;
     },

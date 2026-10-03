@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { TaskWithRefs } from '@/lib/types';
 import { formatDueDate, isOverdue } from '@/lib/format';
+import { describeRepeat, repeatRuleFromTask } from '@/lib/recurrence';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Avatar } from './ui/Avatar';
 import { SpaceTag } from './ui/Indicators';
@@ -22,6 +23,7 @@ export function TaskCard({ task, showSpaceTag, heat, onPress, onLongPress, dragg
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
   const done = task.status === 'done';
+  const repeats = describeRepeat(repeatRuleFromTask(task));
 
   return (
     <Pressable
@@ -29,7 +31,7 @@ export function TaskCard({ task, showSpaceTag, heat, onPress, onLongPress, dragg
       onLongPress={onLongPress}
       delayLongPress={180}
       accessibilityRole="button"
-      accessibilityLabel={task.title}
+      accessibilityLabel={repeats ? `${task.title}. ${repeats}` : task.title}
       style={[styles.card, overdue && styles.overdue, dragging && styles.dragging]}
     >
       {showSpaceTag && task.space ? (
@@ -42,9 +44,17 @@ export function TaskCard({ task, showSpaceTag, heat, onPress, onLongPress, dragg
         {task.title}
       </Text>
 
-      {(due || task.assignee || heat) && (
+      {(due || task.assignee || heat || repeats) && (
         <View style={styles.meta}>
           {heat ? <View style={[styles.heatDot, { backgroundColor: heat }]} /> : null}
+          {repeats ? (
+            <View style={styles.dueWrap}>
+              <Ionicons name="repeat" size={13} color={colors.inkFaint} />
+              <Text variant="meta" color={colors.inkFaint}>
+                Repeats
+              </Text>
+            </View>
+          ) : null}
           {due ? (
             <View style={styles.dueWrap}>
               <Ionicons
