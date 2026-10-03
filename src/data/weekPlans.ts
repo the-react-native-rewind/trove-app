@@ -18,11 +18,11 @@ export type WeekTask = TaskWithRefs & {
   weekPosition: number;
 };
 
-export function useWeekTasks(weekStart: string) {
+export function useWeekTasks(weekStart: string, enabled = true) {
   const { userId } = useAuth();
   return useQuery({
     queryKey: qk.weekTasks(userId ?? '', weekStart),
-    enabled: !!userId,
+    enabled: !!userId && enabled,
     queryFn: async (): Promise<WeekTask[]> => {
       const { data: plans, error: planError } = await supabase
         .from('user_task_week_plans')
@@ -55,11 +55,11 @@ export function useWeekTasks(weekStart: string) {
   });
 }
 
-export function useTaskWeekPlan(taskId: string) {
+export function useTaskWeekPlan(taskId: string, enabled = true) {
   const { userId } = useAuth();
   return useQuery({
     queryKey: qk.taskWeekPlan(userId ?? '', taskId),
-    enabled: !!userId && !!taskId,
+    enabled: !!userId && !!taskId && enabled,
     queryFn: async (): Promise<TaskWeekPlan | null> => {
       const { data, error } = await supabase
         .from('user_task_week_plans')

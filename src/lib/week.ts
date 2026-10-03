@@ -6,6 +6,9 @@ function parseDate(value: string): Date {
   return new Date(`${value}T00:00:00`);
 }
 
+/** Drawer id for the private weekly plan. Hidden unless the beta toggle is on. */
+export const MY_WEEK_VIEW_ID = 'my-week';
+
 /** Monday of the supplied date's local week, formatted for a Postgres date. */
 export function getWeekStart(date = new Date()): string {
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());

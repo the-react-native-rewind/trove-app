@@ -4,6 +4,7 @@ import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
+import type { Attachment } from '@/data/attachments';
 import type { TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, spacing } from '@/theme/tokens';
@@ -25,6 +26,7 @@ export function TaskRow({
   onMove,
   onDrag,
   dragging,
+  media,
 }: {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
@@ -34,6 +36,7 @@ export function TaskRow({
   onMove: (status: TaskStatus) => void;
   onDrag?: () => void;
   dragging?: boolean;
+  media?: Attachment[];
 }) {
   const ref = useRef<SwipeableMethods>(null);
   const selection = useSelection();
@@ -80,6 +83,7 @@ export function TaskRow({
           onPress={onOpen}
           onLongPress={onDrag}
           dragging={dragging}
+          media={media}
         />
       </ReanimatedSwipeable>
     </View>

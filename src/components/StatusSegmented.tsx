@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { hapticLight } from '@/lib/haptics';
 import { STATUSES, type TaskStatus } from '@/lib/types';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { Text } from './ui/Text';
@@ -25,7 +26,10 @@ export function StatusSegmented({
         return (
           <Pressable
             key={key}
-            onPress={() => onChange(key)}
+            onPress={() => {
+              if (!active) hapticLight();
+              onChange(key);
+            }}
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
             style={[styles.seg, active && styles.segActive]}

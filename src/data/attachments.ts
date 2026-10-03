@@ -22,6 +22,13 @@ export function taskAttachmentsKey(taskId: string) {
   return ['task-attachments', taskId] as const;
 }
 
+const mediaBatchKey = ['task-media-batch'] as const;
+
+function invalidateTaskMedia(qc: ReturnType<typeof useQueryClient>, taskId: string) {
+  qc.invalidateQueries({ queryKey: taskAttachmentsKey(taskId) });
+  qc.invalidateQueries({ queryKey: mediaBatchKey });
+}
+
 /** Open the library picker. Returns null if denied or cancelled. */
 export async function pickMedia(): Promise<PickedMedia | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -106,7 +113,7 @@ export function useAddAttachment(taskId: string, spaceId: string) {
   return useMutation({
     mutationFn: (input: PickedMedia) =>
       uploadTaskMedia({ taskId, spaceId, uri: input.uri, mediaType: input.mediaType, userId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: taskAttachmentsKey(taskId) }),
+    onSuccess: () => invalidateTaskMedia(qc, taskId),
   });
 }
 
@@ -127,6 +134,59 @@ export function useDeleteAttachment(taskId: string) {
       const { error } = await supabase.from('task_attachments').delete().eq('id', attachment.id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: taskAttachmentsKey(taskId) }),
+    onSuccess: () => invalidateTaskMedia(qc, taskId),
+  });
+}
+
+const MEDIA_CHUNK = 80;
+
+/** One signed-url lookup for every task currently on screen, instead of a query per card. */
+export async function loadTaskMediaMap(taskIds: readonly string[]): Promise<Record<string, Attachment[]>> {
+  const unique = [...new Set(taskIds)];
+  const map: Record<string, Attachment[]> = {};
+  for (const id of unique) map[id] = [];
+  if (unique.length === 0) return map;
+
+  const rows: { id: string; task_id: string; path: string; media_type: string }[] = [];
+  for (let i = 0; i < unique.length; i += MEDIA_CHUNK) {
+    const slice = unique.slice(i, i + MEDIA_CHUNK);
+    const { data, error } = await supabase
+      .from('task_attachments')
+      .select('id, task_id, path, media_type')
+      .in('task_id', slice)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    rows.push(...(data ?? []));
+  }
+
+  const urlByPath = new Map<string, string | null>();
+  for (let i = 0; i < rows.length; i += MEDIA_CHUNK) {
+    const slice = rows.slice(i, i + MEDIA_CHUNK).map((row) => row.path);
+    const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(slice, 60 * 60);
+    for (const item of signed ?? []) {
+      if (item.path) urlByPath.set(item.path, item.signedUrl);
+    }
+  }
+
+  for (const row of rows) {
+    const list = map[row.task_id] ?? [];
+    list.push({
+      id: row.id,
+      path: row.path,
+      media_type: row.media_type === 'video' ? 'video' : 'image',
+      url: urlByPath.get(row.path) ?? null,
+    });
+    map[row.task_id] = list;
+  }
+  return map;
+}
+
+export function useTaskMediaForTasks(taskIds: readonly string[]) {
+  const ids = [...new Set(taskIds)].sort();
+  return useQuery({
+    queryKey: [...mediaBatchKey, ids],
+    enabled: ids.length > 0,
+    staleTime: 60_000,
+    queryFn: () => loadTaskMediaMap(ids),
   });
 }

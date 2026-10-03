@@ -1,12 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import type { Attachment } from '@/data/attachments';
 import { plainTextFromMarkdown } from '@/lib/markdown';
 import type { TaskWithRefs } from '@/lib/types';
 import { formatDueDate, isOverdue } from '@/lib/format';
 import { describeRepeat, repeatRuleFromTask } from '@/lib/recurrence';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
+import { TaskMediaStrip } from './TaskMediaStrip';
 import { Avatar } from './ui/Avatar';
 import { SpaceTag } from './ui/Indicators';
 import { Text } from './ui/Text';
@@ -21,6 +23,7 @@ type TaskCardProps = {
   onPress?: () => void;
   onLongPress?: () => void;
   dragging?: boolean;
+  media?: Attachment[];
 };
 
 export function TaskCard({
@@ -31,6 +34,7 @@ export function TaskCard({
   onPress,
   onLongPress,
   dragging,
+  media,
 }: TaskCardProps) {
   const selection = useSelection();
   const due = formatDueDate(task.due_date);
@@ -67,15 +71,18 @@ export function TaskCard({
     .join('. ');
 
   return (
-    <Pressable
-      onPress={handlePress}
-      onLongPress={handleLongPress}
-      delayLongPress={selectable ? 400 : 180}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected }}
-      style={[styles.card, overdue && styles.overdue, selected && styles.selected, dragging && styles.dragging]}
-    >
+    <View style={[styles.card, overdue && styles.overdue, selected && styles.selected, dragging && styles.dragging]}>
+      <View style={styles.clip}>
+      {media && media.length > 0 ? <TaskMediaStrip items={media} /> : null}
+      <Pressable
+        onPress={handlePress}
+        onLongPress={handleLongPress}
+        delayLongPress={selectable ? 400 : 180}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ selected }}
+        style={styles.body}
+      >
       {showSpaceTag && task.space ? (
         <View style={styles.tagRow}>
           <SpaceTag name={task.space.name} color={task.space.color} />
@@ -133,7 +140,9 @@ export function TaskCard({
           ) : null}
         </View>
       )}
-    </Pressable>
+      </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -141,12 +150,12 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    padding: spacing.lg,
-    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.hairline,
     ...shadows.card,
   },
+  clip: { borderRadius: radii.card, overflow: 'hidden' },
+  body: { padding: spacing.lg, gap: spacing.sm },
   overdue: { backgroundColor: colors.overdueSurface, borderColor: colors.overdueBorder },
   dragging: { ...shadows.floating, borderColor: colors.brandSoft },
   selected: { borderColor: colors.brand, backgroundColor: colors.brandSoft },

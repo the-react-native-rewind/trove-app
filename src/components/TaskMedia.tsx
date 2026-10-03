@@ -15,6 +15,7 @@ import {
 } from '@/data/attachments';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { FieldLabel } from './form';
+import { MediaViewer } from './TaskMediaStrip';
 import { Text } from './ui/Text';
 
 export function TaskMedia({
@@ -30,6 +31,7 @@ export function TaskMedia({
   const addAttachment = useAddAttachment(taskId, spaceId);
   const deleteAttachment = useDeleteAttachment(taskId);
   const [error, setError] = useState<string | null>(null);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   async function pick() {
     setError(null);
@@ -68,11 +70,21 @@ export function TaskMedia({
       ) : null}
 
       <View style={styles.grid}>
-        {items.map((item) =>
+        {items.map((item, index) =>
           item.media_type === 'video' ? (
-            <VideoTile key={item.id} url={item.url} onLongPress={() => confirmDelete(item)} />
+            <VideoTile
+              key={item.id}
+              url={item.url}
+              onPress={() => setOpenIndex(index)}
+              onLongPress={() => confirmDelete(item)}
+            />
           ) : (
-            <Pressable key={item.id} onLongPress={() => confirmDelete(item)} style={styles.tile}>
+            <Pressable
+              key={item.id}
+              onPress={() => setOpenIndex(index)}
+              onLongPress={() => confirmDelete(item)}
+              style={styles.tile}
+            >
               {item.url ? (
                 <Image source={{ uri: item.url }} style={styles.media} contentFit="cover" />
               ) : null}
@@ -100,6 +112,10 @@ export function TaskMedia({
         ) : null}
       </View>
 
+      {openIndex != null ? (
+        <MediaViewer items={items} initialIndex={openIndex} onClose={() => setOpenIndex(null)} />
+      ) : null}
+
       {error ? (
         <Text variant="meta" color={colors.priorityHigh}>
           {error}
@@ -109,12 +125,20 @@ export function TaskMedia({
   );
 }
 
-function VideoTile({ url, onLongPress }: { url: string | null; onLongPress: () => void }) {
+function VideoTile({
+  url,
+  onPress,
+  onLongPress,
+}: {
+  url: string | null;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
   const player = useVideoPlayer(url ?? '', (p) => {
     p.loop = true;
   });
   return (
-    <Pressable onLongPress={onLongPress} style={styles.tile}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={styles.tile}>
       <VideoView style={styles.media} player={player} nativeControls contentFit="cover" />
     </Pressable>
   );

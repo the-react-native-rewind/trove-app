@@ -26,21 +26,55 @@ export function useProfile() {
   });
 }
 
+type ProfilePatch = {
+  display_name?: string;
+  avatar_url?: string | null;
+  my_week_enabled?: boolean;
+};
+
 export function useUpdateProfile() {
   const { userId } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { display_name?: string; avatar_url?: string | null }) => {
-      const patch: { display_name?: string; avatar_url?: string | null } = {};
+    mutationFn: async (input: ProfilePatch) => {
+      const patch: ProfilePatch = {};
       if (input.display_name !== undefined) patch.display_name = input.display_name.trim();
       if (input.avatar_url !== undefined) patch.avatar_url = input.avatar_url;
+      if (input.my_week_enabled !== undefined) patch.my_week_enabled = input.my_week_enabled;
       const { error } = await supabase.from('profiles').update(patch).eq('id', userId!);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onMutate: async (input) => {
+      if (!userId) return;
+      const key = qk.profile(userId);
+      await qc.cancelQueries({ queryKey: key });
+      const previous = qc.getQueryData<Profile | null>(key);
+      qc.setQueryData<Profile | null>(key, (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          ...(input.display_name !== undefined ? { display_name: input.display_name.trim() } : {}),
+          ...(input.avatar_url !== undefined ? { avatar_url: input.avatar_url } : {}),
+          ...(input.my_week_enabled !== undefined ? { my_week_enabled: input.my_week_enabled } : {}),
+        };
+      });
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (userId && context?.previous !== undefined) {
+        qc.setQueryData(qk.profile(userId), context.previous);
+      }
+    },
+    onSettled: () => {
       if (userId) qc.invalidateQueries({ queryKey: qk.profile(userId) });
     },
   });
+}
+
+/** My Week is off until this person turns it on. Missing profile data stays off. */
+export function useMyWeekEnabled(): boolean {
+  const { data: profile } = useProfile();
+  return profile?.my_week_enabled === true;
 }
 
 /** Open the library picker for a square profile photo. Returns null if denied or cancelled. */

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { type BulkAssignee, type BulkPatch, patchCachedTasks } from '@/lib/bulk';
 import { celebrate } from '@/lib/celebrate';
+import { hapticSuccess } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { positionBetween } from '@/lib/position';
 import { qk } from '@/lib/queryClient';
@@ -128,7 +129,10 @@ export function useUpdateTask() {
     onSuccess: (_d, vars) => {
       invalidateTasks(qc);
       qc.invalidateQueries({ queryKey: qk.task(vars.id) });
-      if (vars.status === 'done') celebrate();
+      if (vars.status === 'done') {
+        hapticSuccess();
+        celebrate();
+      }
     },
   });
 }
@@ -146,7 +150,10 @@ export function useMoveTaskStatus() {
     },
     onSuccess: (_d, vars) => {
       invalidateTasks(qc);
-      if (vars.status === 'done') celebrate();
+      if (vars.status === 'done') {
+        hapticSuccess();
+        celebrate();
+      }
     },
   });
 }

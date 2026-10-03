@@ -13,6 +13,7 @@ import { useSpaces } from '@/data/spaces';
 import { useCreateTask } from '@/data/tasks';
 import { useDictation } from '@/hooks/useDictation';
 import { fallbackTitle, inferDueDate } from '@/lib/capture';
+import { hapticLight, hapticMedium } from '@/lib/haptics';
 import { enrichCapture } from '@/lib/enrich';
 import { formatDueDate } from '@/lib/format';
 import { canWrite } from '@/lib/types';
@@ -83,6 +84,7 @@ export default function NewTask() {
       setError('Choose a circle for this task.');
       return;
     }
+    hapticMedium();
     if (dictation.listening) dictation.stop();
     setSaving(true);
     try {
@@ -133,7 +135,14 @@ export default function NewTask() {
   return (
     <ModalScaffold
       title="New task"
-      footer={<Button label={saving ? 'Polishing…' : 'Add task'} onPress={onCreate} loading={saving} />}
+      footer={
+        <Button
+          label={saving ? 'Polishing…' : 'Add task'}
+          onPress={onCreate}
+          loading={saving}
+          haptic="none"
+        />
+      }
     >
       <View style={styles.captureBox}>
         <TextInput
@@ -147,17 +156,20 @@ export default function NewTask() {
         />
         <View style={styles.captureFooter}>
           {dictation.listening ? (
-            <Text variant="meta" color={colors.priorityHigh}>
+            <Text variant="meta" color={colors.priorityHigh} style={styles.captureHint}>
               Listening…
             </Text>
           ) : (
-            <Text variant="meta" color={colors.inkFaint}>
+            <Text variant="meta" color={colors.inkFaint} style={styles.captureHint}>
               A title and due date are worked out for you.
             </Text>
           )}
           {dictation.available ? (
             <Pressable
-              onPress={toggleDictation}
+              onPress={() => {
+                hapticLight();
+                toggleDictation();
+              }}
               accessibilityRole="button"
               accessibilityLabel={dictation.listening ? 'Stop dictating' : 'Dictate the task'}
               style={[styles.micButton, dictation.listening && styles.micButtonActive]}
@@ -239,6 +251,9 @@ export default function NewTask() {
 const TILE = 88;
 const styles = StyleSheet.create({
   captureBox: {
+    alignSelf: 'stretch',
+    width: '100%',
+    overflow: 'hidden',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.hairline,
@@ -247,6 +262,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   captureInput: {
+    width: '100%',
+    minWidth: 0,
     minHeight: 120,
     textAlignVertical: 'top',
     color: colors.ink,
@@ -257,10 +274,12 @@ const styles = StyleSheet.create({
   captureFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.md,
   },
+  captureHint: { flex: 1, minWidth: 0 },
   micButton: {
+    flexGrow: 0,
+    flexShrink: 0,
     width: 40,
     height: 40,
     borderRadius: 20,
