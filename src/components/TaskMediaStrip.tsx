@@ -120,7 +120,7 @@ function MediaFrame({ item, index }: { item: Attachment; index: number }) {
       cachePolicy="memory-disk"
       recyclingKey={item.id}
       priority={index === 0 ? 'normal' : 'low'}
-      loading="lazy"
+      loading={index === 0 ? 'eager' : 'lazy'}
       transition={120}
       accessibilityLabel="Task photo"
     />
