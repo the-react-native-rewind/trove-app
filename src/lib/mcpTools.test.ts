@@ -27,10 +27,13 @@ import {
   getCircle,
   inviteToCircle,
   listCircles,
+  listCircleTasks,
   listMyTasks,
   moveTask,
   planMove,
+  resolveRepeat,
   updateTask,
+  weekdayOfDate,
 } from './mcpTools';
 
 const ME = 'user-me';
@@ -183,6 +186,144 @@ test('move_task clears an assignee who is not in the destination circle', async 
   assert.equal(moved.data.assignee_cleared, true);
   assert.equal(moved.data.task.assignee_id, null);
   assert.equal(moved.data.task.circle_id, PERSONAL);
+});
+
+test('create and list tasks include the repeat rule and series id', async () => {
+  const store = memoryStore();
+  const created = await createTask(store, {
+    title: 'Bins',
+    circle_name: 'House',
+    due_date: '2026-10-07',
+    repeat_unit: 'week',
+    repeat_interval: 1,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  assert.equal(created.data.task.repeat_unit, 'week');
+  assert.equal(created.data.task.repeat_interval, 1);
+  assert.equal(created.data.task.repeat_weekday, 3);
+  assert.equal(created.data.task.recurrence_series_id, created.data.task.id);
+  assert.equal(Object.hasOwn(created.data.task, 'recurrence_source_id'), false);
+
+  const daily = await createTask(store, {
+    title: 'Water',
+    personal: true,
+    repeat_unit: 'day',
+    repeat_interval: 2,
+  });
+  assert.equal(daily.ok, true);
+  if (!daily.ok) return;
+  assert.equal(daily.data.task.repeat_unit, 'day');
+  assert.equal(daily.data.task.repeat_interval, 2);
+  assert.equal(daily.data.task.repeat_weekday, null);
+  assert.equal(daily.data.task.recurrence_series_id, daily.data.task.id);
+
+  const listed = await listCircleTasks(store, { circle_name: 'House' });
+  assert.equal(listed.ok, true);
+  if (!listed.ok) return;
+  assert.equal(listed.data.tasks[0]?.repeat_unit, 'week');
+  assert.equal(listed.data.tasks[0]?.recurrence_series_id, created.data.task.id);
+
+  const mine = await listMyTasks(store, {});
+  assert.equal(mine.ok, true);
+  if (!mine.ok) return;
+  const water = mine.data.tasks.find((task) => task.title === 'Water');
+  assert.equal(water?.title, 'Water');
+  if (!water) return;
+  assert.equal(water.repeat_interval, 2);
+  assert.equal(Object.hasOwn(water, 'recurrence_source_id'), false);
+
+  const once = await createTask(store, { title: 'Once', repeat_unit: 'never' });
+  assert.equal(once.ok, true);
+  if (!once.ok) return;
+  assert.equal(once.data.task.repeat_unit, null);
+  assert.equal(once.data.task.recurrence_series_id, null);
+});
+
+test('repeat rules reject bad values and never clears without dropping the series', async () => {
+  const store = memoryStore();
+  const missingUnit = await createTask(store, { title: 'Nope', repeat_interval: 3 });
+  assert.deepEqual(missingUnit, { ok: false, error: 'Set repeat_unit to day, week, or month before repeat_interval.' });
+
+  const badInterval = await createTask(store, { title: 'Nope', repeat_unit: 'month', repeat_interval: 100 });
+  assert.deepEqual(badInterval, { ok: false, error: 'repeat_interval must be an integer from 1 to 99.' });
+
+  const badWeekday = await createTask(store, { title: 'Nope', repeat_unit: 'week', repeat_weekday: 7 });
+  assert.deepEqual(badWeekday, {
+    ok: false,
+    error: 'repeat_weekday must be an integer from 0 (Sunday) to 6 (Saturday), or null.',
+  });
+
+  const weekdayOnDay = await createTask(store, { title: 'Nope', repeat_unit: 'day', repeat_weekday: 1 });
+  assert.deepEqual(weekdayOnDay, { ok: false, error: 'repeat_weekday is only used when repeat_unit is week.' });
+
+  const created = await createTask(store, {
+    title: 'Bins',
+    due_date: '2026-10-07',
+    repeat_unit: 'week',
+    repeat_weekday: 3,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  const cleared = await updateTask(store, { task_id: created.data.task.id, repeat_unit: 'never' });
+  assert.equal(cleared.ok, true);
+  if (!cleared.ok) return;
+  assert.equal(cleared.data.task.repeat_unit, null);
+  assert.equal(cleared.data.task.repeat_interval, 1);
+  assert.equal(cleared.data.task.repeat_weekday, null);
+  assert.equal(cleared.data.task.recurrence_series_id, created.data.task.id);
+
+  const nulled = await updateTask(store, { task_id: created.data.task.id, repeat_unit: null });
+  assert.equal(nulled.ok, true);
+  if (!nulled.ok) return;
+  assert.equal(nulled.data.task.repeat_unit, null);
+
+  const conflict = await updateTask(store, {
+    task_id: created.data.task.id,
+    repeat_unit: 'never',
+    repeat_interval: 2,
+  });
+  assert.deepEqual(conflict, {
+    ok: false,
+    error: 'repeat_unit null or never clears the rule. Omit repeat_interval and repeat_weekday.',
+  });
+
+  const again = await updateTask(store, {
+    task_id: created.data.task.id,
+    repeat_unit: 'week',
+    repeat_interval: 2,
+  });
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.equal(again.data.task.repeat_unit, 'week');
+  assert.equal(again.data.task.repeat_interval, 2);
+  assert.equal(again.data.task.repeat_weekday, 3);
+  assert.equal(again.data.task.recurrence_series_id, created.data.task.id);
+});
+
+test('a week with no due date uses the UTC weekday, and bulk create stores the rule', async () => {
+  assert.equal(weekdayOfDate('2026-10-03'), 6);
+  const resolved = resolveRepeat({
+    input: { repeat_unit: 'week' },
+    current: { repeat_unit: null, repeat_interval: 1, repeat_weekday: null },
+    dueDate: null,
+    todayUtc: '2026-10-03',
+    mode: 'create',
+  });
+  assert.deepEqual(resolved, { repeat_unit: 'week', repeat_interval: 1, repeat_weekday: 6 });
+
+  const store = memoryStore();
+  const bulk = await createTasksBulk(store, {
+    personal: true,
+    tasks: [{ title: 'Stretch', repeat_unit: 'month' }],
+  });
+  assert.equal(bulk.ok, true);
+  if (!bulk.ok) return;
+  assert.equal(bulk.data.created[0]?.repeat_unit, 'month');
+  assert.equal(bulk.data.created[0]?.repeat_interval, 1);
+  assert.equal(bulk.data.created[0]?.repeat_weekday, null);
+  assert.equal(bulk.data.created[0]?.recurrence_series_id, bulk.data.created[0]?.id);
 });
 
 test('a viewer of the destination can still receive a task', async () => {
@@ -612,6 +753,10 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         assignee_name: assignee?.display_name ?? null,
         tags: input.tags,
         external_id: input.externalId,
+        repeat_unit: input.repeatUnit,
+        repeat_interval: input.repeatInterval,
+        repeat_weekday: input.repeatWeekday,
+        recurrence_series_id: input.repeatUnit ? `task-${counter}` : null,
         created_at: '2026-10-01T00:00:00.000Z',
         updated_at: '2026-10-01T00:00:00.000Z',
       };
@@ -634,6 +779,12 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         task.assignee_name = assignee?.display_name ?? null;
       }
       if (patch.tags !== undefined) task.tags = patch.tags;
+      if (patch.repeatUnit !== undefined) {
+        task.repeat_unit = patch.repeatUnit;
+        task.repeat_interval = patch.repeatInterval ?? 1;
+        task.repeat_weekday = patch.repeatWeekday ?? null;
+        if (patch.repeatUnit && !task.recurrence_series_id) task.recurrence_series_id = task.id;
+      }
       return task;
     },
     async moveTask(taskId, targetCircleId): Promise<MoveResult> {

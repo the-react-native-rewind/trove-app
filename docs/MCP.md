@@ -116,10 +116,10 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 | `create_circle` | Create a circle you own. Optional accent colour. Returns the circle id. |
 | `list_my_tasks` | Tasks assigned to you (Mine), across circles. Filter by circle, status, or due date. |
 | `list_circle_tasks` | Every task in one circle, including ones assigned to other people. |
-| `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. |
-| `create_tasks_bulk` | Create up to 100 tasks. Safe to retry when each item has an `external_id`. |
-| `update_task` | Change title, notes, status, priority, due date, assignee, or tags. Does not change the circle. |
-| `complete_task` | Mark a task done. |
+| `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. Optional repeat rule. |
+| `create_tasks_bulk` | Create up to 100 tasks. Safe to retry when each item has an `external_id`. Each item can repeat. |
+| `update_task` | Change title, notes, status, priority, due date, assignee, tags, or the repeat rule. Does not change the circle. |
+| `complete_task` | Mark a task done. A repeating task stays done, and the database adds the next occurrence. |
 | `assign_task` | Set or clear the assignee. The person must already be in that circle. |
 | `move_task` | Move a task to another circle, including from your personal circle into a shared one. |
 | `add_task_attachment` | Attach an image or video to a task you can edit. Returns the attachment id. |
@@ -135,6 +135,22 @@ Assignee is a member id, a display name (unique in that circle, case-insensitive
 Tags are labels that belong to one circle. Naming a tag creates it if needed. On `update_task`, `tags` replaces the whole set. An empty array clears them.
 
 `external_id` is a stable id from the source, such as a Notion page id or a Trello card id (1–200 characters). If you already created a task with that id, a later call returns that task and does not change it.
+
+## Repeating tasks
+
+`create_task`, `create_tasks_bulk`, and `update_task` take an optional repeat rule:
+
+| Field | Values |
+| --- | --- |
+| `repeat_unit` | `day`, `week`, `month`, `never`, or `null`. Omit it on create and the task does not repeat. On update, omit it to leave the rule unchanged. `never` and `null` clear it. |
+| `repeat_interval` | Integer from 1 to 99. How many of that unit between occurrences. Defaults to 1. |
+| `repeat_weekday` | Integer from 0 (Sunday) to 6 (Saturday). Stored only when `repeat_unit` is `week`. |
+
+A week with no weekday uses the due date's weekday. With no due date, it uses today's weekday in UTC. That is the same rule the app and the database use. A weekday on a daily or monthly task is rejected.
+
+Task results from list, create, update, complete, assign, and move include `repeat_unit`, `repeat_interval`, `repeat_weekday`, and `recurrence_series_id`. The series id is shared by each occurrence of one repeating task. It is the first task's id. `recurrence_source_id` is not returned and cannot be set. The database uses it so completing the same occurrence twice does not insert two successors.
+
+`complete_task`, or `update_task` with `status: done`, marks that row done. If it repeats, the database inserts the next To do occurrence with the same title, notes, priority, tags, circle, assignee, and rule. The tool result is the completed row, not the new one. List the circle again to see the next occurrence. Photos stay attached to both, because the new row points at the same file. `external_id` stays on the original row only.
 
 `invite_to_circle` takes `email` and an optional `role` of `admin`, `member`, or `viewer` (default `member`). You cannot invite someone as owner. One pending invite per email per circle. The link expires in 14 days.
 
@@ -181,6 +197,7 @@ Tags from the old circle are removed. Photos and videos stay behind: they remain
 - "Create a circle called Garden, colour terracotta."
 - "Show my Mine list that is due this week."
 - "Add 'Call the plumber' to my personal circle, due Friday, assigned to me."
+- "Add 'Take the bins out' to House every Wednesday."
 - "Attach this photo to the plumber task."
 - "Move everything in my Notion house list into my House circle. Use each Notion page id as external_id so we can run this twice."
 - "Move 'Sketch the spring menu' from my personal circle into Household, and assign it to Sam."
@@ -193,7 +210,7 @@ A bulk import that sends more than 100 tasks fails the whole call and inserts no
 - The token is hashed with SHA-256 before it is stored. Trove cannot show it again.
 - Requests run as you. Row level security still applies. The server does not use a service role to skip membership checks.
 - Revoke a token from Account → Connect an AI assistant. The next request with that token is rejected.
-- Someone with your token can create circles, create, edit, complete, assign, and move tasks, attach photos and videos to tasks you can edit, and invite people to circles you administer. They cannot see tokens, email addresses of members, or circles you do not belong to. They cannot attach a file to a task they cannot edit.
+- Someone with your token can create circles, create, edit, complete, assign, and move tasks, set or clear a repeat rule, attach photos and videos to tasks you can edit, and invite people to circles you administer. Completing a repeating task creates the next occurrence. They cannot see tokens, email addresses of members, or circles you do not belong to. They cannot attach a file to a task they cannot edit, and they cannot set `recurrence_source_id`.
 - OAuth is not available yet. Until it is, a personal access token is the only way in.
 
 ## Deploying the function

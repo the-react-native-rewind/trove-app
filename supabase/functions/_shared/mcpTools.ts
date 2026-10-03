@@ -17,6 +17,14 @@
  * task-media bucket at {space_id}/{task_id}/{uuid}.{ext}, then a
  * task_attachments row. The caller must be able to edit the task. The store
  * uses the caller's JWT so storage and table RLS still apply.
+ *
+ * Repeat rules match public.tasks_normalize_repeat in migration 0014.
+ * repeat_unit is day, week, month, or null. repeat_interval is 1–99.
+ * repeat_weekday is 0 (Sunday) through 6 (Saturday) and is stored only for
+ * week. null or "never" clears the rule. The first occurrence's
+ * recurrence_series_id is its own id. recurrence_source_id stays server-only
+ * and is never returned. Completing a repeating task is still just status
+ * done: the database trigger inserts the next occurrence.
  */
 
 export const BULK_LIMIT = 100;
@@ -86,16 +94,17 @@ export const toolDescriptions: Record<McpToolName, string> = {
   create_circle:
     'Create a circle owned by the signed-in person. name is required (for example Home or Garden). color is an optional accent: sage, brand, moss, teal, dusk, lilac, plum, rose, terracotta, clay, ochre, honey, or a #rrggbb hex. It defaults to sage. Circles do not have an emoji or a description. The creator becomes the owner, the same way creating a circle in the app does. This does not create a second personal circle. Returns the circle, including its id.',
   list_my_tasks:
-    'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). Optional filters: circle, status (todo, in_progress, done), and due date (due_on, due_before, due_after as YYYY-MM-DD). This is not limited to the personal circle.',
+    'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). Optional filters: circle, status (todo, in_progress, done), and due date (due_on, due_before, due_after as YYYY-MM-DD). This is not limited to the personal circle. Each task includes repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned.',
   list_circle_tasks:
-    'List every task in one circle, not only tasks assigned to the caller. Viewers can read. Optional filters: status and due date.',
+    'List every task in one circle, not only tasks assigned to the caller. Viewers can read. Optional filters: status and due date. Each task includes repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned.',
   create_task:
-    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is a member id, a display name, "me", or null. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate.',
+    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is a member id, a display name, "me", or null. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat.',
   create_tasks_bulk:
-    'Create up to 100 tasks in one call, for importing a list. Each item has the same fields as create_task. A circle set on the call is the default; an item can override it. external_id makes the import safe to retry: a task the caller already created with that id is returned as existing and is not changed. Items that fail are reported; earlier items in the batch are kept.',
+    'Create up to 100 tasks in one call, for importing a list. Each item has the same fields as create_task, including the optional repeat fields. A circle set on the call is the default; an item can override it. external_id makes the import safe to retry: a task the caller already created with that id is returned as existing and is not changed. Items that fail are reported; earlier items in the batch are kept.',
   update_task:
-    'Change a task\'s title, notes, status, priority, due date, assignee, or tags. Tags replace the current set. This does not move the task to another circle; use move_task for that. Only someone who can edit the circle (owner, admin, or member) can update. Viewers cannot.',
-  complete_task: 'Mark a task done. Same permission as update_task.',
+    'Change a task\'s title, notes, status, priority, due date, assignee, tags, or repeat rule. Tags replace the current set. repeat_unit null or never clears the repeat rule. repeat_interval is 1 to 99. repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only used for week. This does not move the task to another circle; use move_task for that. Only someone who can edit the circle (owner, admin, or member) can update. Viewers cannot. Setting status to done on a repeating task leaves this row done; the database inserts the next occurrence.',
+  complete_task:
+    'Mark a task done. Same permission as update_task. If the task repeats, the database inserts the next To do occurrence with the same rule. This result is the completed row, including its repeat fields and recurrence_series_id. recurrence_source_id is not returned.',
   assign_task:
     'Set or clear a task\'s assignee. assignee is a member id, a display name, "me", or null to unassign. The person must already be a member of the task\'s circle.',
   move_task:
@@ -111,6 +120,19 @@ export const toolDescriptions: Record<McpToolName, string> = {
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
 export type Status = 'todo' | 'in_progress' | 'done';
 export type Priority = 'low' | 'medium' | 'high';
+export type RepeatUnit = 'day' | 'week' | 'month';
+
+export type RepeatFields = {
+  repeat_unit: RepeatUnit | null;
+  repeat_interval: number;
+  repeat_weekday: number | null;
+};
+
+export const EMPTY_REPEAT: RepeatFields = {
+  repeat_unit: null,
+  repeat_interval: 1,
+  repeat_weekday: null,
+};
 
 export type Circle = {
   id: string;
@@ -142,6 +164,10 @@ export type TaskRecord = {
   assignee_name: string | null;
   tags: string[];
   external_id: string | null;
+  repeat_unit: RepeatUnit | null;
+  repeat_interval: number;
+  repeat_weekday: number | null;
+  recurrence_series_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -167,6 +193,9 @@ export type TaskWrite = {
   externalId: string | null;
   tags: string[];
   position: number;
+  repeatUnit: RepeatUnit | null;
+  repeatInterval: number;
+  repeatWeekday: number | null;
 };
 
 export type TaskPatch = {
@@ -177,6 +206,9 @@ export type TaskPatch = {
   dueDate?: string | null;
   assigneeId?: string | null;
   tags?: string[];
+  repeatUnit?: RepeatUnit | null;
+  repeatInterval?: number;
+  repeatWeekday?: number | null;
 };
 
 export type MoveResult = {
@@ -506,6 +538,9 @@ export type CreateTaskInput = {
   status?: Status;
   priority?: Priority | null;
   external_id?: string | null;
+  repeat_unit?: string | null;
+  repeat_interval?: number | null;
+  repeat_weekday?: number | null;
 };
 
 export async function createTask(
@@ -585,6 +620,9 @@ export async function updateTask(
     due_date?: string | null;
     assignee?: string | null;
     tags?: string[];
+    repeat_unit?: string | null;
+    repeat_interval?: number | null;
+    repeat_weekday?: number | null;
   },
 ): Promise<ToolResult<{ task: TaskRecord }>> {
   try {
@@ -784,6 +822,17 @@ async function prepareCreate(store: TroveStore, input: CreateTaskInput): Promise
     if (existing) return { ok: true, existing, write: unusedWrite() };
   }
 
+  const repeat = resolveRepeat({
+    input,
+    current: EMPTY_REPEAT,
+    dueDate: due,
+    todayUtc: utcDateString(),
+    mode: 'create',
+  });
+  if (!repeat || isFieldError(repeat)) {
+    return { ok: false, error: repeat && 'error' in repeat ? repeat.error : 'Repeat rule is not valid.' };
+  }
+
   const circles = await store.listCircles();
   const circle = resolveCircle(circles, input, 'default-personal');
   if ('error' in circle) return { ok: false, error: circle.error };
@@ -809,6 +858,9 @@ async function prepareCreate(store: TroveStore, input: CreateTaskInput): Promise
       externalId,
       tags,
       position: Date.now(),
+      repeatUnit: repeat.repeat_unit,
+      repeatInterval: repeat.repeat_interval,
+      repeatWeekday: repeat.repeat_weekday,
     },
   };
 }
@@ -825,6 +877,9 @@ function unusedWrite(): TaskWrite {
     externalId: null,
     tags: [],
     position: 0,
+    repeatUnit: null,
+    repeatInterval: 1,
+    repeatWeekday: null,
   };
 }
 
@@ -852,6 +907,9 @@ async function buildPatch(
     due_date?: string | null;
     assignee?: string | null;
     tags?: string[];
+    repeat_unit?: string | null;
+    repeat_interval?: number | null;
+    repeat_weekday?: number | null;
   },
 ): Promise<{ ok: true; patch: TaskPatch } | { ok: false; error: string }> {
   const patch: TaskPatch = {};
@@ -890,6 +948,23 @@ async function buildPatch(
     const tags = validateTags(input.tags);
     if (isFieldError(tags)) return { ok: false, error: tags.error };
     patch.tags = tags;
+  }
+  const repeat = resolveRepeat({
+    input,
+    current: {
+      repeat_unit: task.repeat_unit,
+      repeat_interval: task.repeat_interval,
+      repeat_weekday: task.repeat_weekday,
+    },
+    dueDate: patch.dueDate !== undefined ? patch.dueDate : task.due_date,
+    todayUtc: utcDateString(),
+    mode: 'update',
+  });
+  if (isFieldError(repeat)) return { ok: false, error: repeat.error };
+  if (repeat) {
+    patch.repeatUnit = repeat.repeat_unit;
+    patch.repeatInterval = repeat.repeat_interval;
+    patch.repeatWeekday = repeat.repeat_weekday;
   }
   if (Object.keys(patch).length === 0) {
     return { ok: false, error: 'Nothing to update. Pass at least one field.' };
@@ -999,6 +1074,114 @@ function readDueFilters(input: {
   if (input.due_before && !dueBefore) return { error: 'due_before must be a real date as YYYY-MM-DD.' };
   if (input.due_after && !dueAfter) return { error: 'due_after must be a real date as YYYY-MM-DD.' };
   return { dueOn: dueOn ?? undefined, dueBefore: dueBefore ?? undefined, dueAfter: dueAfter ?? undefined };
+}
+
+export function utcDateString(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/** 0 = Sunday … 6 = Saturday. Null when the value is not a real YYYY-MM-DD date. */
+export function weekdayOfDate(iso: string): number | null {
+  const parsed = parseDueDate(iso);
+  if (!parsed) return null;
+  const [year, month, day] = parsed.split('-').map(Number);
+  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1)).getUTCDay();
+}
+
+export type RepeatInput = {
+  repeat_unit?: string | null;
+  repeat_interval?: number | null;
+  repeat_weekday?: number | null;
+};
+
+/**
+ * The same shape as public.tasks_normalize_repeat. Update with no repeat
+ * fields returns undefined. Create with no repeat fields returns an empty rule.
+ * null and "never" clear it. A week with no weekday uses the due date, then
+ * today (UTC). Day and month do not keep a weekday.
+ */
+export function resolveRepeat(args: {
+  input: RepeatInput;
+  current: RepeatFields;
+  dueDate: string | null;
+  todayUtc: string;
+  mode: 'create' | 'update';
+}): RepeatFields | { error: string } | undefined {
+  const unitGiven = args.input.repeat_unit !== undefined;
+  const intervalGiven = args.input.repeat_interval !== undefined;
+  const weekdayGiven = args.input.repeat_weekday !== undefined;
+  if (!unitGiven && !intervalGiven && !weekdayGiven) {
+    return args.mode === 'create' ? { ...EMPTY_REPEAT } : undefined;
+  }
+
+  const parsedUnit = unitGiven ? parseRepeatUnit(args.input.repeat_unit) : args.current.repeat_unit;
+  if (isFieldError(parsedUnit)) return parsedUnit;
+  const parsedInterval = intervalGiven ? parseRepeatInterval(args.input.repeat_interval) : args.current.repeat_interval;
+  if (isFieldError(parsedInterval)) return parsedInterval;
+  const parsedWeekday = weekdayGiven ? parseRepeatWeekday(args.input.repeat_weekday) : undefined;
+  if (isFieldError(parsedWeekday)) return parsedWeekday;
+
+  if (parsedUnit === 'clear') {
+    if (intervalGiven || (weekdayGiven && args.input.repeat_weekday !== null)) {
+      return {
+        error: 'repeat_unit null or never clears the rule. Omit repeat_interval and repeat_weekday.',
+      };
+    }
+    return { ...EMPTY_REPEAT };
+  }
+
+  const unit = parsedUnit;
+  if (unit === null) {
+    if (intervalGiven) {
+      return { error: 'Set repeat_unit to day, week, or month before repeat_interval.' };
+    }
+    if (weekdayGiven && args.input.repeat_weekday !== null) {
+      return { error: 'repeat_weekday is only used when repeat_unit is week.' };
+    }
+    return { ...EMPTY_REPEAT };
+  }
+
+  if (unit === 'day' || unit === 'month') {
+    if (typeof parsedWeekday === 'number') {
+      return { error: 'repeat_weekday is only used when repeat_unit is week.' };
+    }
+    return { repeat_unit: unit, repeat_interval: parsedInterval, repeat_weekday: null };
+  }
+
+  let weekday: number | null;
+  if (typeof parsedWeekday === 'number') weekday = parsedWeekday;
+  else if (!weekdayGiven && args.current.repeat_unit === 'week' && args.current.repeat_weekday != null) {
+    weekday = args.current.repeat_weekday;
+  } else {
+    weekday = (args.dueDate ? weekdayOfDate(args.dueDate) : null) ?? weekdayOfDate(args.todayUtc);
+  }
+  if (weekday == null) {
+    return { error: 'repeat_weekday must be an integer from 0 (Sunday) to 6 (Saturday).' };
+  }
+  return { repeat_unit: 'week', repeat_interval: parsedInterval, repeat_weekday: weekday };
+}
+
+function parseRepeatUnit(value: string | null | undefined): RepeatUnit | 'clear' | { error: string } {
+  if (value === null) return 'clear';
+  const text = value?.trim().toLowerCase() ?? '';
+  if (text === 'never') return 'clear';
+  if (text === 'day' || text === 'week' || text === 'month') return text;
+  return { error: 'repeat_unit must be day, week, month, never, or null.' };
+}
+
+function parseRepeatInterval(value: number | null | undefined): number | { error: string } {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 99) {
+    return { error: 'repeat_interval must be an integer from 1 to 99.' };
+  }
+  return value;
+}
+
+function parseRepeatWeekday(value: number | null | undefined): number | null | { error: string } {
+  if (value === null) return null;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 6) {
+    return { error: 'repeat_weekday must be an integer from 0 (Sunday) to 6 (Saturday), or null.' };
+  }
+  return value;
 }
 
 function isStatus(value: string): value is Status {

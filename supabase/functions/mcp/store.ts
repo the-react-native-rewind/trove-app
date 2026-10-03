@@ -6,6 +6,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
 import {
   TroveError,
+  type RepeatUnit,
   type Circle,
   type AttachmentRecord,
   type AttachmentWrite,
@@ -25,7 +26,7 @@ import {
 import { readEnv, userClient } from './auth.ts';
 
 const TASK_SELECT =
-  'id, title, description, status, priority, due_date, space_id, assignee_id, external_id, created_at, updated_at, space:spaces(id,name), assignee:profiles!tasks_assignee_id_fkey(id,display_name), task_labels(label:labels(name))';
+  'id, title, description, status, priority, due_date, space_id, assignee_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignee:profiles!tasks_assignee_id_fkey(id,display_name), task_labels(label:labels(name))';
 
 type TaskRow = {
   id: string;
@@ -37,6 +38,10 @@ type TaskRow = {
   space_id: string;
   assignee_id: string | null;
   external_id: string | null;
+  repeat_unit: string | null;
+  repeat_interval: number | null;
+  repeat_weekday: number | null;
+  recurrence_series_id: string | null;
   created_at: string;
   updated_at: string;
   space: { id: string; name: string } | { id: string; name: string }[] | null;
@@ -175,6 +180,9 @@ async function insertTask(db: SupabaseClient, userId: string, input: TaskWrite):
       external_id: input.externalId,
       created_by: userId,
       position: input.position,
+      repeat_unit: input.repeatUnit,
+      repeat_interval: input.repeatInterval,
+      repeat_weekday: input.repeatWeekday,
     })
     .select(TASK_SELECT)
     .single();
@@ -199,6 +207,11 @@ async function updateTask(db: SupabaseClient, id: string, patch: TaskPatch): Pro
   if (patch.priority !== undefined) row.priority = patch.priority;
   if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
   if (patch.assigneeId !== undefined) row.assignee_id = patch.assigneeId;
+  if (patch.repeatUnit !== undefined) {
+    row.repeat_unit = patch.repeatUnit;
+    row.repeat_interval = patch.repeatInterval ?? 1;
+    row.repeat_weekday = patch.repeatWeekday ?? null;
+  }
 
   if (Object.keys(row).length) {
     const { error } = await db.from('tasks').update(row).eq('id', id);
@@ -410,9 +423,18 @@ function toTask(row: TaskRow): TaskRecord {
     assignee_name: assignee?.display_name ?? null,
     tags,
     external_id: row.external_id,
+    repeat_unit: isRepeatUnit(row.repeat_unit) ? row.repeat_unit : null,
+    repeat_interval:
+      typeof row.repeat_interval === 'number' && Number.isInteger(row.repeat_interval) ? row.repeat_interval : 1,
+    repeat_weekday: typeof row.repeat_weekday === 'number' ? row.repeat_weekday : null,
+    recurrence_series_id: row.recurrence_series_id ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+function isRepeatUnit(value: string | null | undefined): value is RepeatUnit {
+  return value === 'day' || value === 'week' || value === 'month';
 }
 
 function one<T>(value: T | T[] | null | undefined): T | null {
