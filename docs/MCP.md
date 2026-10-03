@@ -113,6 +113,7 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 | --- | --- |
 | `list_circles` | Circles you belong to, your role, whether one is your personal circle, and how many tasks are not done. |
 | `get_circle` | One circle by id or name. |
+| `create_circle` | Create a circle you own. Optional accent colour. Returns the circle id. |
 | `list_my_tasks` | Tasks assigned to you (Mine), across circles. Filter by circle, status, or due date. |
 | `list_circle_tasks` | Every task in one circle, including ones assigned to other people. |
 | `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. |
@@ -121,6 +122,7 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 | `complete_task` | Mark a task done. |
 | `assign_task` | Set or clear the assignee. The person must already be in that circle. |
 | `move_task` | Move a task to another circle, including from your personal circle into a shared one. |
+| `add_task_attachment` | Attach an image or video to a task you can edit. Returns the attachment id. |
 | `list_members` | People in a circle: user id, display name, and role. No email addresses. |
 | `invite_to_circle` | Invite someone by email. Owners and admins only. Returns a `trove://invite/…` link. |
 
@@ -136,6 +138,33 @@ Tags are labels that belong to one circle. Naming a tag creates it if needed. On
 
 `invite_to_circle` takes `email` and an optional `role` of `admin`, `member`, or `viewer` (default `member`). You cannot invite someone as owner. One pending invite per email per circle. The link expires in 14 days.
 
+## Creating a circle
+
+`create_circle` takes `name` and an optional `color`. The name is trimmed and must be 1–80 characters. `color` is an accent name (`sage`, `brand`, `moss`, `teal`, `dusk`, `lilac`, `plum`, `rose`, `terracotta`, `clay`, `ochre`, `honey`) or a `#rrggbb` hex, the same values the app's colour picker stores. It defaults to `sage`.
+
+Circles do not have an emoji or a description. Those fields are not stored.
+
+This uses the same insert as creating a circle in the app: a `spaces` row with you as `owner_id`. The database trigger adds you as the owner member. The new circle is not your personal circle (`is_default` stays false). The result includes the circle `id`.
+
+## Photos and videos
+
+`add_task_attachment` adds a file to a task so it shows in the app's media gallery, in the order it was added. A task can have more than one.
+
+You must be able to edit the task (owner, admin, or member of its circle). A viewer cannot attach files. The server checks that before it downloads or stores anything. The upload uses your user credentials, so storage and row level security still apply. It does not use the service role to skip those checks.
+
+Pass `task_id`, `content_type`, and one of:
+
+- `url`: a public or signed `https` URL. The server downloads it. Private, local, and link-local addresses are rejected, including redirects to those addresses.
+- `data_base64`: raw base64 bytes. Do not send a `data:` URL.
+
+`filename` is optional. Only an extension that matches `content_type` is kept. The stored object name is a random id, at `{circle id}/{task id}/{file id}.{ext}`, which is the same path shape the app uses.
+
+Allowed `content_type` values, matching the `task-media` bucket:
+
+`image/jpeg`, `image/png`, `image/webp`, `image/gif`, `image/heic`, `image/heif`, `video/mp4`, `video/quicktime`, `video/webm`.
+
+The bytes must actually be that type. The maximum size is 50 MB, the bucket limit. The result includes the attachment `id`.
+
 ## Moving a task
 
 `move_task` is the only way to change a task's circle. `update_task` will not do it, and a direct edit of the circle is rejected.
@@ -149,8 +178,10 @@ Tags from the old circle are removed. Photos and videos stay behind: they remain
 ## Example prompts
 
 - "What circles am I in?"
+- "Create a circle called Garden, colour terracotta."
 - "Show my Mine list that is due this week."
 - "Add 'Call the plumber' to my personal circle, due Friday, assigned to me."
+- "Attach this photo to the plumber task."
 - "Move everything in my Notion house list into my House circle. Use each Notion page id as external_id so we can run this twice."
 - "Move 'Sketch the spring menu' from my personal circle into Household, and assign it to Sam."
 - "Invite sam@example.com to House as a member."
@@ -162,7 +193,7 @@ A bulk import that sends more than 100 tasks fails the whole call and inserts no
 - The token is hashed with SHA-256 before it is stored. Trove cannot show it again.
 - Requests run as you. Row level security still applies. The server does not use a service role to skip membership checks.
 - Revoke a token from Account → Connect an AI assistant. The next request with that token is rejected.
-- Someone with your token can create, edit, complete, assign, and move tasks, and can invite people to circles you administer. They cannot see tokens, email addresses of members, or circles you do not belong to.
+- Someone with your token can create circles, create, edit, complete, assign, and move tasks, attach photos and videos to tasks you can edit, and invite people to circles you administer. They cannot see tokens, email addresses of members, or circles you do not belong to. They cannot attach a file to a task they cannot edit.
 - OAuth is not available yet. Until it is, a personal access token is the only way in.
 
 ## Deploying the function

@@ -8,15 +8,61 @@
  * to edit the source circle, must belong to the destination (a viewer may
  * receive a task), and an assignee who is not a member of the destination is
  * cleared. Tags that belong to the old circle are removed.
+ *
+ * create_circle matches the app: insert a spaces row owned by the caller.
+ * The on_space_created trigger adds the owner membership. Circles have a name
+ * and an accent colour. They do not have an emoji or a description.
+ *
+ * add_task_attachment matches src/data/attachments.ts: bytes go in the private
+ * task-media bucket at {space_id}/{task_id}/{uuid}.{ext}, then a
+ * task_attachments row. The caller must be able to edit the task. The store
+ * uses the caller's JWT so storage and table RLS still apply.
  */
 
 export const BULK_LIMIT = 100;
 export const LIST_DEFAULT_LIMIT = 50;
 export const LIST_MAX_LIMIT = 200;
 
+/** Accent names from src/theme/tokens.ts spaceAccentOrder. The web picker also stores #rrggbb. */
+export const CIRCLE_COLORS = [
+  'sage',
+  'brand',
+  'moss',
+  'teal',
+  'dusk',
+  'lilac',
+  'plum',
+  'rose',
+  'terracotta',
+  'clay',
+  'ochre',
+  'honey',
+] as const;
+
+export const CIRCLE_NAME_MAX = 80;
+export const DEFAULT_CIRCLE_COLOR = 'sage';
+
+/** Matches storage.buckets.file_size_limit for task-media in migration 0008. */
+export const TASK_MEDIA_MAX_BYTES = 52_428_800;
+
+export const TASK_MEDIA_TYPES = {
+  'image/jpeg': { mediaType: 'image', extensions: ['jpg', 'jpeg'] },
+  'image/png': { mediaType: 'image', extensions: ['png'] },
+  'image/webp': { mediaType: 'image', extensions: ['webp'] },
+  'image/gif': { mediaType: 'image', extensions: ['gif'] },
+  'image/heic': { mediaType: 'image', extensions: ['heic'] },
+  'image/heif': { mediaType: 'image', extensions: ['heif'] },
+  'video/mp4': { mediaType: 'video', extensions: ['mp4'] },
+  'video/quicktime': { mediaType: 'video', extensions: ['mov'] },
+  'video/webm': { mediaType: 'video', extensions: ['webm'] },
+} as const;
+
+export type TaskMediaContentType = keyof typeof TASK_MEDIA_TYPES;
+
 export const MCP_TOOL_NAMES = [
   'list_circles',
   'get_circle',
+  'create_circle',
   'list_my_tasks',
   'list_circle_tasks',
   'create_task',
@@ -25,6 +71,7 @@ export const MCP_TOOL_NAMES = [
   'complete_task',
   'assign_task',
   'move_task',
+  'add_task_attachment',
   'list_members',
   'invite_to_circle',
 ] as const;
@@ -36,6 +83,8 @@ export const toolDescriptions: Record<McpToolName, string> = {
     'List the circles the signed-in person belongs to. A circle is a shared place for tasks (a house, a side business, a personal list, a community). Each result includes the role, whether it is their private personal circle, and how many tasks are not done. "Mine" is not a circle; it is the cross-circle list of tasks assigned to you. Use list_my_tasks for that.',
   get_circle:
     'Get one circle by id or name, including the caller\'s role and the open-task count. Names match case-insensitively and must be unique among the caller\'s circles.',
+  create_circle:
+    'Create a circle owned by the signed-in person. name is required (for example Home or Garden). color is an optional accent: sage, brand, moss, teal, dusk, lilac, plum, rose, terracotta, clay, ochre, honey, or a #rrggbb hex. It defaults to sage. Circles do not have an emoji or a description. The creator becomes the owner, the same way creating a circle in the app does. This does not create a second personal circle. Returns the circle, including its id.',
   list_my_tasks:
     'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). Optional filters: circle, status (todo, in_progress, done), and due date (due_on, due_before, due_after as YYYY-MM-DD). This is not limited to the personal circle.',
   list_circle_tasks:
@@ -51,6 +100,8 @@ export const toolDescriptions: Record<McpToolName, string> = {
     'Set or clear a task\'s assignee. assignee is a member id, a display name, "me", or null to unassign. The person must already be a member of the task\'s circle.',
   move_task:
     'Move a task from one circle to another, including from the personal circle into a shared circle. The caller must be able to edit the task where it is now, and must be a member of the destination (a viewer of the destination may still receive it). If the assignee is not a member of the destination, they are unassigned. Tags from the old circle are removed. Photos and videos stay in the original circle and are not moved. Pass circle_id, circle_name, or personal: true.',
+  add_task_attachment:
+    'Attach an image or video to a task the caller can edit (owner, admin, or member). Viewers cannot. Pass task_id, content_type, and either a public https url (the server downloads it) or data_base64. Allowed types: image/jpeg, image/png, image/webp, image/gif, image/heic, image/heif, video/mp4, video/quicktime, video/webm. Maximum 50 MB. The file is stored like a photo added in the app, under the task\'s circle, and shows in the task media gallery. Several attachments per task are kept in the order they were added. Returns the attachment id.',
   list_members:
     'List the people in a circle: user id, display name, and role (owner, admin, member, viewer). Email addresses are not included.',
   invite_to_circle:
@@ -148,6 +199,33 @@ export type InviteResult = {
   url: string;
 };
 
+export type CircleCreate = {
+  name: string;
+  color: string;
+};
+
+export type MediaType = 'image' | 'video';
+
+export type AttachmentWrite = {
+  taskId: string;
+  spaceId: string;
+  bytes: Uint8Array;
+  contentType: TaskMediaContentType;
+  mediaType: MediaType;
+  extension: string;
+};
+
+export type AttachmentRecord = {
+  id: string;
+  task_id: string;
+  circle_id: string;
+  path: string;
+  media_type: MediaType;
+  content_type: TaskMediaContentType;
+  byte_length: number;
+  created_at: string;
+};
+
 export interface TroveStore {
   userId: string;
   /**
@@ -172,6 +250,17 @@ export interface TroveStore {
     email: string;
     role: 'admin' | 'member' | 'viewer';
   }): Promise<InviteResult>;
+  /**
+   * Insert a spaces row the way the app does. The database trigger adds the
+   * caller as owner. is_default stays false.
+   */
+  createCircle(input: CircleCreate): Promise<Circle>;
+  /**
+   * Upload bytes to task-media and insert task_attachments. The handler has
+   * already checked that the caller can edit the task. The implementation
+   * must use the caller's credentials, not the service role.
+   */
+  addTaskAttachment(input: AttachmentWrite): Promise<AttachmentRecord>;
 }
 
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -612,6 +701,66 @@ export async function inviteToCircle(
   }
 }
 
+export async function createCircle(
+  store: TroveStore,
+  input: { name?: string; color?: string | null },
+): Promise<ToolResult<{ circle: Circle }>> {
+  try {
+    const name = validateCircleName(input.name);
+    if (isFieldError(name)) return { ok: false, error: name.error };
+    const color = normalizeCircleColor(input.color);
+    if (isFieldError(color)) return { ok: false, error: color.error };
+    const circle = await store.createCircle({ name, color });
+    return { ok: true, data: { circle } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export type AddAttachmentInput = {
+  task_id: string;
+  url?: string;
+  data_base64?: string;
+  content_type?: string;
+  filename?: string;
+};
+
+export type AttachmentDeps = {
+  fetch?: typeof fetch;
+  resolveDns?: (hostname: string) => Promise<string[]>;
+};
+
+export async function addTaskAttachment(
+  store: TroveStore,
+  input: AddAttachmentInput,
+  deps?: AttachmentDeps,
+): Promise<ToolResult<{ attachment: AttachmentRecord }>> {
+  try {
+    const contentType = normalizeContentType(input.content_type);
+    if (isFieldError(contentType)) return { ok: false, error: contentType.error };
+    const source = readAttachmentSource(input);
+    if (isFieldError(source)) return { ok: false, error: source.error };
+
+    const task = await requireWritableTask(store, input.task_id);
+    if (!task.ok) return task;
+
+    const loaded = await loadAttachmentBytes(source, contentType, deps);
+    if (isFieldError(loaded)) return { ok: false, error: loaded.error };
+
+    const attachment = await store.addTaskAttachment({
+      taskId: task.task.id,
+      spaceId: task.task.circle_id,
+      bytes: loaded.bytes,
+      contentType,
+      mediaType: TASK_MEDIA_TYPES[contentType].mediaType,
+      extension: chooseExtension(input.filename, contentType),
+    });
+    return { ok: true, data: { attachment } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
 type Prepared =
   | { ok: true; existing: TaskRecord | null; write: TaskWrite }
   | { ok: false; error: string };
@@ -867,4 +1016,325 @@ function fail(error: unknown): ToolResult<never> {
 function messageOf(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return 'Something went wrong.';
+}
+
+function validateCircleName(name: string | undefined): string | { error: string } {
+  const trimmed = name?.trim() ?? '';
+  if (!trimmed) return { error: 'Give your circle a name, like Home or Garden.' };
+  if (trimmed.length > CIRCLE_NAME_MAX) {
+    return { error: `Name must be ${CIRCLE_NAME_MAX} characters or fewer.` };
+  }
+  if ([...trimmed].some((char) => char.charCodeAt(0) < 32)) {
+    return { error: 'Name cannot include line breaks or control characters.' };
+  }
+  return trimmed;
+}
+
+export function normalizeCircleColor(
+  color: string | null | undefined,
+): string | { error: string } {
+  if (color === undefined || color === null || color.trim() === '') return DEFAULT_CIRCLE_COLOR;
+  const trimmed = color.trim();
+  const named = CIRCLE_COLORS.find((item) => item === trimmed.toLowerCase());
+  if (named) return named;
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
+  return {
+    error: `color must be an accent (${CIRCLE_COLORS.join(', ')}) or a #rrggbb hex. Circles do not have an emoji or description.`,
+  };
+}
+
+const TASK_MEDIA_LIST = Object.keys(TASK_MEDIA_TYPES).join(', ');
+
+export function normalizeContentType(
+  value: string | undefined,
+): TaskMediaContentType | { error: string } {
+  const mime = value?.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (mime in TASK_MEDIA_TYPES) return mime as TaskMediaContentType;
+  return { error: `content_type must be an image or video: ${TASK_MEDIA_LIST}.` };
+}
+
+export function checkAttachmentSize(byteLength: number): string | null {
+  if (byteLength <= 0) return 'The file is empty.';
+  if (byteLength > TASK_MEDIA_MAX_BYTES) return 'File must be 50 MB or smaller.';
+  return null;
+}
+
+export function chooseExtension(filename: string | undefined, contentType: TaskMediaContentType): string {
+  const allowed = TASK_MEDIA_TYPES[contentType].extensions;
+  const base = filename?.split(/[/\\]/).pop() ?? '';
+  const ext = base.includes('.') ? (base.split('.').pop()?.toLowerCase() ?? '') : '';
+  if ((allowed as readonly string[]).includes(ext)) return ext;
+  return allowed[0];
+}
+
+export function taskMediaPath(spaceId: string, taskId: string, extension: string, fileId: string): string {
+  return `${spaceId}/${taskId}/${fileId}.${extension}`;
+}
+
+type AttachmentSource = { kind: 'url'; url: string } | { kind: 'base64'; data: string };
+
+function readAttachmentSource(input: AddAttachmentInput): AttachmentSource | { error: string } {
+  const url = input.url?.trim() ?? '';
+  const data = input.data_base64?.trim() ?? '';
+  if (url && data) return { error: 'Pass a public https URL or base64 data, not both.' };
+  if (!url && !data) return { error: 'Pass a public https URL in url, or base64 data in data_base64.' };
+  if (url) return { kind: 'url', url };
+  if (data.toLowerCase().startsWith('data:')) {
+    return { error: 'Send raw base64 in data_base64, and set content_type separately. Do not send a data: URL.' };
+  }
+  return { kind: 'base64', data };
+}
+
+async function loadAttachmentBytes(
+  source: AttachmentSource,
+  contentType: TaskMediaContentType,
+  deps: AttachmentDeps | undefined,
+): Promise<{ bytes: Uint8Array } | { error: string }> {
+  const bytes =
+    source.kind === 'base64' ? decodeBase64(source.data) : await downloadPublicFile(source.url, contentType, deps);
+  if (isFieldError(bytes)) return bytes;
+  const sizeError = checkAttachmentSize(bytes.byteLength);
+  if (sizeError) return { error: sizeError };
+  if (!bytesMatchContentType(bytes, contentType)) {
+    return { error: 'File contents do not match content_type.' };
+  }
+  return { bytes };
+}
+
+function decodeBase64(value: string): Uint8Array | { error: string } {
+  const cleaned = value.replace(/\s/g, '');
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(cleaned) || cleaned.length % 4 === 1) {
+    return { error: 'data_base64 is not valid base64.' };
+  }
+  const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
+  const estimated = (cleaned.length * 3) / 4 - padding;
+  const sizeError = checkAttachmentSize(estimated);
+  if (sizeError && estimated !== 0) return { error: sizeError };
+  try {
+    const binary = atob(cleaned);
+    const out = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) out[index] = binary.charCodeAt(index);
+    return out;
+  } catch {
+    return { error: 'data_base64 is not valid base64.' };
+  }
+}
+
+async function downloadPublicFile(
+  rawUrl: string,
+  contentType: TaskMediaContentType,
+  deps: AttachmentDeps | undefined,
+): Promise<Uint8Array | { error: string }> {
+  const fetchImpl = deps?.fetch ?? fetch;
+  let current = await assertPublicHttpsUrl(rawUrl, deps?.resolveDns);
+  if (isFieldError(current)) return current;
+
+  for (let hop = 0; hop < 4; hop += 1) {
+    let response: Response;
+    try {
+      response = await fetchImpl(current.href, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(20_000),
+        headers: { Accept: contentType },
+      });
+    } catch {
+      return { error: 'Could not download that file.' };
+    }
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) return { error: 'Could not download that file.' };
+      const next = await assertPublicHttpsUrl(new URL(location, current).href, deps?.resolveDns);
+      if (isFieldError(next)) return next;
+      current = next;
+      continue;
+    }
+
+    if (!response.ok) return { error: `The file URL returned ${response.status}.` };
+    const declared = headerMime(response.headers.get('content-type'));
+    if (declared && declared !== contentType) {
+      return { error: 'The downloaded file\'s type does not match content_type.' };
+    }
+    const lengthHeader = response.headers.get('content-length');
+    if (lengthHeader) {
+      const advertised = Number(lengthHeader);
+      if (!Number.isFinite(advertised) || advertised > TASK_MEDIA_MAX_BYTES) {
+        return { error: 'File must be 50 MB or smaller.' };
+      }
+    }
+    return readLimited(response);
+  }
+
+  return { error: 'Could not download that file.' };
+}
+
+function headerMime(value: string | null): string | null {
+  const mime = value?.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (!mime || mime === 'application/octet-stream' || mime === 'binary/octet-stream') return null;
+  return mime;
+}
+
+async function readLimited(response: Response): Promise<Uint8Array | { error: string }> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > TASK_MEDIA_MAX_BYTES) return { error: 'File must be 50 MB or smaller.' };
+    return bytes;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > TASK_MEDIA_MAX_BYTES) {
+      await reader.cancel();
+      return { error: 'File must be 50 MB or smaller.' };
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+async function assertPublicHttpsUrl(
+  raw: string,
+  resolveDns: AttachmentDeps['resolveDns'],
+): Promise<URL | { error: string }> {
+  if (raw.length > 2000) return { error: 'url must be a public https address.' };
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { error: 'url must be a public https address.' };
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) {
+    return { error: 'url must be a public https address.' };
+  }
+  if (isBlockedHost(url.hostname)) return { error: 'That URL is not allowed.' };
+  if (isIpAddress(url.hostname)) return url;
+
+  const resolver = resolveDns ?? denoDnsResolver();
+  if (!resolver) return url;
+  let addresses: string[];
+  try {
+    addresses = await resolver(url.hostname);
+  } catch {
+    return { error: 'Could not resolve that URL.' };
+  }
+  if (addresses.length === 0 || addresses.some((address) => isBlockedHost(address))) {
+    return { error: 'That URL is not allowed.' };
+  }
+  return url;
+}
+
+function denoDnsResolver(): AttachmentDeps['resolveDns'] {
+  const deno = (globalThis as { Deno?: { resolveDns?: (hostname: string, record: 'A' | 'AAAA') => Promise<string[]> } })
+    .Deno;
+  if (!deno?.resolveDns) return undefined;
+  const resolveDns = deno.resolveDns.bind(deno);
+  return async (hostname: string) => {
+    const records = await Promise.all([
+      resolveDns(hostname, 'A').catch(() => [] as string[]),
+      resolveDns(hostname, 'AAAA').catch(() => [] as string[]),
+    ]);
+    return records.flat();
+  };
+}
+
+function isIpAddress(hostname: string): boolean {
+  const host = unwrapHost(hostname);
+  return host.includes(':') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+}
+
+function isBlockedHost(hostname: string): boolean {
+  const host = unwrapHost(hostname);
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
+    return true;
+  }
+  if (host === 'metadata.google.internal' || host === 'metadata.google.com') return true;
+  if (/^\d+$/.test(host)) return true;
+  if (host.includes('%')) return true;
+  if (host.includes(':')) return isBlockedIpv6(host);
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return isBlockedIpv4(host);
+  return false;
+}
+
+function unwrapHost(hostname: string): string {
+  return hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '');
+}
+
+function isBlockedIpv4(host: string): boolean {
+  const parts = host.split('.');
+  if (parts.some((part) => part.length > 1 && part.startsWith('0'))) return true;
+  const nums = parts.map((part) => Number(part));
+  if (nums.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+  const a = nums[0] ?? 0;
+  const b = nums[1] ?? 0;
+  const c = nums[2] ?? 0;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+  if (a === 198 && (b === 18 || b === 19 || b === 51)) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function isBlockedIpv6(host: string): boolean {
+  if (host === '::' || host === '::1' || host === '0:0:0:0:0:0:0:1') return true;
+  if (host.startsWith('fc') || host.startsWith('fd')) return true;
+  if (/^fe[89ab]/.test(host)) return true;
+  if (host.startsWith('::ffff:')) return isBlockedHost(host.slice('::ffff:'.length));
+  return false;
+}
+
+export function bytesMatchContentType(bytes: Uint8Array, contentType: TaskMediaContentType): boolean {
+  if (bytes.byteLength < 12) return false;
+  switch (contentType) {
+    case 'image/jpeg':
+      return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    case 'image/png':
+      return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+    case 'image/gif': {
+      const header = ascii(bytes, 0, 6);
+      return header === 'GIF87a' || header === 'GIF89a';
+    }
+    case 'image/webp':
+      return ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'WEBP';
+    case 'image/heic':
+    case 'image/heif':
+      return HEIF_BRANDS.has(isoBrand(bytes) ?? '');
+    case 'video/webm':
+      return bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+    case 'video/mp4':
+      return MP4_BRANDS.has(isoBrand(bytes) ?? '');
+    case 'video/quicktime':
+      return isoBrand(bytes) === 'qt  ';
+    default:
+      return false;
+  }
+}
+
+const HEIF_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'heif', 'mif1', 'msf1']);
+const MP4_BRANDS = new Set(['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'mp4v', 'mmp4', 'dash', 'msnv', 'M4V ']);
+
+function isoBrand(bytes: Uint8Array): string | null {
+  if (ascii(bytes, 4, 4) !== 'ftyp') return null;
+  return ascii(bytes, 8, 4);
+}
+
+function ascii(bytes: Uint8Array, start: number, length: number): string {
+  let text = '';
+  for (let index = 0; index < length; index += 1) text += String.fromCharCode(bytes[start + index] ?? 0);
+  return text;
 }

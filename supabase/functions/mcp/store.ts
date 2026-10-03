@@ -7,6 +7,9 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   TroveError,
   type Circle,
+  type AttachmentRecord,
+  type AttachmentWrite,
+  type CircleCreate,
   type InviteResult,
   type Member,
   type MoveResult,
@@ -17,6 +20,7 @@ import {
   type TaskRecord,
   type TaskWrite,
   type TroveStore,
+  taskMediaPath,
 } from '../_shared/mcpTools.ts';
 import { readEnv, userClient } from './auth.ts';
 
@@ -54,6 +58,8 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     updateTask: (id, patch) => updateTask(db, id, patch),
     moveTask: (taskId, targetCircleId) => moveTask(db, taskId, targetCircleId),
     createInvite: (input) => createInvite(db, userId, input),
+    createCircle: (input) => createCircle(db, userId, input),
+    addTaskAttachment: (input) => addTaskAttachment(db, userId, input),
   };
 }
 
@@ -232,6 +238,93 @@ async function moveTask(db: SupabaseClient, taskId: string, targetCircleId: stri
     already_there: Boolean(payload.already_there),
     tags_removed: payload.tags_removed ?? 0,
     task,
+  };
+}
+
+const TASK_MEDIA_BUCKET = 'task-media';
+
+async function createCircle(db: SupabaseClient, userId: string, input: CircleCreate): Promise<Circle> {
+  // Same insert as src/data/spaces.ts useCreateSpace: client id, no returning
+  // read. on_space_created adds the owner membership. is_default stays false,
+  // so this is never a second personal circle.
+  const id = crypto.randomUUID();
+  const { error } = await db.from('spaces').insert({
+    id,
+    name: input.name,
+    color: input.color,
+    owner_id: userId,
+  });
+  throwIf(error);
+
+  const { data, error: readError } = await db
+    .from('space_members')
+    .select('role, space:spaces(id,name,color,is_default)')
+    .eq('space_id', id)
+    .eq('user_id', userId)
+    .maybeSingle();
+  throwIf(readError);
+  const space = one(
+    data?.space as { id: string; name: string; color?: string; is_default?: boolean } | {
+      id: string;
+      name: string;
+      color?: string;
+      is_default?: boolean;
+    }[] | null,
+  );
+  if (!data || !space || data.role !== 'owner') {
+    throw new TroveError('Circle was created but you were not added as the owner.');
+  }
+  return {
+    id: space.id,
+    name: space.name,
+    color: typeof space.color === 'string' ? space.color : input.color,
+    role: 'owner',
+    is_personal: Boolean(space.is_default),
+    open_task_count: 0,
+  };
+}
+
+async function addTaskAttachment(
+  db: SupabaseClient,
+  userId: string,
+  input: AttachmentWrite,
+): Promise<AttachmentRecord> {
+  const path = taskMediaPath(input.spaceId, input.taskId, input.extension, crypto.randomUUID());
+  const body = input.bytes.buffer.slice(
+    input.bytes.byteOffset,
+    input.bytes.byteOffset + input.bytes.byteLength,
+  ) as ArrayBuffer;
+  const { error: uploadError } = await db.storage.from(TASK_MEDIA_BUCKET).upload(path, body, {
+    contentType: input.contentType,
+    upsert: false,
+  });
+  throwIf(uploadError);
+
+  const { data, error } = await db
+    .from('task_attachments')
+    .insert({
+      task_id: input.taskId,
+      space_id: input.spaceId,
+      path,
+      media_type: input.mediaType,
+      created_by: userId,
+    })
+    .select('id, created_at')
+    .single();
+  if (error || !data) {
+    await db.storage.from(TASK_MEDIA_BUCKET).remove([path]);
+    throwIf(error);
+    throw new TroveError('The file was uploaded but the attachment row was not saved.');
+  }
+  return {
+    id: data.id,
+    task_id: input.taskId,
+    circle_id: input.spaceId,
+    path,
+    media_type: input.mediaType,
+    content_type: input.contentType,
+    byte_length: input.bytes.byteLength,
+    created_at: data.created_at,
   };
 }
 

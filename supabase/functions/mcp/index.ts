@@ -12,8 +12,10 @@ import { z } from 'npm:zod@4.6.5';
 import { readBearerToken } from '../_shared/apiToken.ts';
 import { jsonRpcErrorBody, readJsonRpcId } from '../_shared/jsonRpc.ts';
 import {
+  addTaskAttachment,
   assignTask,
   completeTask,
+  createCircle,
   createTask,
   createTasksBulk,
   getCircle,
@@ -24,6 +26,7 @@ import {
   listMyTasks,
   moveTask,
   toolDescriptions,
+  type TaskMediaContentType,
   updateTask,
   type ToolResult,
   type TroveStore,
@@ -131,6 +134,23 @@ function buildServer(store: TroveStore): McpServer {
   );
 
   server.registerTool(
+    'create_circle',
+    {
+      description: toolDescriptions.create_circle,
+      inputSchema: z.object({
+        name: z.string().describe('Circle name, such as Home or Garden.'),
+        color: z
+          .string()
+          .optional()
+          .describe(
+            'Accent colour: sage, brand, moss, teal, dusk, lilac, plum, rose, terracotta, clay, ochre, honey, or #rrggbb. Defaults to sage.',
+          ),
+      }),
+    },
+    async (args) => asTool(await createCircle(store, args)),
+  );
+
+  server.registerTool(
     'list_my_tasks',
     {
       description: toolDescriptions.list_my_tasks,
@@ -220,6 +240,30 @@ function buildServer(store: TroveStore): McpServer {
   );
 
   server.registerTool(
+    'add_task_attachment',
+    {
+      description: toolDescriptions.add_task_attachment,
+      inputSchema: z.object({
+        task_id: z.string().uuid().describe('Task to attach the file to.'),
+        url: z
+          .string()
+          .optional()
+          .describe('Public or signed https URL. The server downloads it. Pass this or data_base64, not both.'),
+        data_base64: z
+          .string()
+          .optional()
+          .describe('Raw base64 file bytes. Do not include a data: URL prefix.'),
+        content_type: z.enum(mediaContentTypes).describe('MIME type. Must match the file bytes.'),
+        filename: z
+          .string()
+          .optional()
+          .describe('Original filename. Only a matching extension is kept; the stored name is a random id.'),
+      }),
+    },
+    async (args) => asTool(await addTaskAttachment(store, args)),
+  );
+
+  server.registerTool(
     'list_members',
     {
       description: toolDescriptions.list_members,
@@ -244,6 +288,18 @@ function buildServer(store: TroveStore): McpServer {
 
   return server;
 }
+
+const mediaContentTypes = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+] as const satisfies readonly TaskMediaContentType[];
 
 const limitField = z
   .number()
