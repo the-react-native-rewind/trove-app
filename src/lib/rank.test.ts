@@ -5,6 +5,7 @@ import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
 
 import {
   compareRank,
+  rankAfterDrop,
   rankAfterStepUp,
   rankAtBottom,
   rankAtTop,
@@ -58,6 +59,26 @@ test('the top of a due-date group does not move', () => {
   const ordered = [row('top', 'a5'), row('low', 'a0'), row('later', 'a9', '2026-05-02')];
   assert.equal(rankAfterStepUp('top', ordered), null);
   assert.equal(rankAfterStepUp('missing', ordered), null);
+});
+
+test('a drop writes a key between the neighbours, including the ends of the list', () => {
+  const between = rankAfterDrop('a5', 'a1');
+  assert.equal(between, generateKeyBetween('a1', 'a5'));
+  assert.ok(between > 'a1' && between < 'a5');
+
+  const top = rankAfterDrop(null, 'a4');
+  const bottom = rankAfterDrop('a0', null);
+  assert.equal(top, generateKeyBetween('a4', null));
+  assert.equal(bottom, generateKeyBetween(null, 'a0'));
+  assert.ok(top > 'a4');
+  assert.ok(bottom < 'a0');
+  assert.equal(rankAfterDrop(null, null), 'a0');
+});
+
+test('a drop on tied neighbours still produces a key above that shared rank', () => {
+  const key = rankAfterDrop('a2', 'a2');
+  assert.equal(key, generateKeyBetween('a2', null));
+  assert.ok(key > 'a2');
 });
 
 test('new and low ranks sort below the group, high ranks sort above it', () => {

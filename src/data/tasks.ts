@@ -212,7 +212,7 @@ function patchTaskRank(data: unknown, id: string, rank: string): unknown {
   return data;
 }
 
-/** Write the rank chosen by a priority tap. The list order comes from this key. */
+/** Write the rank chosen by a drag. The list order comes from this key. */
 export function useUpdateTaskRank() {
   const qc = useQueryClient();
   return useMutation({

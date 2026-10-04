@@ -101,7 +101,7 @@ const taskInput = z.object({
     .enum(['low', 'medium', 'high'])
     .nullable()
     .optional()
-    .describe('Places rank in the due-date group: high above the top, medium in the middle, low or null at the bottom.'),
+    .describe('Places rank in the circle\'s overall order: high above the top, medium in the middle, low or null at the bottom.'),
   external_id: z
     .string()
     .optional()
@@ -229,7 +229,7 @@ function buildServer(store: TroveStore): McpServer {
           .enum(['low', 'medium', 'high'])
           .nullable()
           .optional()
-          .describe('Sets rank in the due-date group. high is above the current top, medium is in the middle, low or null is the bottom. Omit it when changing the due date to leave the task at the bottom of the new group.'),
+          .describe('Sets rank in the circle\'s overall order. high is above the current top, medium is in the middle, low or null is the bottom. Omit it when changing the due date and the database places the task at the bottom of tasks with that due date.'),
         due_date: z.string().nullable().optional(),
         assignee: z.string().nullable().optional().describe('Member id, display name, "me", or null.'),
         tags: z.array(z.string()).optional().describe('Replaces the task\'s tags. An empty array clears them.'),

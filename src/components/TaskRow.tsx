@@ -24,11 +24,9 @@ export function TaskRow({
   canWrite,
   onOpen,
   onMove,
-  onDrag,
+  onReorder,
   dragging,
   media,
-  onLift,
-  highlighted,
 }: {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
@@ -36,12 +34,10 @@ export function TaskRow({
   canWrite: boolean;
   onOpen: () => void;
   onMove: (status: TaskStatus) => void;
-  onDrag?: () => void;
+  /** Hold, then drag, to reorder. A hold without movement still selects. */
+  onReorder?: () => void;
   dragging?: boolean;
   media?: Attachment[];
-  /** Writers tap the dot to move this task up one place. */
-  onLift?: () => boolean;
-  highlighted?: boolean;
 }) {
   const ref = useRef<SwipeableMethods>(null);
   const selection = useSelection();
@@ -86,9 +82,7 @@ export function TaskRow({
           heat={heat}
           selectable={canWrite}
           onPress={onOpen}
-          onLongPress={onDrag}
-          onLift={canWrite ? onLift : undefined}
-          highlighted={highlighted}
+          onReorder={canWrite ? onReorder : undefined}
           dragging={dragging}
           media={media}
         />

@@ -49,9 +49,10 @@ export function rankAfterStepUp(taskId: string, ordered: readonly RankedRef[]): 
 }
 
 /**
- * Place a task from the legacy priority word inside one due-date group.
+ * Place a task from a priority word among the ranks it is given.
  * `high` goes above the current top, `medium` between the two central keys,
- * and `low` or null at the bottom. An empty group starts at `a0`.
+ * and `low` or null at the bottom. An empty list starts at `a0`.
+ * The circle passes every rank, so this is the overall order.
  */
 export function rankForPriority(
   priority: 'low' | 'medium' | 'high' | null,
@@ -67,6 +68,26 @@ export function rankForPriority(
   const lower = ranks[Math.max(0, mid - 1)];
   const upper = ranks[mid];
   if (lower === upper) return rankAtBottom(upper);
+  return generateKeyBetween(lower, upper);
+}
+
+/**
+ * Rank for a task dropped between the neighbour above it and the one below.
+ * The list shows higher keys first, so `above` is the higher key (or null at
+ * the top) and `below` is the lower key (or null at the bottom). The new key
+ * sorts strictly between them. No other row is rewritten.
+ * Tied neighbours have no key between them; the task then sorts just above
+ * that shared key so the drop still moves it.
+ */
+export function rankAfterDrop(
+  above: string | null | undefined,
+  below: string | null | undefined,
+): string {
+  const upper = above && above.length > 0 ? above : null;
+  const lower = below && below.length > 0 ? below : null;
+  if (upper !== null && lower !== null && lower >= upper) {
+    return generateKeyBetween(lower, null);
+  }
   return generateKeyBetween(lower, upper);
 }
 

@@ -141,8 +141,8 @@ async function listTasks(db: SupabaseClient, filter: TaskFilter): Promise<TaskRe
   if (filter.dueBefore) query = query.lte('due_date', filter.dueBefore);
   if (filter.dueAfter) query = query.gte('due_date', filter.dueAfter);
   const { data, error } = await query
-    .order('due_date', { ascending: true, nullsFirst: false })
     .order('rank', { ascending: false })
+    .order('due_date', { ascending: true, nullsFirst: false })
     .order('position', { ascending: true })
     .order('created_at', { ascending: true })
     .limit(filter.limit);
@@ -172,7 +172,7 @@ async function findByExternalId(
 }
 
 async function insertTask(db: SupabaseClient, userId: string, input: TaskWrite): Promise<TaskRecord> {
-  const ranks = await ranksInGroup(db, input.circleId, input.dueDate);
+  const ranks = await ranksInCircle(db, input.circleId);
   const { data, error } = await db
     .from('tasks')
     .insert({
@@ -214,8 +214,7 @@ async function updateTask(db: SupabaseClient, id: string, patch: TaskPatch): Pro
   if (patch.priority !== undefined) {
     const current = await getTask(db, id);
     if (!current) return null;
-    const due = patch.dueDate !== undefined ? patch.dueDate : current.due_date;
-    const ranks = (await ranksInGroup(db, current.circle_id, due)).filter((rank) => rank !== current.rank);
+    const ranks = (await ranksInCircle(db, current.circle_id)).filter((rank) => rank !== current.rank);
     row.priority = patch.priority;
     row.rank = rankForPriority(patch.priority, ranks);
   }
@@ -448,21 +447,15 @@ function toTask(row: TaskRow): TaskRecord {
   };
 }
 
-async function ranksInGroup(
-  db: SupabaseClient,
-  spaceId: string,
-  dueDate: string | null,
-): Promise<string[]> {
-  let query = db.from('tasks').select('rank').eq('space_id', spaceId);
-  query = dueDate ? query.eq('due_date', dueDate) : query.is('due_date', null);
-  const { data, error } = await query;
+async function ranksInCircle(db: SupabaseClient, spaceId: string): Promise<string[]> {
+  const { data, error } = await db.from('tasks').select('rank').eq('space_id', spaceId);
   throwIf(error);
   return (data ?? [])
     .map((row) => (row as { rank?: string | null }).rank ?? '')
     .filter((rank) => rank.length > 0);
 }
 
-/** Same placement as src/lib/rank.ts. Kept here so the edge function can import the Deno package. */
+/** Same placement as src/lib/rank.ts. Ranks are the whole circle, not one due date. */
 function rankForPriority(priority: Priority | null, groupRanks: string[]): string {
   const ranks = groupRanks.filter((rank) => rank.length > 0).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   if (ranks.length === 0) return generateKeyBetween(null, null);

@@ -4,19 +4,20 @@ import { STATUSES, type TaskStatus, type TaskWithRefs } from './types';
 export { STATUSES };
 
 /**
- * Order tasks by urgency: earliest due date first (no date last), then higher
- * rank first within that due date. Position, creation time, and id break ties.
+ * Manual order first: a higher rank sorts above a lower one, whatever the
+ * due dates are. Due date only breaks a tie (earliest first, no date last),
+ * then position, creation time, and id.
  */
 export function sortTasksByUrgency(tasks: TaskWithRefs[]): TaskWithRefs[] {
   return [...tasks].sort((a, b) => {
+    const rankDifference = compareRank(a.rank ?? '', b.rank ?? '');
+    if (rankDifference !== 0) return rankDifference;
+
     if (a.due_date !== b.due_date) {
       if (!a.due_date) return 1;
       if (!b.due_date) return -1;
       return a.due_date.localeCompare(b.due_date);
     }
-
-    const rankDifference = compareRank(a.rank ?? '', b.rank ?? '');
-    if (rankDifference !== 0) return rankDifference;
 
     if (a.position !== b.position) return a.position - b.position;
     const createdDifference = a.created_at.localeCompare(b.created_at);
@@ -52,6 +53,4 @@ export type KanbanProps = {
   onOpen: (id: string) => void;
   onMove: (id: string, status: TaskStatus, position?: number) => void;
   canWriteTask: (spaceId: string) => boolean;
-  /** Lift one place within the column the card is shown in. */
-  onLift?: (taskId: string, ordered: TaskWithRefs[]) => boolean;
 };

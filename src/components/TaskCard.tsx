@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 
 import type { Attachment } from '@/data/attachments';
 import { plainTextFromMarkdown } from '@/lib/markdown';
@@ -14,15 +13,6 @@ import { Avatar } from './ui/Avatar';
 import { SpaceTag } from './ui/Indicators';
 import { Text } from './ui/Text';
 
-function useDotPop() {
-  const scale = useSharedValue(1);
-  function pop() {
-    scale.value = withSequence(withTiming(1.5, { duration: 90 }), withTiming(1, { duration: 180 }));
-  }
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  return { style, pop };
-}
-
 type TaskCardProps = {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
@@ -32,10 +22,11 @@ type TaskCardProps = {
   selectable?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
-  /** Tap the priority dot. Return true when the task actually moved up. */
-  onLift?: () => boolean;
-  /** Brief landing highlight after the list scrolls to follow a lift. */
-  highlighted?: boolean;
+  /**
+   * Hold, then move, to reorder. A hold that ends without moving still
+   * selects. The list decides which of those happened.
+   */
+  onReorder?: () => void;
   dragging?: boolean;
   media?: Attachment[];
 };
@@ -47,13 +38,11 @@ export function TaskCard({
   selectable = false,
   onPress,
   onLongPress,
-  onLift,
-  highlighted,
+  onReorder,
   dragging,
   media,
 }: TaskCardProps) {
   const selection = useSelection();
-  const dot = useDotPop();
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
   const done = task.status === 'done';
@@ -70,22 +59,17 @@ export function TaskCard({
     onPress?.();
   }
 
-  function handleDotPress() {
-    if (selecting) {
-      if (selectable) selection.toggle(task.id);
-      return;
-    }
-    if (onLift) {
-      if (onLift()) dot.pop();
-      return;
-    }
-    onPress?.();
-  }
-
   function handleLongPress() {
+    if (selectable && selecting) {
+      selection.toggle(task.id);
+      return;
+    }
+    if (onReorder) {
+      onReorder();
+      return;
+    }
     if (selectable) {
-      if (selecting) selection.toggle(task.id);
-      else selection.enter(task.id);
+      selection.enter(task.id);
       return;
     }
     onLongPress?.();
@@ -105,7 +89,6 @@ export function TaskCard({
         styles.card,
         overdue && styles.overdue,
         selected && styles.selected,
-        highlighted && styles.highlighted,
         dragging && styles.dragging,
       ]}
     >
@@ -114,87 +97,78 @@ export function TaskCard({
           <TaskMediaStrip items={media} />
         </View>
       ) : null}
-      <View style={styles.main}>
       <Pressable
         onPress={handlePress}
         onLongPress={handleLongPress}
-        delayLongPress={selectable ? 400 : 180}
+        delayLongPress={selectable || onReorder ? 400 : 180}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ selected }}
         style={styles.body}
       >
-      {showSpaceTag && task.space ? (
-        <View style={styles.tagRow}>
-          <SpaceTag name={task.space.name} color={task.space.color} />
-        </View>
-      ) : null}
-
-      <View style={styles.titleRow}>
-        {selecting && selectable ? (
-          <View style={[styles.check, selected && styles.checkOn]}>
-            {selected ? <Ionicons name="checkmark" size={14} color={colors.onBrand} /> : null}
+        {showSpaceTag && task.space ? (
+          <View style={styles.tagRow}>
+            <SpaceTag name={task.space.name} color={task.space.color} />
           </View>
         ) : null}
-        <Text
-          variant="cardTitle"
-          color={done ? colors.inkFaint : colors.ink}
-          numberOfLines={3}
-          style={styles.title}
-        >
-          {task.title}
-        </Text>
-      </View>
 
-      {notes ? (
-        <Text variant="meta" color={colors.inkSoft} numberOfLines={2}>
-          {notes}
-        </Text>
-      ) : null}
-
-      {(due || task.assignee || repeats) && (
-        <View style={[styles.meta, heat ? styles.metaWithDot : null]}>
-          {repeats ? (
-            <View style={styles.dueWrap}>
-              <Ionicons name="repeat" size={13} color={colors.inkFaint} />
-              <Text variant="meta" color={colors.inkFaint}>
-                Repeats
-              </Text>
+        <View style={styles.titleRow}>
+          {selecting && selectable ? (
+            <View style={[styles.check, selected && styles.checkOn]}>
+              {selected ? <Ionicons name="checkmark" size={14} color={colors.onBrand} /> : null}
             </View>
           ) : null}
-          {due ? (
-            <View style={styles.dueWrap}>
-              <Ionicons
-                name="calendar-outline"
-                size={13}
-                color={overdue ? colors.priorityHigh : colors.inkFaint}
-              />
-              <Text variant="meta" color={overdue ? colors.priorityHigh : colors.inkFaint}>
-                {due}
-              </Text>
-            </View>
-          ) : null}
-          <View style={styles.spacer} />
-          {task.assignee ? (
-            <Avatar name={task.assignee.display_name} uri={task.assignee.avatar_url} size={26} />
-          ) : null}
+          <Text
+            variant="cardTitle"
+            color={done ? colors.inkFaint : colors.ink}
+            numberOfLines={3}
+            style={styles.title}
+          >
+            {task.title}
+          </Text>
         </View>
-      )}
+
+        {notes ? (
+          <Text variant="meta" color={colors.inkSoft} numberOfLines={2}>
+            {notes}
+          </Text>
+        ) : null}
+
+        {(due || task.assignee || heat || repeats) && (
+          <View style={styles.meta}>
+            {heat ? (
+              <View
+                accessible={false}
+                style={[styles.heatDot, { backgroundColor: heat }]}
+              />
+            ) : null}
+            {repeats ? (
+              <View style={styles.dueWrap}>
+                <Ionicons name="repeat" size={13} color={colors.inkFaint} />
+                <Text variant="meta" color={colors.inkFaint}>
+                  Repeats
+                </Text>
+              </View>
+            ) : null}
+            {due ? (
+              <View style={styles.dueWrap}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={13}
+                  color={overdue ? colors.priorityHigh : colors.inkFaint}
+                />
+                <Text variant="meta" color={overdue ? colors.priorityHigh : colors.inkFaint}>
+                  {due}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.spacer} />
+            {task.assignee ? (
+              <Avatar name={task.assignee.display_name} uri={task.assignee.avatar_url} size={26} />
+            ) : null}
+          </View>
+        )}
       </Pressable>
-      {heat ? (
-        <Pressable
-          onPress={handleDotPress}
-          onLongPress={handleLongPress}
-          delayLongPress={selectable ? 400 : 180}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={`Raise ${task.title}`}
-          style={styles.dotHit}
-        >
-          <Animated.View style={[styles.heatDot, { backgroundColor: heat }, dot.style]} />
-        </Pressable>
-      ) : null}
-      </View>
     </View>
   );
 }
@@ -208,19 +182,10 @@ const styles = StyleSheet.create({
     ...shadows.card,
   },
   clip: { borderRadius: radii.card, overflow: 'hidden' },
-  main: { position: 'relative' },
-  dotHit: {
-    position: 'absolute',
-    left: spacing.md,
-    bottom: spacing.md,
-    zIndex: 2,
-    padding: 6,
-  },
   body: { padding: spacing.lg, gap: spacing.sm },
   overdue: { backgroundColor: colors.overdueSurface, borderColor: colors.overdueBorder },
   dragging: { ...shadows.floating, borderColor: colors.brandSoft },
   selected: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
-  highlighted: { borderColor: colors.honey, backgroundColor: '#FBEFD9' },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   title: { flex: 1 },
   check: {
@@ -237,8 +202,7 @@ const styles = StyleSheet.create({
   checkOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   tagRow: { flexDirection: 'row' },
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
-  metaWithDot: { paddingLeft: 26 },
-  heatDot: { width: 14, height: 14, borderRadius: 7 },
+  heatDot: { width: 9, height: 9, borderRadius: 4.5 },
   dueWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   spacer: { flex: 1 },
 });

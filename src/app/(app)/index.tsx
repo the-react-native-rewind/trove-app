@@ -2,11 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { FlatList } from 'react-native-gesture-handler';
 import DraggableFlatList, {
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
-import { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
@@ -20,12 +18,12 @@ import { AccentDot } from '@/components/ui/Indicators';
 import { Text } from '@/components/ui/Text';
 import { useTaskMediaForTasks } from '@/data/attachments';
 import { useMyWeekEnabled } from '@/data/profile';
-import { positionBetween, useMoveTaskStatus, useReorderTask, useTasks } from '@/data/tasks';
+import { useMoveTaskStatus, useTasks, useUpdateTaskRank } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
-import { PRIORITY_VIEWABILITY, usePriorityList } from '@/hooks/usePriorityLift';
 import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
+import { rankAfterDrop } from '@/lib/rank';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { MY_WEEK_VIEW_ID } from '@/lib/week';
@@ -90,8 +88,10 @@ function SpaceBoard() {
   const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(selectedSpaceId);
   const collapse = useCollapsingHeader(insets.top);
   const moveStatus = useMoveTaskStatus();
-  const reorder = useReorderTask();
+  const updateRank = useUpdateTaskRank();
   const selection = useSelection();
+  const dragMoved = useRef(false);
+  const [showDrag, setShowDrag] = useState(false);
 
   const [status, setStatus] = useState<TaskStatus>('in_progress');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -117,15 +117,9 @@ function SpaceBoard() {
   }, [isLoading, counts.in_progress]);
 
   const items = visibleTasks.filter((t) => normalizeStatus(t.status) === status);
-  const listRef = useRef<FlatList<TaskWithRefs> | null>(null);
-  const priorityList = usePriorityList(items, listRef);
   const selectableIds = (isWide ? visibleTasks : items)
     .filter((task) => canWriteTask(task.space_id))
     .map((task) => task.id);
-
-  // Display order is urgency, so a drag that writes position snaps back.
-  // Cross-column moves on the wide board still change status.
-  const dragEnabled = false;
 
   function openCreate() {
     hapticLight();
@@ -142,13 +136,19 @@ function SpaceBoard() {
         task={item}
         heat={heatColor(rank, items.length)}
         canWrite={rowWritable}
-        dragging={isActive}
+        dragging={isActive && showDrag}
         showSpaceTag={isMine}
         onOpen={() => router.push(`/task/${item.id}` as never)}
         onMove={(next) => moveStatus.mutate({ id: item.id, status: next })}
-        onLift={rowWritable ? () => priorityList.lift(item.id, items) : undefined}
-        highlighted={priorityList.highlightId === item.id}
-        onDrag={dragEnabled ? drag : undefined}
+        onReorder={
+          rowWritable && !selection.active
+            ? () => {
+                dragMoved.current = false;
+                setShowDrag(false);
+                drag();
+              }
+            : undefined
+        }
         media={mediaByTask?.[item.id]}
       />
     );
@@ -282,26 +282,37 @@ function SpaceBoard() {
           onOpen={(id) => router.push(`/task/${id}` as never)}
           onMove={(id, next, position) => moveStatus.mutate({ id, status: next, position })}
           canWriteTask={canWriteTask}
-          onLift={priorityList.lift}
           mediaByTaskId={mediaByTask}
         />
       ) : (
         <DraggableFlatList
-          ref={listRef}
           data={items}
-          extraData={priorityList.highlightId}
+          extraData={showDrag}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          itemLayoutAnimation={LinearTransition.duration(320)}
-          onViewableItemsChanged={priorityList.onViewableItemsChanged}
-          viewabilityConfig={PRIORITY_VIEWABILITY}
+          activationDistance={12}
           onScrollOffsetChange={collapse.onScrollOffsetChange}
-          onDragEnd={({ data, to }) => {
-            const moved = data[to];
-            if (!moved) return;
-            const prev = data[to - 1]?.position ?? null;
-            const next = data[to + 1]?.position ?? null;
-            reorder.mutate({ id: moved.id, position: positionBetween(prev, next) });
+          onPlaceholderIndexChange={() => {
+            if (dragMoved.current) return;
+            dragMoved.current = true;
+            setShowDrag(true);
+            hapticLight();
+          }}
+          onDragEnd={({ data, from, to }) => {
+            const moved = dragMoved.current;
+            dragMoved.current = false;
+            setShowDrag(false);
+            const task = data[from];
+            if (!moved) {
+              if (task && canWriteTask(task.space_id) && !selection.active) selection.enter(task.id);
+              return;
+            }
+            hapticLight();
+            const dropped = data[to];
+            if (!dropped || from === to) return;
+            const nextRank = rankAfterDrop(data[to - 1]?.rank, data[to + 1]?.rank);
+            if (nextRank === dropped.rank) return;
+            updateRank.mutate({ id: dropped.id, rank: nextRank });
           }}
           contentContainerStyle={[
             styles.listContent,
