@@ -3,7 +3,9 @@
 
 import { button, esc, fallbackLink, h1, layout, p, panel, steps, brand } from './email.ts';
 
-export const DEFAULT_SITE_URL = 'https://trove-website-sooty.vercel.app';
+import { DEFAULT_SITE_URL } from './site.ts';
+
+export { DEFAULT_SITE_URL };
 
 const markUrl = (siteUrl: string) => `${siteUrl.replace(/\/$/, '')}/mark.png`;
 
