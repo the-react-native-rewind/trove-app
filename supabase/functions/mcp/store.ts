@@ -26,6 +26,7 @@ import {
   taskMediaPath,
 } from '../_shared/mcpTools.ts';
 import { readEnv, userClient } from './auth.ts';
+import { DEFAULT_SITE_URL, inviteUrl } from '../_shared/site.ts';
 
 const TASK_SELECT =
   'id, title, description, status, priority, rank, due_date, space_id, assignee_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignee:profiles!tasks_assignee_id_fkey(id,display_name), task_labels(label:labels(name))';
@@ -381,7 +382,7 @@ async function createInvite(
     role: data.role as InviteResult['role'],
     token: data.token,
     expires_at: data.expires_at,
-    url: `trove://invite/${data.token}`,
+    url: inviteUrl(data.token, Deno.env.get('TROVE_SITE_URL') ?? DEFAULT_SITE_URL),
   };
 }
 

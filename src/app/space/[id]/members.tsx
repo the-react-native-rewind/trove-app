@@ -1,4 +1,3 @@
-import * as Linking from 'expo-linking';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Share, StyleSheet, View } from 'react-native';
@@ -19,6 +18,7 @@ import {
 } from '@/data/members';
 import { useSpaces } from '@/data/spaces';
 import { useAuth } from '@/providers/AuthProvider';
+import { inviteUrl } from '@/lib/links';
 import {
   canManage,
   ROLE_LABELS,
@@ -61,7 +61,9 @@ export default function Members() {
   const [managingId, setManagingId] = useState<string | null>(null);
 
   async function shareInvite(invite: Invite) {
-    const url = Linking.createURL(`invite/${invite.token}`);
+    // https, not trove://: chat apps and email do not make trove:// tappable,
+    // and the web page offers the download to people without Trove.
+    const url = inviteUrl(invite.token);
     await Share.share({
       message: `Join my circle on Trove: ${url}`,
     });

@@ -35,6 +35,7 @@ import {
   updateTask,
   weekdayOfDate,
 } from './mcpTools';
+import { inviteUrl } from './links';
 
 const ME = 'user-me';
 const SAM = 'user-sam';
@@ -444,7 +445,8 @@ test('invite_to_circle rejects viewers and the owner role', async () => {
   if (!invited.ok) return;
   assert.equal(invited.data.invite.email, 'friend@example.com');
   assert.equal(invited.data.invite.role, 'member');
-  assert.equal(invited.data.invite.url.startsWith('trove://invite/'), true);
+  assert.equal(invited.data.invite.url.startsWith('https://'), true);
+  assert.equal(invited.data.invite.url.includes('/open?to=invite%2F'), true);
 });
 
 test('open-task counts are loaded only for circle reads', async () => {
@@ -831,7 +833,7 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         role: input.role,
         token: 'invite-token',
         expires_at: '2026-10-15T00:00:00.000Z',
-        url: 'trove://invite/invite-token',
+        url: inviteUrl('invite-token'),
       };
     },
     async createCircle(input) {
