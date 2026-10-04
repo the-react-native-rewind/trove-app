@@ -100,7 +100,8 @@ Confirm email stays on. The App Review demo account is already confirmed.
 
 - Migration 0013 adds triggers: `on_auth_user_confirmed` (email_confirmed_at goes from null to set) and `on_auth_user_created_confirmed` (account created already confirmed) send `{ type: "welcome", user_id }`; `invites_send_email` sends `{ type: "invite", invite_id }` for each new pending invite. They post through `pg_net` with the `x-trove-hook-secret` header.
 - The function reads the address, names and token with the service role, so the trigger payload cannot choose a recipient. Invite emails are capped at 25 per inviter per 24 hours. Resend idempotency keys stop duplicates.
-- Links use the `open` function (`/functions/v1/open?to=invite/<token>` → `trove://invite/<token>`), because email clients drop `trove://` links.
+- Links go to the website's `/open` page (`<TROVE_SITE_URL>/open?to=invite%2F<token>`, built by `_shared/site.ts`). Email and chat apps drop `trove://` links, and a bare redirect to `trove://` shows a blank page wherever the app is not installed (desktop browsers, Gmail's in-app browser). The page has an "Open in Trove" button (`trove://invite/<token>`) and the download links. Supabase serves function GET responses as `text/plain`, so the landing page cannot be an edge function.
+- The `open` function now only forwards old email links (`/functions/v1/open?to=invite/<token>`) to that website page, so emails already sent keep working.
 
 Set once per project (values never committed):
 

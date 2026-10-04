@@ -114,7 +114,7 @@ export const toolDescriptions: Record<McpToolName, string> = {
   list_members:
     'List the people in a circle: user id, display name, and role (owner, admin, member, viewer). Email addresses are not included.',
   invite_to_circle:
-    'Invite someone to a circle by email. Only an owner or admin can invite. role is admin, member, or viewer (default member). Returns the invite token and a trove:// link the person opens in the app. The invite expires in 14 days. One pending invite per email per circle.',
+    'Invite someone to a circle by email. Only an owner or admin can invite. role is admin, member, or viewer (default member). Returns the invite token and an https link to send the person. The link opens Trove, or offers the download if they do not have it yet. The invite expires in 14 days. One pending invite per email per circle.',
 };
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';

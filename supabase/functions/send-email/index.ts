@@ -17,7 +17,8 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-import { DEFAULT_SITE_URL, inviteEmail, welcomeEmail, type RenderedEmail } from '../_shared/emailCopy.ts';
+import { inviteEmail, welcomeEmail, type RenderedEmail } from '../_shared/emailCopy.ts';
+import { DEFAULT_SITE_URL, inviteUrl, openPageUrl } from '../_shared/site.ts';
 
 const FROM = Deno.env.get('TROVE_EMAIL_FROM') ?? 'Trove <hello@trove.thereactnativerewind.com>';
 const REPLY_TO = Deno.env.get('TROVE_EMAIL_REPLY_TO') ?? 'luke@thereactnativerewind.com';
@@ -65,12 +66,6 @@ async function sendViaResend(
   return { id: body.id };
 }
 
-/** https link that bounces into the app (email clients drop trove:// links). */
-function openUrl(path: string): string {
-  const base = Deno.env.get('SUPABASE_URL')!.replace(/\/$/, '');
-  return `${base}/functions/v1/open?to=${encodeURIComponent(path)}`;
-}
-
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
@@ -106,7 +101,7 @@ Deno.serve(async (req) => {
       const email = welcomeEmail({
         name: profile?.display_name ?? (user.user_metadata?.display_name as string | undefined) ?? null,
         email: user.email,
-        openUrl: openUrl(''),
+        openUrl: openPageUrl('', SITE_URL),
         siteUrl: SITE_URL,
       });
       const sent = await sendViaResend(user.email, email, `trove-welcome-${user.id}`, 'welcome');
@@ -150,7 +145,7 @@ Deno.serve(async (req) => {
         circleName: space?.name ?? 'a circle',
         inviteeEmail: invite.email,
         role: invite.role,
-        joinUrl: openUrl(`invite/${invite.token}`),
+        joinUrl: inviteUrl(invite.token, SITE_URL),
         getAppUrl: `${SITE_URL}/#download`,
         expiresAt: new Date(invite.expires_at),
         siteUrl: SITE_URL,
