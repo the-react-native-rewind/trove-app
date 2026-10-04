@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { groupByStatus, normalizeStatus, sortTasksByUrgency } from './board';
+import { rankAfterDrop } from './rank';
 import type { TaskWithRefs } from './types';
 
 function task(overrides: Partial<TaskWithRefs> & { id: string }): TaskWithRefs {
@@ -31,16 +32,41 @@ test('legacy and unknown statuses stay visible as To do', () => {
   assert.equal(normalizeStatus('done'), 'done');
 });
 
-test('urgency puts the earliest due date first, then the higher rank', () => {
+test('rank sorts first, so a later due date can sit above an earlier one', () => {
   const sorted = sortTasksByUrgency([
     task({ id: 'later', due_date: '2026-05-02', rank: 'a9' }),
     task({ id: 'sooner-low', due_date: '2026-05-01', rank: 'a0' }),
-    task({ id: 'sooner-high', due_date: '2026-05-01', rank: 'a5' }),
-    task({ id: 'undated', due_date: null, rank: 'b00' }),
+    task({ id: 'sooner-mid', due_date: '2026-05-01', rank: 'a5' }),
+    task({ id: 'undated-top', due_date: null, rank: 'b00' }),
   ]);
   assert.deepEqual(
     sorted.map((item) => item.id),
-    ['sooner-high', 'sooner-low', 'later', 'undated'],
+    ['undated-top', 'later', 'sooner-mid', 'sooner-low'],
+  );
+});
+
+test('a dropped rank keeps the task between its new neighbours', () => {
+  const next = rankAfterDrop('a5', 'a1');
+  const sorted = sortTasksByUrgency([
+    task({ id: 'above', rank: 'a5', due_date: '2026-06-01' }),
+    task({ id: 'moved', rank: next, due_date: '2026-01-01' }),
+    task({ id: 'below', rank: 'a1', due_date: null }),
+  ]);
+  assert.deepEqual(
+    sorted.map((item) => item.id),
+    ['above', 'moved', 'below'],
+  );
+});
+
+test('equal ranks fall back to due date, earliest first and undated last', () => {
+  const sorted = sortTasksByUrgency([
+    task({ id: 'undated', due_date: null, rank: 'a2' }),
+    task({ id: 'later', due_date: '2026-05-02', rank: 'a2' }),
+    task({ id: 'sooner', due_date: '2026-05-01', rank: 'a2' }),
+  ]);
+  assert.deepEqual(
+    sorted.map((item) => item.id),
+    ['sooner', 'later', 'undated'],
   );
 });
 
