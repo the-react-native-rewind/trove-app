@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,10 +16,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { AccentDot } from '@/components/ui/Indicators';
 import { Text } from '@/components/ui/Text';
 import { useTaskMediaForTasks } from '@/data/attachments';
+import { useRoster } from '@/data/members';
 import { useMyWeekEnabled } from '@/data/profile';
 import { useMoveTaskStatus, useTasks, useUpdateTaskRank } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
+import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
 import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
@@ -31,7 +33,6 @@ import { colors, heatColor, radii, shadows, spacing } from '@/theme/tokens';
 
 const EMPTY_COPY: Record<TaskStatus, { title: string; body: string }> = {
   todo: { title: 'All clear', body: 'Nothing to do right now. Tap the plus to add the next thing.' },
-  in_progress: { title: 'Nothing in progress', body: 'Swipe a task to Doing when you pick it up.' },
   done: { title: 'Nothing done yet', body: 'Finished tasks land here. A good place to see what got carried.' },
 };
 
@@ -60,10 +61,6 @@ const MINE_EMPTY: Record<TaskStatus, { title: string; body: string }> = {
     title: 'Nothing assigned to you',
     body: 'Tasks handed to you, in any circle, show up here.',
   },
-  in_progress: {
-    title: 'Nothing in progress',
-    body: 'When you pick up something that is yours, it lands here.',
-  },
   done: {
     title: 'Nothing finished yet',
     body: 'Completed tasks that were yours collect here.',
@@ -89,6 +86,7 @@ function SpaceBoard() {
   const canReorderList = !isWide && !isMine && canReorderTask(selectedSpaceId);
 
   const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(selectedSpaceId);
+  const { data: roster = [] } = useRoster(isMine ? MINE_VIEW_ID : selectedSpaceId);
   const selection = useSelection();
   const [reordering, setReordering] = useState(false);
   const reorderActive = reordering && canReorderList && !selection.active;
@@ -96,28 +94,34 @@ function SpaceBoard() {
   const moveStatus = useMoveTaskStatus();
   const updateRank = useUpdateTaskRank();
 
-  const [status, setStatus] = useState<TaskStatus>('in_progress');
+  const [status, setStatus] = useState<TaskStatus>('todo');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set());
   const [showFilter, setShowFilter] = useState(false);
 
+  useEffect(() => {
+    setAssigneeFilter(new Set());
+    setShowFilter(false);
+  }, [selectedSpaceId]);
+
   const visibleTasks = useMemo(() => {
-    const unfiltered =
+    const byCircle =
       isMine && excluded.size ? tasks.filter((t) => !excluded.has(t.space_id)) : tasks;
-    return sortTasksByUrgency(unfiltered);
-  }, [tasks, isMine, excluded]);
+    const byAssignee = isMine
+      ? byCircle
+      : byCircle.filter((task) =>
+          taskMatchesAssigneeFilter(
+            task.assignees.map((person) => person.id),
+            assigneeFilter,
+          ),
+        );
+    return sortTasksByUrgency(byAssignee);
+  }, [tasks, isMine, excluded, assigneeFilter]);
   const mediaTaskIds = useMemo(() => visibleTasks.map((task) => task.id), [visibleTasks]);
   const { data: mediaByTask } = useTaskMediaForTasks(mediaTaskIds);
 
-  const counts: Record<TaskStatus, number> = { todo: 0, in_progress: 0, done: 0 };
+  const counts: Record<TaskStatus, number> = { todo: 0, done: 0 };
   for (const t of visibleTasks) counts[normalizeStatus(t.status)]++;
-
-  // On first load, default to "Doing" unless it's empty, then fall back to "To do".
-  const pickedInitialStatus = useRef(false);
-  useEffect(() => {
-    if (pickedInitialStatus.current || isLoading) return;
-    pickedInitialStatus.current = true;
-    setStatus(counts.in_progress > 0 ? 'in_progress' : 'todo');
-  }, [isLoading, counts.in_progress]);
 
   const items = visibleTasks.filter((t) => normalizeStatus(t.status) === status);
   const selectableIds = (isWide ? visibleTasks : items)
@@ -201,6 +205,24 @@ function SpaceBoard() {
               />
             </Pressable>
           ) : (
+            <Pressable
+              onPress={() => {
+                hapticLight();
+                setShowFilter((v) => !v);
+              }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Filter assignees"
+              style={styles.iconBtn}
+            >
+              <Ionicons
+                name={assigneeFilter.size ? 'funnel' : 'funnel-outline'}
+                size={20}
+                color={colors.ink}
+              />
+            </Pressable>
+          )}
+          {isMine ? null : (
             <>
               <Pressable
                 onPress={() => router.push(`/space/${selectedSpaceId}/members` as never)}
@@ -248,6 +270,63 @@ function SpaceBoard() {
                 <AccentDot color={s.color} size={8} />
                 <Text variant="meta" color={on ? colors.brandDeep : colors.inkFaint}>
                   {s.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {!isMine && showFilter ? (
+        <View style={styles.filterRow}>
+          <Text variant="meta" color={colors.inkFaint} style={styles.filterHint}>
+            Pick people to show only their tasks. Leave them all off to show everyone.
+          </Text>
+          <Pressable
+            onPress={() => {
+              hapticLight();
+              setAssigneeFilter((prev) => {
+                const next = new Set(prev);
+                if (next.has(UNASSIGNED_FILTER)) next.delete(UNASSIGNED_FILTER);
+                else next.add(UNASSIGNED_FILTER);
+                return next;
+              });
+            }}
+            style={[
+              styles.chip,
+              assigneeFilter.has(UNASSIGNED_FILTER) ? styles.chipOn : styles.chipOff,
+            ]}
+          >
+            <Text
+              variant="meta"
+              color={assigneeFilter.has(UNASSIGNED_FILTER) ? colors.brandDeep : colors.inkFaint}
+            >
+              Unassigned
+            </Text>
+          </Pressable>
+          {roster.map((member) => {
+            const on = assigneeFilter.has(member.user_id);
+            const label = member.profile?.display_name ?? 'Member';
+            return (
+              <Pressable
+                key={member.user_id}
+                onPress={() => {
+                  hapticLight();
+                  setAssigneeFilter((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(member.user_id)) next.delete(member.user_id);
+                    else next.add(member.user_id);
+                    return next;
+                  });
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={label}
+                style={[styles.chip, on ? styles.chipOn : styles.chipOff]}
+              >
+                <Text variant="meta" color={on ? colors.brandDeep : colors.inkFaint}>
+                  {label}
+                  {member.is_agent ? ' · Agent' : ''}
                 </Text>
               </Pressable>
             );
@@ -389,6 +468,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
+  filterHint: { width: '100%' },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

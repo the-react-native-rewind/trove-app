@@ -8,7 +8,7 @@ import { TaskRow } from './TaskRow';
 import { Text } from './ui/Text';
 
 /**
- * Native Kanban: four columns side by side. Cross-column moves use the card's
+ * Native board: To do and Done, side by side. Cross-column moves use the card's
  * swipe actions (the web build gets true drag-and-drop via KanbanBoard.web).
  */
 export function KanbanBoard({

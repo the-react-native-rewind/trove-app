@@ -198,7 +198,7 @@ values
 on conflict (space_id, user_id) do nothing;
 
 insert into public.tasks (
-  id, space_id, title, description, status, position, assignee_id, priority, due_date, created_by
+  id, space_id, title, description, status, position, priority, due_date, created_by
 )
 values
   (
@@ -207,7 +207,6 @@ values
     'Water the greenhouse',
     'The seedlings dry out by mid-morning.',
     'todo', 1,
-    'a1111111-1111-4111-8111-111111111111',
     'high', current_date + 1,
     'a1111111-1111-4111-8111-111111111111'
   ),
@@ -217,7 +216,6 @@ values
     'Turn the compost',
     'Back bed, after the rain.',
     'todo', 2,
-    'a2222222-2222-4222-8222-222222222222',
     'medium', current_date + 2,
     'a1111111-1111-4111-8111-111111111111'
   ),
@@ -227,7 +225,6 @@ values
     'Order seed potatoes',
     'Charlotte and Pink Fir. Shared job, not on anyone''s personal list yet.',
     'todo', 3,
-    null,
     'low', current_date + 10,
     'a3333333-3333-4333-8333-333333333333'
   ),
@@ -237,7 +234,6 @@ values
     'Fix the gate latch',
     null,
     'done', 4,
-    'a3333333-3333-4333-8333-333333333333',
     null, current_date - 1,
     'a3333333-3333-4333-8333-333333333333'
   ),
@@ -246,8 +242,7 @@ values
     'a4444444-4444-4444-8444-444444444444',
     'Label the seedlings',
     'Tomatoes and basil.',
-    'in_progress', 5,
-    'a1111111-1111-4111-8111-111111111111',
+    'todo', 5,
     'medium', current_date + 3,
     'a1111111-1111-4111-8111-111111111111'
   ),
@@ -256,8 +251,7 @@ values
     'a5555555-5555-4555-8555-555555555555',
     'Print the programmes',
     'Saturday concert. 80 copies.',
-    'in_progress', 1,
-    'a1111111-1111-4111-8111-111111111111',
+    'todo', 1,
     'high', current_date + 4,
     'a1111111-1111-4111-8111-111111111111'
   ),
@@ -267,7 +261,6 @@ values
     'Confirm the soloist',
     null,
     'todo', 2,
-    'a2222222-2222-4222-8222-222222222222',
     'medium', current_date + 6,
     'a2222222-2222-4222-8222-222222222222'
   ),
@@ -277,7 +270,6 @@ values
     'Book the boiler service',
     'The engineer only comes on Thursdays.',
     'todo', 1,
-    'a1111111-1111-4111-8111-111111111111',
     'high', current_date - 2,
     'a1111111-1111-4111-8111-111111111111'
   )
@@ -285,7 +277,7 @@ on conflict (id) do nothing;
 
 -- Private tasks live in each person's default Personal space.
 insert into public.tasks (
-  id, space_id, title, description, status, position, assignee_id, created_by
+  id, space_id, title, description, status, position, created_by
 )
 select
   'b9999999-9999-4999-8999-999999999999',
@@ -293,22 +285,35 @@ select
   'Sketch the spring menu',
   'Only Alex can see this. It is in Personal.',
   'todo', 1,
-  'a1111111-1111-4111-8111-111111111111',
   'a1111111-1111-4111-8111-111111111111'
 from public.spaces s
 where s.owner_id = 'a1111111-1111-4111-8111-111111111111' and s.is_default
 on conflict (id) do nothing;
 
 insert into public.tasks (
-  id, space_id, title, status, position, assignee_id, created_by
+  id, space_id, title, status, position, created_by
 )
 select
   'baaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   s.id,
   'Call mum',
   'todo', 1,
-  'a2222222-2222-4222-8222-222222222222',
   'a2222222-2222-4222-8222-222222222222'
 from public.spaces s
 where s.owner_id = 'a2222222-2222-4222-8222-222222222222' and s.is_default
 on conflict (id) do nothing;
+
+-- Greenhouse is shared by Alex and Sam. The rest keep a single assignee.
+insert into public.task_assignees (task_id, user_id, position)
+values
+  ('b1111111-1111-4111-8111-111111111111', 'a1111111-1111-4111-8111-111111111111', 0),
+  ('b1111111-1111-4111-8111-111111111111', 'a2222222-2222-4222-8222-222222222222', 1),
+  ('b2222222-2222-4222-8222-222222222222', 'a2222222-2222-4222-8222-222222222222', 0),
+  ('b4444444-4444-4444-8444-444444444444', 'a3333333-3333-4333-8333-333333333333', 0),
+  ('b5555555-5555-4555-8555-555555555555', 'a1111111-1111-4111-8111-111111111111', 0),
+  ('b6666666-6666-4666-8666-666666666666', 'a1111111-1111-4111-8111-111111111111', 0),
+  ('b7777777-7777-4777-8777-777777777777', 'a2222222-2222-4222-8222-222222222222', 0),
+  ('b8888888-8888-4888-8888-888888888888', 'a1111111-1111-4111-8111-111111111111', 0),
+  ('b9999999-9999-4999-8999-999999999999', 'a1111111-1111-4111-8111-111111111111', 0),
+  ('baaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a2222222-2222-4222-8222-222222222222', 0)
+on conflict (task_id, user_id) do nothing;

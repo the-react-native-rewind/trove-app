@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { SpacePicker } from '@/components/form';
+import { AssigneePicker, SpacePicker } from '@/components/form';
 import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
@@ -24,8 +24,8 @@ import { colors, radii, spacing, type as typeScale } from '@/theme/tokens';
 /**
  * Capture sheet: one box, a mic, a space. Title, polished description, and
  * due date are inferred (chrono locally for the date, AI for the rest).
- * Status is always "To do". The task starts assigned to you, so it shows
- * on Mine; hand it to someone else from the task screen.
+ * Status is always "To do". It starts assigned to you, so it shows on Mine.
+ * Add other people from this sheet before saving.
  */
 export default function NewTask() {
   const router = useRouter();
@@ -43,6 +43,7 @@ export default function NewTask() {
 
   const [text, setText] = useState('');
   const [spaceId, setSpaceId] = useState<string | null>(initialSpace);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(userId ? [userId] : []);
   const [media, setMedia] = useState<PickedMedia[]>([]);
   const [dismissedMatch, setDismissedMatch] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -101,6 +102,7 @@ export default function NewTask() {
         status: 'todo',
         priority: null,
         due_date: due,
+        assignee_ids: assigneeIds,
       });
       for (const m of media) {
         try {
@@ -203,7 +205,15 @@ export default function NewTask() {
         </View>
       ) : null}
 
-      <SpacePicker spaces={spaces} value={spaceId} onChange={setSpaceId} />
+      <SpacePicker
+        spaces={spaces}
+        value={spaceId}
+        onChange={(next) => {
+          setSpaceId(next);
+          setAssigneeIds(userId ? [userId] : []);
+        }}
+      />
+      <AssigneePicker spaceId={spaceId} value={assigneeIds} onChange={setAssigneeIds} />
 
       <View style={styles.mediaField}>
         <Text variant="label" color={colors.inkSoft}>

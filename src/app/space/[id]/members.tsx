@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Share, StyleSheet, View } from 'react-native';
@@ -57,6 +58,7 @@ export default function Members() {
 
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<SpaceRole>('member');
+  const [agent, setAgent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [managingId, setManagingId] = useState<string | null>(null);
 
@@ -77,8 +79,9 @@ export default function Members() {
       return;
     }
     try {
-      const invite = await createInvite.mutateAsync({ email: trimmed, role });
+      const invite = await createInvite.mutateAsync({ email: trimmed, role, isAgent: agent });
       setEmail('');
+      setAgent(false);
       await shareInvite(invite);
     } catch {
       setError('We could not create that invite. Try again.');
@@ -111,6 +114,25 @@ export default function Members() {
           <Text variant="meta" color={colors.inkSoft} style={styles.roleHint}>
             {ROLE_DESCRIPTIONS[role]}
           </Text>
+          <Pressable
+            onPress={() => setAgent((current) => !current)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: agent }}
+            accessibilityLabel="This invite is for an agent"
+            style={styles.agentToggle}
+          >
+            <Ionicons
+              name={agent ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={agent ? colors.brandDeep : colors.inkSoft}
+            />
+            <View style={styles.memberText}>
+              <Text variant="bodyMedium">This invite is for an agent</Text>
+              <Text variant="meta" color={colors.inkFaint}>
+                Agents are bots. People stay the default.
+              </Text>
+            </View>
+          </Pressable>
           {error ? (
             <Text variant="meta" color={colors.priorityHigh}>
               {error}
@@ -139,6 +161,7 @@ export default function Members() {
               </Text>
               <Text variant="meta" color={colors.inkFaint}>
                 {ROLE_LABELS[m.role as SpaceRole]}
+                {m.is_agent ? ' · Agent' : ''}
               </Text>
             </View>
             {manager && m.role !== 'owner' && m.user_id !== userId ? (
@@ -192,7 +215,8 @@ export default function Members() {
                   {inv.email}
                 </Text>
                 <Text variant="meta" color={colors.inkFaint}>
-                  {ROLE_LABELS[inv.role as SpaceRole]} · pending
+                  {ROLE_LABELS[inv.role as SpaceRole]}
+                  {inv.is_agent ? ' · Agent' : ''} · pending
                 </Text>
               </View>
               <Pressable onPress={() => shareInvite(inv)} hitSlop={8}>
@@ -223,6 +247,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   roleHint: { marginTop: -spacing.xs, marginLeft: 2 },
+  agentToggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   section: { gap: spacing.sm },
   memberRow: {
     flexDirection: 'row',

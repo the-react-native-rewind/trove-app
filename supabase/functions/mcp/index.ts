@@ -60,7 +60,23 @@ const dueFields = {
   due_after: z.string().optional().describe('Only tasks due on or after this date (YYYY-MM-DD).'),
 };
 
-const statusField = z.enum(['todo', 'in_progress', 'done']).optional().describe('todo, in_progress, or done.');
+const statusField = z
+  .enum(['todo', 'done'])
+  .optional()
+  .describe('todo or done. Doing is no longer a status.');
+
+const assigneeFields = {
+  assignee: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('One member id, display name, "me", or null. Replaces the whole set. Pass assignee or assignees, not both.'),
+  assignees: z
+    .array(z.string())
+    .nullable()
+    .optional()
+    .describe('Member ids, display names, or "me". Replaces the whole set. An empty list unassigns. Pass assignee or assignees, not both.'),
+};
 
 const repeatFields = {
   repeat_unit: z
@@ -89,11 +105,7 @@ const taskInput = z.object({
   title: z.string().describe('What needs doing.'),
   notes: z.string().nullable().optional().describe('Longer notes. Stored as the task description.'),
   ...circleTarget,
-  assignee: z
-    .string()
-    .nullable()
-    .optional()
-    .describe('A member id, a display name, "me", or null. Defaults to you on create.'),
+  ...assigneeFields,
   due_date: z.string().nullable().optional().describe('Due date as YYYY-MM-DD, or null.'),
   tags: z.array(z.string()).optional().describe('Label names in this circle. Created if they do not exist yet.'),
   status: statusField,
@@ -231,7 +243,7 @@ function buildServer(store: TroveStore): McpServer {
           .optional()
           .describe('For an owner or admin, sets rank in the circle\'s overall order: high above the current top, medium in the middle, low or null at the bottom. A member can set this label but cannot change rank.'),
         due_date: z.string().nullable().optional(),
-        assignee: z.string().nullable().optional().describe('Member id, display name, "me", or null.'),
+        ...assigneeFields,
         tags: z.array(z.string()).optional().describe('Replaces the task\'s tags. An empty array clears them.'),
         ...repeatFields,
       }),
@@ -254,7 +266,8 @@ function buildServer(store: TroveStore): McpServer {
       description: toolDescriptions.assign_task,
       inputSchema: z.object({
         task_id: z.string().uuid(),
-        assignee: z.string().nullable().describe('Member id, display name, "me", or null to unassign.'),
+        assignee: assigneeFields.assignee.describe('Member id, display name, "me", or null. Replaces the whole set.'),
+        assignees: assigneeFields.assignees,
       }),
     },
     async (args) => asTool(await assignTask(store, args)),
@@ -314,6 +327,10 @@ function buildServer(store: TroveStore): McpServer {
         ...circleTarget,
         email: z.string().describe('Email address to invite.'),
         role: z.enum(['admin', 'member', 'viewer']).optional().describe('Defaults to member.'),
+        agent: z
+          .boolean()
+          .optional()
+          .describe('Mark this invite as an agent (a bot). Defaults to false, a human invite. Copied onto the membership when they join.'),
       }),
     },
     async (args) => asTool(await inviteToCircle(store, args)),

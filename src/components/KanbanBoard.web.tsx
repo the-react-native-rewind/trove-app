@@ -9,7 +9,7 @@ import { useSelection } from '@/providers/SelectionProvider';
 import { TaskCard } from './TaskCard';
 
 /**
- * Web Kanban: four columns with real drag-and-drop across columns using the
+ * Web board: To do and Done, with drag-and-drop across columns using the
  * HTML5 Drag and Drop API (react-dom renders this file, so DOM events work).
  */
 /**

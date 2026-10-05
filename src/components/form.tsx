@@ -255,36 +255,40 @@ export function AssigneePicker({
   onChange,
 }: {
   spaceId: string | null;
-  value: string | null;
-  onChange: (userId: string | null) => void;
+  value: readonly string[];
+  onChange: (userIds: string[]) => void;
 }) {
   const { data: roster = [] } = useRoster(spaceId ?? 'all');
+  const selectedIds = new Set(value);
+  const unassigned = value.length === 0;
   return (
     <View style={styles.field}>
-      <FieldLabel>Assignee</FieldLabel>
+      <FieldLabel>Assignees</FieldLabel>
       <View style={styles.chipRow}>
         <Pressable
           onPress={() => {
-            if (value !== null) hapticLight();
-            onChange(null);
+            if (!unassigned) hapticLight();
+            onChange([]);
           }}
           accessibilityRole="button"
-          accessibilityState={{ selected: value === null }}
-          style={[styles.chip, value === null ? styles.chipSelected : styles.chipIdle]}
+          accessibilityState={{ selected: unassigned }}
+          style={[styles.chip, unassigned ? styles.chipSelected : styles.chipIdle]}
         >
-          <Text variant="bodyMedium" color={value === null ? colors.onBrand : colors.inkSoft}>
+          <Text variant="bodyMedium" color={unassigned ? colors.onBrand : colors.inkSoft}>
             Unassigned
           </Text>
         </Pressable>
         {roster.map((m) => {
           if (!m.profile) return null;
-          const selected = m.user_id === value;
+          const selected = selectedIds.has(m.user_id);
           return (
             <Pressable
               key={m.id}
               onPress={() => {
-                if (!selected) hapticLight();
-                onChange(m.user_id);
+                hapticLight();
+                onChange(
+                  selected ? value.filter((id) => id !== m.user_id) : [...value, m.user_id],
+                );
               }}
               accessibilityRole="button"
               accessibilityState={{ selected }}

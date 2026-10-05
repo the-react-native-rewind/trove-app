@@ -6,9 +6,4 @@
  */
 export const MINE_VIEW_ID = 'all';
 
-export function isAssignedToUser(
-  assigneeId: string | null | undefined,
-  userId: string | null | undefined,
-): boolean {
-  return !!userId && assigneeId === userId;
-}
+export { isAssignedToUser } from './assignees';

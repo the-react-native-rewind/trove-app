@@ -69,16 +69,24 @@ declare
 begin
   insert into public.tasks (
     id, space_id, title, status, position, created_by,
-    due_date, repeat_unit, repeat_interval, assignee_id
+    due_date, repeat_unit, repeat_interval
   )
   values (
     parent, garden, 'Turn the beds', 'todo', 21, alex,
-    '2026-10-03', 'week', 1, null
+    '2026-10-03', 'week', 1
   );
 
-  perform public.bulk_update_tasks(array[parent], null, sam, true);
-  if (select assignee_id from public.tasks where id = parent) <> sam then
+  perform public.bulk_update_tasks(array[parent], null, array[sam], true);
+  if (
+    select count(*) from public.task_assignees
+    where task_id = parent and user_id = sam
+  ) <> 1 then
     raise exception 'bulk assign did not set the assignee';
+  end if;
+
+  perform public.bulk_update_tasks(array[parent], null, array[alex, sam], true);
+  if (select count(*) from public.task_assignees where task_id = parent) <> 2 then
+    raise exception 'bulk assign did not keep both people';
   end if;
   if (select status from public.tasks where id = parent) <> 'todo' then
     raise exception 'assign changed the status';
@@ -89,7 +97,7 @@ begin
   end if;
 
   perform public.bulk_update_tasks(array[parent], null, null, true);
-  if (select assignee_id from public.tasks where id = parent) is not null then
+  if exists (select 1 from public.task_assignees where task_id = parent) then
     raise exception 'bulk unassign left an assignee';
   end if;
 end $$;
@@ -99,12 +107,14 @@ do $$
 declare
   alex uuid := 'a1111111-1111-4111-8111-111111111111';
   priya uuid := 'a3333333-3333-4333-8333-333333333333';
-  before_garden uuid;
-  before_choir uuid;
 begin
-  select assignee_id into before_garden from public.tasks where id = 'b1111111-1111-4111-8111-111111111111';
-  select assignee_id into before_choir from public.tasks where id = 'b6666666-6666-4666-8666-666666666666';
-  if before_garden <> alex or before_choir <> alex then
+  if not exists (
+    select 1 from public.task_assignees
+    where task_id = 'b1111111-1111-4111-8111-111111111111' and user_id = alex
+  ) or not exists (
+    select 1 from public.task_assignees
+    where task_id = 'b6666666-6666-4666-8666-666666666666' and user_id = alex
+  ) then
     raise exception 'seed assignees moved before the cross-circle check';
   end if;
 
@@ -115,7 +125,7 @@ begin
         'b6666666-6666-4666-8666-666666666666'
       ]::uuid[],
       null,
-      priya,
+      array[priya],
       true
     );
     raise exception 'assigned across circles to someone who is not in both';
@@ -129,8 +139,17 @@ begin
       end if;
   end;
 
-  if (select assignee_id from public.tasks where id = 'b1111111-1111-4111-8111-111111111111') <> before_garden
-     or (select assignee_id from public.tasks where id = 'b6666666-6666-4666-8666-666666666666') <> before_choir then
+  if not exists (
+    select 1 from public.task_assignees
+    where task_id = 'b1111111-1111-4111-8111-111111111111' and user_id = alex
+  ) or not exists (
+    select 1 from public.task_assignees
+    where task_id = 'b1111111-1111-4111-8111-111111111111'
+      and user_id = 'a2222222-2222-4222-8222-222222222222'
+  ) or not exists (
+    select 1 from public.task_assignees
+    where task_id = 'b6666666-6666-4666-8666-666666666666' and user_id = alex
+  ) then
     raise exception 'rejected assign still changed a task';
   end if;
 end $$;
@@ -146,20 +165,26 @@ begin
       'b2222222-2222-4222-8222-222222222222',
       'b7777777-7777-4777-8777-777777777777'
     ]::uuid[],
-    'in_progress',
-    sam,
+    'done',
+    array[sam],
     true
   );
   if n <> 2 then
     raise exception 'shared-member assign returned %', n;
   end if;
   if exists (
-    select 1 from public.tasks
-    where id in (
+    select 1 from public.tasks t
+    where t.id in (
       'b2222222-2222-4222-8222-222222222222',
       'b7777777-7777-4777-8777-777777777777'
     )
-      and (assignee_id is distinct from sam or status is distinct from 'in_progress')
+      and (
+        t.status is distinct from 'done'
+        or not exists (
+          select 1 from public.task_assignees a
+          where a.task_id = t.id and a.user_id = sam
+        )
+      )
   ) then
     raise exception 'shared-member assign did not update both tasks';
   end if;
@@ -201,7 +226,7 @@ begin
   if (select status from public.tasks where id = 'b3333333-3333-4333-8333-333333333333') <> 'todo' then
     raise exception 'failed batch still completed a visible task';
   end if;
-  if (select status from public.tasks where id = 'b6666666-6666-4666-8666-666666666666') <> 'in_progress' then
+  if (select status from public.tasks where id = 'b6666666-6666-4666-8666-666666666666') <> 'todo' then
     raise exception 'failed batch changed a task Priya cannot see';
   end if;
 end $$;
@@ -239,7 +264,7 @@ reset role;
 
 do $$
 begin
-  if (select status from public.tasks where id = 'b5555555-5555-4555-8555-555555555555') <> 'in_progress' then
+  if (select status from public.tasks where id = 'b5555555-5555-4555-8555-555555555555') <> 'todo' then
     raise exception 'viewer update changed the task';
   end if;
 end $$;

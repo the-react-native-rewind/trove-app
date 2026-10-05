@@ -44,7 +44,11 @@ export function useCreateInvite(spaceId: string) {
   const { userId } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { email: string; role: SpaceRole }): Promise<Invite> => {
+    mutationFn: async (input: {
+      email: string;
+      role: SpaceRole;
+      isAgent?: boolean;
+    }): Promise<Invite> => {
       const role = input.role === 'owner' ? 'member' : input.role; // owner is not invitable
       const { data, error } = await supabase
         .from('invites')
@@ -53,6 +57,7 @@ export function useCreateInvite(spaceId: string) {
           email: input.email.trim().toLowerCase(),
           role,
           invited_by: userId,
+          is_agent: input.isAgent ?? false,
         })
         .select('*')
         .single();

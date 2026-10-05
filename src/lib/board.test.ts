@@ -11,7 +11,7 @@ function task(overrides: Partial<TaskWithRefs> & { id: string }): TaskWithRefs {
     title: overrides.id,
     description: null,
     status: 'todo',
-    assignee_id: null,
+    assignees: [],
     priority: null,
     rank: 'a0',
     due_date: null,
@@ -20,15 +20,14 @@ function task(overrides: Partial<TaskWithRefs> & { id: string }): TaskWithRefs {
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
     space: null,
-    assignee: null,
     ...overrides,
   } as TaskWithRefs;
 }
 
-test('legacy and unknown statuses stay visible as To do', () => {
+test('legacy and unknown statuses stay on the open list', () => {
   assert.equal(normalizeStatus('backlog'), 'todo');
+  assert.equal(normalizeStatus('in_progress'), 'todo');
   assert.equal(normalizeStatus('mystery'), 'todo');
-  assert.equal(normalizeStatus('in_progress'), 'in_progress');
   assert.equal(normalizeStatus('done'), 'done');
 });
 
@@ -82,8 +81,14 @@ test('equal due date and rank keep position, then creation time, then id', () =>
   );
 });
 
-test('grouping folds a legacy status into To do', () => {
-  const groups = groupByStatus([task({ id: 'old', status: 'backlog' as never })]);
-  assert.equal(groups.todo[0]?.id, 'old');
-  assert.equal(groups.in_progress.length, 0);
+test('grouping folds legacy statuses into To do', () => {
+  const groups = groupByStatus([
+    task({ id: 'old', status: 'backlog' as never }),
+    task({ id: 'doing', status: 'in_progress' as never }),
+  ]);
+  assert.deepEqual(
+    groups.todo.map((item) => item.id).sort(),
+    ['doing', 'old'],
+  );
+  assert.equal(groups.done.length, 0);
 });

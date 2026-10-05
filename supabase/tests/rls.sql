@@ -4,7 +4,7 @@
 \set ON_ERROR_STOP on
 
 -- Alex: member of every demo group. Garden shows the whole list (5).
--- Mine is assignee = Alex: greenhouse, seedlings, programmes, boiler, spring menu = 5.
+-- Mine is any assignee = Alex: greenhouse, seedlings, programmes, boiler, spring menu = 5.
 set role authenticated;
 select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
 
@@ -22,7 +22,12 @@ begin
     raise exception 'alex should see all 5 garden tasks, saw %', n;
   end if;
 
-  select count(*) into n from public.tasks where assignee_id = auth.uid();
+  select count(*) into n
+  from public.tasks t
+  where exists (
+    select 1 from public.task_assignees a
+    where a.task_id = t.id and a.user_id = auth.uid()
+  );
   if n <> 5 then
     raise exception 'alex mine view should be 5 assigned tasks, saw %', n;
   end if;
@@ -56,9 +61,14 @@ begin
     raise exception 'sam should see the whole choir list, saw %', n;
   end if;
 
-  select count(*) into n from public.tasks where assignee_id = auth.uid();
-  if n <> 3 then
-    raise exception 'sam mine view should be 3 (compost, soloist, call mum), saw %', n;
+  select count(*) into n
+  from public.tasks t
+  where exists (
+    select 1 from public.task_assignees a
+    where a.task_id = t.id and a.user_id = auth.uid()
+  );
+  if n <> 4 then
+    raise exception 'sam mine view should be 4 (greenhouse, compost, soloist, call mum), saw %', n;
   end if;
 
   select count(*) into n
@@ -87,7 +97,12 @@ begin
     raise exception 'priya should not see choir tasks';
   end if;
 
-  select count(*) into n from public.tasks where assignee_id = auth.uid();
+  select count(*) into n
+  from public.tasks t
+  where exists (
+    select 1 from public.task_assignees a
+    where a.task_id = t.id and a.user_id = auth.uid()
+  );
   if n <> 1 then
     raise exception 'priya mine view should be the gate latch, saw %', n;
   end if;
@@ -193,13 +208,81 @@ begin
     raise exception 'quinn should see the household list after joining, saw %', n;
   end if;
 
-  select count(*) into n from public.tasks where assignee_id = auth.uid();
+  select count(*) into n
+  from public.tasks t
+  where exists (
+    select 1 from public.task_assignees a
+    where a.task_id = t.id and a.user_id = auth.uid()
+  );
   if n <> 0 then
     raise exception 'quinn mine view should be empty until something is assigned, saw %', n;
+  end if;
+
+  if coalesce((
+    select is_agent from public.space_members
+    where space_id = joined and user_id = auth.uid()
+  ), true) then
+    raise exception 'a human invite marked the member as an agent';
   end if;
 end $$;
 
 reset role;
+
+-- Agent invites copy the flag onto the membership created at signup.
+insert into auth.users (id, email, raw_user_meta_data)
+values (
+  'a8888888-8888-4888-8888-888888888888',
+  'helper@trove.example',
+  '{"display_name":"Helper"}'::jsonb
+);
+
+insert into public.invites (space_id, email, role, invited_by, token, status, is_agent)
+values (
+  'a5555555-5555-4555-8555-555555555555',
+  'helper@trove.example',
+  'member',
+  'a1111111-1111-4111-8111-111111111111',
+  'agent-invite-token',
+  'pending',
+  true
+);
+
+insert into public.invites (space_id, email, role, invited_by, token, status)
+values (
+  'a4444444-4444-4444-8444-444444444444',
+  'helper@trove.example',
+  'member',
+  'a1111111-1111-4111-8111-111111111111',
+  'human-invite-token',
+  'pending'
+);
+
+do $$
+declare
+  agent boolean;
+begin
+  if (select is_agent from public.invites where token = 'human-invite-token') is not false then
+    raise exception 'human invites should default to not an agent';
+  end if;
+
+  perform public.accept_pending_invites_for_user('a8888888-8888-4888-8888-888888888888');
+
+  select is_agent into agent
+  from public.space_members
+  where user_id = 'a8888888-8888-4888-8888-888888888888'
+    and space_id = 'a5555555-5555-4555-8555-555555555555';
+  if agent is not true then
+    raise exception 'signup accept did not mark the choir member as an agent';
+  end if;
+
+  select is_agent into agent
+  from public.space_members
+  where user_id = 'a8888888-8888-4888-8888-888888888888'
+    and space_id = 'a4444444-4444-4444-8444-444444444444';
+  if agent is not false then
+    raise exception 'human invite marked the garden member as an agent';
+  end if;
+end $$;
 
 -- Moving a task, and personal access tokens. Direct updates of tasks.space_id
 -- are rejected for every role unless move_task has set the transaction-local
@@ -265,6 +348,40 @@ begin
   if coalesce((result->>'already_there')::boolean, true) then
     raise exception 'move reported already_there, got %', result;
   end if;
+
+  -- Seedlings is Alex and Sam. Household includes Alex only, so Sam is cleared.
+  insert into public.task_assignees (task_id, user_id, position)
+  values (
+    'b5555555-5555-4555-8555-555555555555',
+    'a2222222-2222-4222-8222-222222222222',
+    1
+  );
+
+  result := public.move_task(
+    'b5555555-5555-4555-8555-555555555555',
+    'a6666666-6666-4666-8666-666666666666'
+  );
+  if coalesce((result->>'assignee_cleared')::boolean, false) is not true then
+    raise exception 'a non-member assignee should be cleared, got %', result;
+  end if;
+  if (
+    select count(*) from public.task_assignees
+    where task_id = 'b5555555-5555-4555-8555-555555555555'
+  ) <> 1 then
+    raise exception 'expected the member assignee to stay';
+  end if;
+  if not exists (
+    select 1 from public.task_assignees
+    where task_id = 'b5555555-5555-4555-8555-555555555555'
+      and user_id = 'a1111111-1111-4111-8111-111111111111'
+  ) then
+    raise exception 'alex should remain assigned after the move';
+  end if;
+
+  perform public.move_task(
+    'b5555555-5555-4555-8555-555555555555',
+    'a4444444-4444-4444-8444-444444444444'
+  );
 end $$;
 
 select set_config('request.jwt.claim.sub', 'a3333333-3333-4333-8333-333333333333', false);
@@ -346,10 +463,18 @@ select public.move_task(
 reset role;
 
 update public.tasks
-set
-  assignee_id = 'a2222222-2222-4222-8222-222222222222',
-  position = 2
+set position = 2
 where id = 'b2222222-2222-4222-8222-222222222222';
+
+delete from public.task_assignees
+where task_id = 'b2222222-2222-4222-8222-222222222222';
+
+insert into public.task_assignees (task_id, user_id, position)
+values (
+  'b2222222-2222-4222-8222-222222222222',
+  'a2222222-2222-4222-8222-222222222222',
+  0
+);
 
 insert into public.task_labels (task_id, label_id)
 values (
@@ -365,9 +490,12 @@ declare
   space uuid;
   assignee uuid;
 begin
-  select space_id, assignee_id into space, assignee
+  select space_id into space
   from public.tasks
   where id = 'b2222222-2222-4222-8222-222222222222';
+  select user_id into assignee
+  from public.task_assignees
+  where task_id = 'b2222222-2222-4222-8222-222222222222';
   if space <> 'a4444444-4444-4444-8444-444444444444' or assignee <> 'a2222222-2222-4222-8222-222222222222' then
     raise exception 'compost task was not restored (space %, assignee %)', space, assignee;
   end if;

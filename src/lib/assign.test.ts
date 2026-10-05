@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { peopleInEveryCircle, uniqueSpaceIds, type AssignablePerson } from './assign';
+import { peopleInEveryCircle, sharedAssigneeIds, uniqueSpaceIds, type AssignablePerson } from './assign';
 
 const alex: AssignablePerson = { userId: 'alex', displayName: 'Alex', avatarUrl: null };
 const sam: AssignablePerson = { userId: 'sam', displayName: 'Sam', avatarUrl: null };
@@ -33,6 +33,17 @@ test('nobody in every circle yields an empty list', () => {
 
 test('duplicate roster rows count once', () => {
   assert.deepEqual(peopleInEveryCircle([[alex, alex]]), [alex]);
+});
+
+test('shared assignees are the people on every selected task', () => {
+  assert.deepEqual(
+    sharedAssigneeIds([
+      { assignees: [{ id: 'alex' }, { id: 'sam' }] },
+      { assignees: [{ id: 'sam' }, { id: 'priya' }] },
+    ]),
+    ['sam'],
+  );
+  assert.deepEqual(sharedAssigneeIds([{ assignees: [] }]), []);
 });
 
 test('space ids stay unique and in first-seen order', () => {
