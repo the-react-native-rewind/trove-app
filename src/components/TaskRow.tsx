@@ -24,8 +24,6 @@ export function TaskRow({
   canWrite,
   onOpen,
   onMove,
-  onReorder,
-  dragging,
   media,
 }: {
   task: TaskWithRefs;
@@ -34,9 +32,6 @@ export function TaskRow({
   canWrite: boolean;
   onOpen: () => void;
   onMove: (status: TaskStatus) => void;
-  /** Hold, then drag, to reorder. A hold without movement still selects. */
-  onReorder?: () => void;
-  dragging?: boolean;
   media?: Attachment[];
 }) {
   const ref = useRef<SwipeableMethods>(null);
@@ -82,8 +77,6 @@ export function TaskRow({
           heat={heat}
           selectable={canWrite}
           onPress={onOpen}
-          onReorder={canWrite ? onReorder : undefined}
-          dragging={dragging}
           media={media}
         />
       </ReanimatedSwipeable>

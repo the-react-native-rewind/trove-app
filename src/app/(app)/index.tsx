@@ -2,9 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import DraggableFlatList, {
-  type RenderItemParams,
-} from 'react-native-draggable-flatlist';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
@@ -12,6 +10,7 @@ import { KanbanBoard } from '@/components/KanbanBoard';
 import { MyWeekView } from '@/components/MyWeekView';
 import { SelectionActionBar, SelectionHeader } from '@/components/SelectionChrome';
 import { StatusSegmented } from '@/components/StatusSegmented';
+import { TaskReorderList } from '@/components/TaskReorderList';
 import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AccentDot } from '@/components/ui/Indicators';
@@ -23,7 +22,6 @@ import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
-import { rankAfterDrop } from '@/lib/rank';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { MY_WEEK_VIEW_ID } from '@/lib/week';
@@ -86,12 +84,13 @@ function SpaceBoard() {
   const canWriteTask = (spaceId: string) => canWrite(spaces.find((s) => s.id === spaceId)?.role);
 
   const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(selectedSpaceId);
-  const collapse = useCollapsingHeader(insets.top);
+  const selection = useSelection();
+  const [reordering, setReordering] = useState(false);
+  const reorderActive = reordering && !isWide && !selection.active;
+  // Keep the header on screen while reordering so Done cannot scroll away.
+  const collapse = useCollapsingHeader(insets.top, 112, reorderActive);
   const moveStatus = useMoveTaskStatus();
   const updateRank = useUpdateTaskRank();
-  const selection = useSelection();
-  const dragMoved = useRef(false);
-  const [showDrag, setShowDrag] = useState(false);
 
   const [status, setStatus] = useState<TaskStatus>('in_progress');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -128,27 +127,22 @@ function SpaceBoard() {
     router.push(`/task-new?${params.toString()}` as never);
   }
 
-  function renderItem({ item, getIndex, drag, isActive }: RenderItemParams<TaskWithRefs>) {
+  function toggleReorder() {
+    hapticLight();
+    if (!reordering) selection.exit();
+    setReordering((on) => !on);
+  }
+
+  function renderItem({ item, index }: { item: TaskWithRefs; index: number }) {
     const rowWritable = isMine ? canWrite(spaces.find((s) => s.id === item.space_id)?.role) : writable;
-    const rank = getIndex() ?? 0;
     return (
       <TaskRow
         task={item}
-        heat={heatColor(rank, items.length)}
+        heat={heatColor(index, items.length)}
         canWrite={rowWritable}
-        dragging={isActive && showDrag}
         showSpaceTag={isMine}
         onOpen={() => router.push(`/task/${item.id}` as never)}
         onMove={(next) => moveStatus.mutate({ id: item.id, status: next })}
-        onReorder={
-          rowWritable && !selection.active
-            ? () => {
-                dragMoved.current = false;
-                setShowDrag(false);
-                drag();
-              }
-            : undefined
-        }
         media={mediaByTask?.[item.id]}
       />
     );
@@ -157,6 +151,22 @@ function SpaceBoard() {
   const headerBody = (
     <>
       <View style={[styles.header, isWide && styles.headerWide]}>
+        {!isWide && writable && !selection.active ? (
+          <Pressable
+            onPress={toggleReorder}
+            accessibilityRole="button"
+            accessibilityLabel={reorderActive ? 'Done reordering' : 'Reorder tasks'}
+            accessibilityState={{ selected: reorderActive }}
+            style={[styles.headerFab, reorderActive && styles.fabActive]}
+          >
+            <Ionicons
+              name={reorderActive ? 'checkmark' : 'reorder-three'}
+              size={30}
+              color={colors.onBrand}
+            />
+          </Pressable>
+        ) : null}
+
         {!isWide ? (
           <Pressable
             onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
@@ -258,6 +268,24 @@ function SpaceBoard() {
     </>
   );
 
+  const listContentStyle = [
+    styles.listContent,
+    reorderActive && styles.reorderContent,
+    !selection.active && { paddingTop: collapse.contentOffset + spacing.sm },
+  ];
+  const listEmpty = isLoading ? null : isError ? (
+    <EmptyState
+      icon="cloud-offline-outline"
+      title="Could not load tasks"
+      body="Pull to refresh and try again."
+    />
+  ) : (
+    <EmptyState {...(isMine ? MINE_EMPTY : EMPTY_COPY)[status]} />
+  );
+  const refreshControl = (
+    <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brand} />
+  );
+
   return (
     <View style={[styles.container, (isWide || selection.active) && { paddingTop: insets.top }]}>
       {selection.active ? (
@@ -284,66 +312,38 @@ function SpaceBoard() {
           canWriteTask={canWriteTask}
           mediaByTaskId={mediaByTask}
         />
+      ) : reorderActive ? (
+        <TaskReorderList
+          tasks={items}
+          canDragTask={(task) => canWriteTask(task.space_id)}
+          onCommitRank={(id, rank) => updateRank.mutate({ id, rank })}
+          onScrollOffsetChange={collapse.onScrollOffsetChange}
+          contentContainerStyle={listContentStyle}
+          ListEmptyComponent={listEmpty}
+          refreshControl={refreshControl}
+        />
       ) : (
-        <DraggableFlatList
+        <Animated.FlatList
           data={items}
-          extraData={showDrag}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          activationDistance={12}
-          onScrollOffsetChange={collapse.onScrollOffsetChange}
-          onPlaceholderIndexChange={() => {
-            if (dragMoved.current) return;
-            dragMoved.current = true;
-            setShowDrag(true);
-            hapticLight();
-          }}
-          onDragEnd={({ data, from, to }) => {
-            const moved = dragMoved.current;
-            dragMoved.current = false;
-            setShowDrag(false);
-            const task = data[from];
-            if (!moved) {
-              if (task && canWriteTask(task.space_id) && !selection.active) selection.enter(task.id);
-              return;
-            }
-            hapticLight();
-            const dropped = data[to];
-            if (!dropped || from === to) return;
-            const nextRank = rankAfterDrop(data[to - 1]?.rank, data[to + 1]?.rank);
-            if (nextRank === dropped.rank) return;
-            updateRank.mutate({ id: dropped.id, rank: nextRank });
-          }}
-          contentContainerStyle={[
-            styles.listContent,
-            !selection.active && { paddingTop: collapse.contentOffset + spacing.sm },
-          ]}
-          ListEmptyComponent={
-            isLoading ? null : isError ? (
-              <EmptyState
-                icon="cloud-offline-outline"
-                title="Could not load tasks"
-                body="Pull to refresh and try again."
-              />
-            ) : (
-              <EmptyState {...(isMine ? MINE_EMPTY : EMPTY_COPY)[status]} />
-            )
-          }
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brand} />
-          }
-          containerStyle={styles.listFlex}
+          onScroll={collapse.onScroll}
+          scrollEventThrottle={16}
+          style={styles.listFlex}
+          contentContainerStyle={listContentStyle}
+          ListEmptyComponent={listEmpty}
+          refreshControl={refreshControl}
         />
       )}
 
       <SelectionActionBar tasks={tasks} />
 
-      {writable && !selection.active ? (
+      {writable && !selection.active && !reorderActive ? (
         <Pressable
           onPress={openCreate}
           accessibilityRole="button"
           accessibilityLabel="Add task"
-          style={[styles.fab, { bottom: insets.bottom + spacing.lg }]}
+          style={[styles.fab, styles.fabRight, { bottom: insets.bottom + spacing.lg }]}
         >
           <Ionicons name="add" size={30} color={colors.onBrand} />
         </Pressable>
@@ -388,15 +388,29 @@ const styles = StyleSheet.create({
   chipOff: { backgroundColor: colors.surfaceAlt, borderColor: colors.hairline },
   listFlex: { flex: 1 },
   listContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: 120, flexGrow: 1 },
+  reorderContent: { paddingHorizontal: 0 },
   fab: {
     position: 'absolute',
-    right: spacing.lg,
     width: 58,
     height: 58,
     borderRadius: 29,
     backgroundColor: colors.brand,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 40,
     ...shadows.floating,
   },
+  fabRight: { right: spacing.lg },
+  // Same face, size, and hit area as the add button, sitting in the header.
+  headerFab: {
+    width: 58,
+    height: 58,
+    flexShrink: 0,
+    borderRadius: 29,
+    backgroundColor: colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.floating,
+  },
+  fabActive: { backgroundColor: colors.brandDeep },
 });

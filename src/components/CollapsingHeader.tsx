@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent, type ViewProps } from 'react-native';
 import Animated, {
   Easing,
@@ -17,16 +17,21 @@ import { colors } from '@/theme/tokens';
  * The header sits over the list, so hiding it reveals rows that were
  * already underneath. List padding stays constant, so rows do not jump.
  */
-export function useCollapsingHeader(topInset: number, estimate = 112) {
+export function useCollapsingHeader(topInset: number, estimate = 112, pinned = false) {
   const headerHeight = useSharedValue(estimate);
   const translateY = useSharedValue(0);
   const hidden = useSharedValue(false);
   const lastY = useSharedValue(0);
+  const pinnedSv = useSharedValue(pinned);
   const heightRef = useRef(estimate);
   const hiddenRef = useRef(false);
   const lastYRef = useRef(0);
   const [blockHeight, setBlockHeight] = useState(estimate);
   const [interactive, setInteractive] = useState(true);
+
+  useEffect(() => {
+    pinnedSv.value = pinned;
+  }, [pinned, pinnedSv]);
 
   function reveal(nextHidden: boolean, height: number) {
     translateY.value = withTiming(nextHidden ? -height : 0, {
@@ -40,12 +45,19 @@ export function useCollapsingHeader(topInset: number, estimate = 112) {
     const next = event.nativeEvent.layout.height;
     headerHeight.value = next;
     heightRef.current = next;
-    if (hiddenRef.current) translateY.value = -next;
+    if (hiddenRef.current && !pinned) translateY.value = -next;
     setBlockHeight((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
   }
 
   /** DraggableFlatList reports offset on the JS thread. */
   function onScrollOffsetChange(y: number) {
+    if (pinned) {
+      lastYRef.current = y;
+      if (!hiddenRef.current) return;
+      hiddenRef.current = false;
+      reveal(false, heightRef.current);
+      return;
+    }
     const next = headerHiddenAfterScroll({
       y,
       previousY: lastYRef.current,
@@ -66,6 +78,14 @@ export function useCollapsingHeader(topInset: number, estimate = 112) {
   const onScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       const y = event.contentOffset.y;
+      if (pinnedSv.value) {
+        lastY.value = y;
+        if (!hidden.value) return;
+        hidden.value = false;
+        translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
+        runOnJS(setHiddenFromUI)(false);
+        return;
+      }
       const next = headerHiddenAfterScroll({
         y,
         previousY: lastY.value,

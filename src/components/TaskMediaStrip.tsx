@@ -15,7 +15,19 @@ import { FlatList } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Attachment } from '@/data/attachments';
-import { colors, spacing } from '@/theme/tokens';
+import { colors, radii, spacing } from '@/theme/tokens';
+
+/**
+ * Full-bleed media keeps the card's top radius and a square bottom edge.
+ * The clip and the image or video both use this so a rounded bottom cannot
+ * show through when a parent fails to clip.
+ */
+export const fullBleedMediaCorners = {
+  borderTopLeftRadius: radii.card,
+  borderTopRightRadius: radii.card,
+  borderBottomLeftRadius: 0,
+  borderBottomRightRadius: 0,
+} as const;
 
 const CARD_MAX_HEIGHT = 220;
 const CARD_RATIO = 0.62;
@@ -49,7 +61,7 @@ export function TaskMediaStrip({
 
   return (
     <View
-      style={[styles.frame, { height }]}
+      style={[styles.frame, fullBleedMediaCorners, { height }]}
       onLayout={(event) => {
         const next = Math.round(event.nativeEvent.layout.width);
         setWidth((prev) => (prev === next ? prev : next));
@@ -81,7 +93,7 @@ export function TaskMediaStrip({
                   ? `Play video ${index + 1} of ${items.length}`
                   : `View photo ${index + 1} of ${items.length}`
               }
-              style={{ width, height }}
+              style={[styles.page, fullBleedMediaCorners, { width, height }]}
             >
               <MediaFrame item={item} index={index} />
             </Pressable>
@@ -105,7 +117,7 @@ export function TaskMediaStrip({
 function MediaFrame({ item, index }: { item: Attachment; index: number }) {
   if (item.media_type === 'video' || !item.url) {
     return (
-      <View style={styles.poster}>
+      <View style={[styles.poster, styles.clipped, fullBleedMediaCorners]}>
         <View style={styles.play}>
           <Ionicons name="play" size={22} color={colors.ink} />
         </View>
@@ -115,7 +127,7 @@ function MediaFrame({ item, index }: { item: Attachment; index: number }) {
   return (
     <Image
       source={{ uri: item.url }}
-      style={StyleSheet.absoluteFill}
+      style={[styles.media, fullBleedMediaCorners]}
       contentFit="cover"
       cachePolicy="memory-disk"
       recyclingKey={item.id}
@@ -210,6 +222,16 @@ function ViewerVideo({ url }: { url: string }) {
 
 const styles = StyleSheet.create({
   frame: { width: '100%', backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  page: { overflow: 'hidden' },
+  clipped: { overflow: 'hidden' },
+  media: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
+  },
   poster: {
     flex: 1,
     alignItems: 'center',

@@ -7,7 +7,7 @@ import Toast from 'react-native-toast-message';
 import { CirclePicker } from '@/components/form';
 import { MarkdownNotes } from '@/components/MarkdownNotes';
 import { TaskMedia } from '@/components/TaskMedia';
-import { TaskMediaStrip } from '@/components/TaskMediaStrip';
+import { fullBleedMediaCorners, TaskMediaStrip } from '@/components/TaskMediaStrip';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { SpaceTag } from '@/components/ui/Indicators';
@@ -278,7 +278,12 @@ function MoveToCircle({
 
 const styles = StyleSheet.create({
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
-  heroBleed: { marginHorizontal: -spacing.lg, marginTop: -spacing.lg },
+  heroBleed: {
+    marginHorizontal: -spacing.lg,
+    marginTop: -spacing.lg,
+    overflow: 'hidden',
+    ...fullBleedMediaCorners,
+  },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statusPill: {
     backgroundColor: colors.brandSoft,
