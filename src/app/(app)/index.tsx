@@ -92,10 +92,6 @@ function SpaceBoard() {
   const selection = useSelection();
   const [reordering, setReordering] = useState(false);
   const reorderActive = reordering && canReorderList && !selection.active;
-
-  useEffect(() => {
-    setReordering(false);
-  }, [selectedSpaceId]);
   const collapse = useCollapsingHeader(insets.top, 112);
   const moveStatus = useMoveTaskStatus();
   const updateRank = useUpdateTaskRank();
