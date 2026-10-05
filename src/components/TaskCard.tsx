@@ -8,7 +8,7 @@ import { formatDueDate, isOverdue } from '@/lib/format';
 import { describeRepeat, repeatRuleFromTask } from '@/lib/recurrence';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
-import { TaskMediaStrip } from './TaskMediaStrip';
+import { fullBleedMediaCorners, TaskMediaStrip } from './TaskMediaStrip';
 import { Avatar } from './ui/Avatar';
 import { SpaceTag } from './ui/Indicators';
 import { Text } from './ui/Text';
@@ -22,12 +22,6 @@ type TaskCardProps = {
   selectable?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
-  /**
-   * Hold, then move, to reorder. A hold that ends without moving still
-   * selects. The list decides which of those happened.
-   */
-  onReorder?: () => void;
-  dragging?: boolean;
   media?: Attachment[];
 };
 
@@ -38,8 +32,6 @@ export function TaskCard({
   selectable = false,
   onPress,
   onLongPress,
-  onReorder,
-  dragging,
   media,
 }: TaskCardProps) {
   const selection = useSelection();
@@ -64,10 +56,6 @@ export function TaskCard({
       selection.toggle(task.id);
       return;
     }
-    if (onReorder) {
-      onReorder();
-      return;
-    }
     if (selectable) {
       selection.enter(task.id);
       return;
@@ -89,7 +77,6 @@ export function TaskCard({
         styles.card,
         overdue && styles.overdue,
         selected && styles.selected,
-        dragging && styles.dragging,
       ]}
     >
       {media && media.length > 0 ? (
@@ -100,7 +87,7 @@ export function TaskCard({
       <Pressable
         onPress={handlePress}
         onLongPress={handleLongPress}
-        delayLongPress={selectable || onReorder ? 400 : 180}
+        delayLongPress={selectable ? 400 : 180}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ selected }}
@@ -181,10 +168,9 @@ const styles = StyleSheet.create({
     borderColor: colors.hairline,
     ...shadows.card,
   },
-  clip: { borderRadius: radii.card, overflow: 'hidden' },
+  clip: { ...fullBleedMediaCorners, overflow: 'hidden' },
   body: { padding: spacing.lg, gap: spacing.sm },
   overdue: { backgroundColor: colors.overdueSurface, borderColor: colors.overdueBorder },
-  dragging: { ...shadows.floating, borderColor: colors.brandSoft },
   selected: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   title: { flex: 1 },
