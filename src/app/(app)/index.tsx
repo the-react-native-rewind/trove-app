@@ -87,8 +87,7 @@ function SpaceBoard() {
   const selection = useSelection();
   const [reordering, setReordering] = useState(false);
   const reorderActive = reordering && !isWide && !selection.active;
-  // Keep the header on screen while reordering so Done cannot scroll away.
-  const collapse = useCollapsingHeader(insets.top, 112, reorderActive);
+  const collapse = useCollapsingHeader(insets.top, 112);
   const moveStatus = useMoveTaskStatus();
   const updateRank = useUpdateTaskRank();
 
@@ -151,22 +150,6 @@ function SpaceBoard() {
   const headerBody = (
     <>
       <View style={[styles.header, isWide && styles.headerWide]}>
-        {!isWide && writable && !selection.active ? (
-          <Pressable
-            onPress={toggleReorder}
-            accessibilityRole="button"
-            accessibilityLabel={reorderActive ? 'Done reordering' : 'Reorder tasks'}
-            accessibilityState={{ selected: reorderActive }}
-            style={[styles.headerFab, reorderActive && styles.fabActive]}
-          >
-            <Ionicons
-              name={reorderActive ? 'checkmark' : 'reorder-three'}
-              size={30}
-              color={colors.onBrand}
-            />
-          </Pressable>
-        ) : null}
-
         {!isWide ? (
           <Pressable
             onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
@@ -338,6 +321,27 @@ function SpaceBoard() {
 
       <SelectionActionBar tasks={tasks} />
 
+      {!isWide && writable && !selection.active ? (
+        <Pressable
+          onPress={toggleReorder}
+          accessibilityRole="button"
+          accessibilityLabel={reorderActive ? 'Done reordering' : 'Reorder tasks'}
+          accessibilityState={{ selected: reorderActive }}
+          style={[
+            styles.fab,
+            styles.fabLeft,
+            reorderActive && styles.fabActive,
+            { bottom: insets.bottom + spacing.lg },
+          ]}
+        >
+          <Ionicons
+            name={reorderActive ? 'checkmark' : 'swap-vertical'}
+            size={30}
+            color={colors.onBrand}
+          />
+        </Pressable>
+      ) : null}
+
       {writable && !selection.active && !reorderActive ? (
         <Pressable
           onPress={openCreate}
@@ -400,17 +404,7 @@ const styles = StyleSheet.create({
     zIndex: 40,
     ...shadows.floating,
   },
+  fabLeft: { left: spacing.lg },
   fabRight: { right: spacing.lg },
-  // Same face, size, and hit area as the add button, sitting in the header.
-  headerFab: {
-    width: 58,
-    height: 58,
-    flexShrink: 0,
-    borderRadius: 29,
-    backgroundColor: colors.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.floating,
-  },
   fabActive: { backgroundColor: colors.brandDeep },
 });
