@@ -229,7 +229,7 @@ function buildServer(store: TroveStore): McpServer {
           .enum(['low', 'medium', 'high'])
           .nullable()
           .optional()
-          .describe('Sets rank in the circle\'s overall order. high is above the current top, medium is in the middle, low or null is the bottom. Omit it when changing the due date and the database places the task at the bottom of tasks with that due date.'),
+          .describe('For an owner or admin, sets rank in the circle\'s overall order: high above the current top, medium in the middle, low or null at the bottom. A member can set this label but cannot change rank.'),
         due_date: z.string().nullable().optional(),
         assignee: z.string().nullable().optional().describe('Member id, display name, "me", or null.'),
         tags: z.array(z.string()).optional().describe('Replaces the task\'s tags. An empty array clears them.'),

@@ -23,7 +23,7 @@ import { useIsWide } from '@/hooks/useIsWide';
 import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
-import { canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
+import { canManage, canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
 import { MY_WEEK_VIEW_ID } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { SelectionProvider, useSelection } from '@/providers/SelectionProvider';
@@ -82,13 +82,17 @@ function SpaceBoard() {
   const currentSpace = spaces.find((s) => s.id === selectedSpaceId);
   const writable = isMine ? true : canWrite(currentSpace?.role);
   const canWriteTask = (spaceId: string) => canWrite(spaces.find((s) => s.id === spaceId)?.role);
+  // Mine is every assignment across circles, not one list the user owns.
+  // Reorder follows the same owner/admin check as circle settings and invites.
+  // The personal circle is a real space, so its owner still gets the button.
+  const canReorderTask = (spaceId: string) => canManage(spaces.find((s) => s.id === spaceId)?.role);
+  const canReorderList = !isWide && !isMine && canReorderTask(selectedSpaceId);
 
   const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(selectedSpaceId);
   const selection = useSelection();
   const [reordering, setReordering] = useState(false);
-  const reorderActive = reordering && !isWide && !selection.active;
-  // Keep the header on screen while reordering so Done cannot scroll away.
-  const collapse = useCollapsingHeader(insets.top, 112, reorderActive);
+  const reorderActive = reordering && canReorderList && !selection.active;
+  const collapse = useCollapsingHeader(insets.top, 112);
   const moveStatus = useMoveTaskStatus();
   const updateRank = useUpdateTaskRank();
 
@@ -128,6 +132,7 @@ function SpaceBoard() {
   }
 
   function toggleReorder() {
+    if (!reordering && !canReorderList) return;
     hapticLight();
     if (!reordering) selection.exit();
     setReordering((on) => !on);
@@ -151,22 +156,6 @@ function SpaceBoard() {
   const headerBody = (
     <>
       <View style={[styles.header, isWide && styles.headerWide]}>
-        {!isWide && writable && !selection.active ? (
-          <Pressable
-            onPress={toggleReorder}
-            accessibilityRole="button"
-            accessibilityLabel={reorderActive ? 'Done reordering' : 'Reorder tasks'}
-            accessibilityState={{ selected: reorderActive }}
-            style={[styles.headerFab, reorderActive && styles.fabActive]}
-          >
-            <Ionicons
-              name={reorderActive ? 'checkmark' : 'reorder-three'}
-              size={30}
-              color={colors.onBrand}
-            />
-          </Pressable>
-        ) : null}
-
         {!isWide ? (
           <Pressable
             onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
@@ -315,8 +304,12 @@ function SpaceBoard() {
       ) : reorderActive ? (
         <TaskReorderList
           tasks={items}
-          canDragTask={(task) => canWriteTask(task.space_id)}
-          onCommitRank={(id, rank) => updateRank.mutate({ id, rank })}
+          canDragTask={(task) => canReorderTask(task.space_id)}
+          onCommitRank={(id, rank) => {
+            const task = items.find((item) => item.id === id);
+            if (!task || !canReorderTask(task.space_id)) return;
+            updateRank.mutate({ id, rank });
+          }}
           onScrollOffsetChange={collapse.onScrollOffsetChange}
           contentContainerStyle={listContentStyle}
           ListEmptyComponent={listEmpty}
@@ -337,6 +330,27 @@ function SpaceBoard() {
       )}
 
       <SelectionActionBar tasks={tasks} />
+
+      {canReorderList && !selection.active ? (
+        <Pressable
+          onPress={toggleReorder}
+          accessibilityRole="button"
+          accessibilityLabel={reorderActive ? 'Done reordering' : 'Reorder tasks'}
+          accessibilityState={{ selected: reorderActive }}
+          style={[
+            styles.fab,
+            styles.fabLeft,
+            reorderActive && styles.fabActive,
+            { bottom: insets.bottom + spacing.lg },
+          ]}
+        >
+          <Ionicons
+            name={reorderActive ? 'checkmark' : 'swap-vertical'}
+            size={30}
+            color={colors.onBrand}
+          />
+        </Pressable>
+      ) : null}
 
       {writable && !selection.active && !reorderActive ? (
         <Pressable
@@ -400,17 +414,7 @@ const styles = StyleSheet.create({
     zIndex: 40,
     ...shadows.floating,
   },
+  fabLeft: { left: spacing.lg },
   fabRight: { right: spacing.lg },
-  // Same face, size, and hit area as the add button, sitting in the header.
-  headerFab: {
-    width: 58,
-    height: 58,
-    flexShrink: 0,
-    borderRadius: 29,
-    backgroundColor: colors.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.floating,
-  },
   fabActive: { backgroundColor: colors.brandDeep },
 });

@@ -19,6 +19,8 @@ Apply these files, in this order, to an empty project (the `auth` and `storage` 
 15. `supabase/migrations/0015_bulk_update_tasks.sql`
 16. `supabase/migrations/0016_my_week_beta.sql`
 17. `supabase/migrations/0017_task_rank.sql`
+18. `supabase/migrations/0018_task_rank_trigger_fix.sql`
+19. `supabase/migrations/0019_task_rank_admin.sql`
 
 On the hosted project, migrations 0001–0011 are already applied. Apply `0012_api_token_limits.sql` on its own (SQL editor or `supabase db push` against that project). Do not re-run earlier migrations, and do not run `supabase/seed.sql` or `supabase/tests/bootstrap.sql` there.
 
@@ -27,6 +29,10 @@ On the hosted project, migrations 0001–0011 are already applied. Apply `0012_a
 `0016_my_week_beta.sql` adds `profiles.my_week_enabled`, default false. The app hides My Week until that person turns it on under Account → Beta features.
 
 `0017_task_rank.sql` adds `tasks.rank`, a fractional index shared by everyone in the circle. Existing rows keep their old order (priority, then position, then creation time) inside each due date. Inserts without a rank, including a spawned repeat, land at the bottom of that circle and due date. Changing the due date or moving circles without a new rank does the same. Deploy the `mcp` function after this migration so list results include `rank`.
+
+`0018_task_rank_trigger_fix.sql` lets a signed-in user change a due date. Rank stays where it is unless the task moves to another circle.
+
+`0019_task_rank_admin.sql` lets only an owner or admin change `tasks.rank`. Members can still edit the other columns. A new task and a move between circles still receive a rank from the database.
 
 `0014_task_recurrence.sql` adds repeating tasks. It is applied on the hosted project. Completing a repeating task inserts the next occurrence in the database, including when it is completed through the MCP server. `create_task`, `create_tasks_bulk`, and `update_task` accept `repeat_unit`, `repeat_interval`, and `repeat_weekday`. Task results include those fields and `recurrence_series_id`. `recurrence_source_id` stays server-only.
 
