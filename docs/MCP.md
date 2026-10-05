@@ -118,7 +118,7 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 | `list_circle_tasks` | Every task in one circle, including ones assigned to other people. |
 | `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. Optional repeat rule. |
 | `create_tasks_bulk` | Create up to 100 tasks. Safe to retry when each item has an `external_id`. Each item can repeat. |
-| `update_task` | Change title, notes, status, priority, due date, assignee, tags, or the repeat rule. Priority sets the task's rank in the circle's overall order. Does not change the circle. |
+| `update_task` | Change title, notes, status, priority, due date, assignee, tags, or the repeat rule. An owner or admin's priority also sets the task's rank. A member can set priority but cannot change rank. Does not change the circle. |
 | `complete_task` | Mark a task done. A repeating task stays done, and the database adds the next occurrence. |
 | `assign_task` | Set or clear the assignee. The person must already be in that circle. |
 | `move_task` | Move a task to another circle, including from your personal circle into a shared one. |
@@ -128,7 +128,7 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 
 Circle arguments are `circle_id`, `circle_name` (case-insensitive, must match one of yours), or `personal: true`. The name **Mine** is not a circle. Ask for `list_my_tasks`, or set `personal: true` for the private circle.
 
-Statuses are `todo`, `in_progress`, and `done`. Priority is `low`, `medium`, or `high`. It is not a fixed level on the task: it chooses a rank in that circle's overall order. `high` places the task above the current top, `medium` between the two central tasks, and `low` or `null` at the bottom. New tasks with no priority start at the bottom. Lists return `rank`, a fractional index string. A larger rank sorts first. Order is rank (higher first), then due date (earliest first, no date last), then position and creation time. Due filters are `due_on`, `due_before`, and `due_after` as `YYYY-MM-DD`. Lists return 50 tasks unless you set `limit` (maximum 200).
+Statuses are `todo`, `in_progress`, and `done`. Priority is `low`, `medium`, or `high`. For an owner or admin it chooses a rank in that circle's overall order: `high` places the task above the current top, `medium` between the two central tasks, and `low` or `null` at the bottom. A member can set the label but cannot move an existing task. New tasks with no priority start at the bottom. Lists return `rank`, a fractional index string. A larger rank sorts first. Order is rank (higher first), then due date (earliest first, no date last), then position and creation time. Due filters are `due_on`, `due_before`, and `due_after` as `YYYY-MM-DD`. Lists return 50 tasks unless you set `limit` (maximum 200).
 
 Assignee is a member id, a display name (unique in that circle, case-insensitive), `"me"`, or `null`.
 

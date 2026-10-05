@@ -600,6 +600,110 @@ end $$;
 
 reset role;
 
+-- Rank is the circle's shared order. A member may edit a task, but only an
+-- owner or admin may change its rank. Alex owns Garden; Sam is a member.
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a2222222-2222-4222-8222-222222222222', false);
+
+do $$
+declare
+  kept text;
+begin
+  select rank into kept
+  from public.tasks
+  where id = 'b1111111-1111-4111-8111-111111111111';
+
+  begin
+    update public.tasks
+    set rank = kept || 'Z'
+    where id = 'b1111111-1111-4111-8111-111111111111';
+    raise exception 'member reordered a task';
+  exception when others then
+    if sqlerrm ilike '%member reordered%' then
+      raise exception '%', sqlerrm;
+    end if;
+    if sqlerrm not ilike '%owner or admin%' then
+      raise exception 'unexpected rank guard: %', sqlerrm;
+    end if;
+  end;
+
+  update public.tasks
+  set title = 'Water the greenhouse'
+  where id = 'b1111111-1111-4111-8111-111111111111';
+end $$;
+
+reset role;
+
+update public.space_members
+set role = 'admin'
+where space_id = 'a4444444-4444-4444-8444-444444444444'
+  and user_id = 'a2222222-2222-4222-8222-222222222222';
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a2222222-2222-4222-8222-222222222222', false);
+
+do $$
+declare
+  kept text;
+  next text;
+begin
+  select rank into kept
+  from public.tasks
+  where id = 'b1111111-1111-4111-8111-111111111111';
+
+  update public.tasks
+  set rank = kept || 'Z'
+  where id = 'b1111111-1111-4111-8111-111111111111';
+
+  select rank into next
+  from public.tasks
+  where id = 'b1111111-1111-4111-8111-111111111111';
+  if next is not distinct from kept then
+    raise exception 'admin rank update did not stick';
+  end if;
+
+  update public.tasks
+  set rank = kept
+  where id = 'b1111111-1111-4111-8111-111111111111';
+end $$;
+
+reset role;
+
+update public.space_members
+set role = 'member'
+where space_id = 'a4444444-4444-4444-8444-444444444444'
+  and user_id = 'a2222222-2222-4222-8222-222222222222';
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
+
+do $$
+declare
+  kept text;
+  next text;
+begin
+  select rank into kept
+  from public.tasks
+  where id = 'b1111111-1111-4111-8111-111111111111';
+
+  update public.tasks
+  set rank = kept || 'Y'
+  where id = 'b1111111-1111-4111-8111-111111111111';
+
+  select rank into next
+  from public.tasks
+  where id = 'b1111111-1111-4111-8111-111111111111';
+  if next is not distinct from kept then
+    raise exception 'owner rank update did not stick';
+  end if;
+
+  update public.tasks
+  set rank = kept
+  where id = 'b1111111-1111-4111-8111-111111111111';
+end $$;
+
+reset role;
+
 -- Account deletion transfers a group that has other members. It must succeed
 -- while storage.protect_delete is in place, and it must leave the auth user
 -- for auth.admin.deleteUser.

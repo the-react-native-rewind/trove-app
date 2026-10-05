@@ -8,7 +8,14 @@ import { positionBetween } from '@/lib/position';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import type { RepeatUnit } from '@/lib/recurrence';
-import type { Priority, TaskStatus, TaskWithRefs } from '@/lib/types';
+import {
+  canManage,
+  type Priority,
+  type SpaceRole,
+  type SpaceWithMeta,
+  type TaskStatus,
+  type TaskWithRefs,
+} from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
 export { positionBetween };
@@ -212,15 +219,28 @@ function patchTaskRank(data: unknown, id: string, rank: string): unknown {
   return data;
 }
 
-/** Write the rank chosen by a drag. The list order comes from this key. */
+/** Write the rank chosen by a drag. Only an owner or admin of that circle may change it. */
 export function useUpdateTaskRank() {
+  const { userId } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { id: string; rank: string }) => {
+      await assertCallerCanReorder(input.id, userId);
       const { error } = await supabase.from('tasks').update({ rank: input.rank }).eq('id', input.id);
       if (error) throw error;
     },
     onMutate: async (input) => {
+      const spaces = qc.getQueryData<SpaceWithMeta[]>(qk.spaces);
+      const lists = qc.getQueriesData<TaskWithRefs[]>({ queryKey: ['tasks'] });
+      for (const [, data] of lists) {
+        const task = data?.find((item) => item.id === input.id);
+        if (!task) continue;
+        const role = spaces?.find((space) => space.id === task.space_id)?.role;
+        if (role && !canManage(role)) {
+          throw new Error('Only an owner or admin can reorder tasks');
+        }
+        break;
+      }
       await qc.cancelQueries({ queryKey: ['tasks'] });
       await qc.cancelQueries({ queryKey: ['week-tasks'] });
       const previous = [
@@ -316,6 +336,28 @@ export function useBulkUpdateTasks() {
       for (const id of input.ids) qc.invalidateQueries({ queryKey: qk.task(id) });
     },
   });
+}
+
+async function assertCallerCanReorder(taskId: string, userId: string | null) {
+  if (!userId) throw new Error('Only an owner or admin can reorder tasks');
+  const { data: task, error } = await supabase
+    .from('tasks')
+    .select('space_id')
+    .eq('id', taskId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!task) throw new Error('Task not found');
+
+  const { data: membership, error: memberError } = await supabase
+    .from('space_members')
+    .select('role')
+    .eq('space_id', task.space_id)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (memberError) throw memberError;
+  if (!canManage(membership?.role as SpaceRole | undefined)) {
+    throw new Error('Only an owner or admin can reorder tasks');
+  }
 }
 
 function invalidateTasks(qc: ReturnType<typeof useQueryClient>) {

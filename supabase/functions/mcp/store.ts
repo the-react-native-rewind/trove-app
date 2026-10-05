@@ -6,6 +6,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { generateKeyBetween } from 'npm:fractional-indexing@3.2.0';
 
 import {
+  canManage,
   TroveError,
   type RepeatUnit,
   type Priority,
@@ -64,7 +65,7 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     getTask: (id) => getTask(db, id),
     findByExternalId: (externalId) => findByExternalId(db, userId, externalId),
     insertTask: (input) => insertTask(db, userId, input),
-    updateTask: (id, patch) => updateTask(db, id, patch),
+    updateTask: (id, patch) => updateTask(db, userId, id, patch),
     moveTask: (taskId, targetCircleId) => moveTask(db, taskId, targetCircleId),
     createInvite: (input) => createInvite(db, userId, input),
     createCircle: (input) => createCircle(db, userId, input),
@@ -207,7 +208,12 @@ async function insertTask(db: SupabaseClient, userId: string, input: TaskWrite):
   return (await getTask(db, task.id)) ?? task;
 }
 
-async function updateTask(db: SupabaseClient, id: string, patch: TaskPatch): Promise<TaskRecord | null> {
+async function updateTask(
+  db: SupabaseClient,
+  userId: string,
+  id: string,
+  patch: TaskPatch,
+): Promise<TaskRecord | null> {
   const row: Record<string, unknown> = {};
   if (patch.title !== undefined) row.title = patch.title;
   if (patch.notes !== undefined) row.description = patch.notes;
@@ -215,9 +221,13 @@ async function updateTask(db: SupabaseClient, id: string, patch: TaskPatch): Pro
   if (patch.priority !== undefined) {
     const current = await getTask(db, id);
     if (!current) return null;
-    const ranks = (await ranksInCircle(db, current.circle_id)).filter((rank) => rank !== current.rank);
     row.priority = patch.priority;
-    row.rank = rankForPriority(patch.priority, ranks);
+    // Rank is the circle's shared order. Members may label a task with a
+    // priority, but only an owner or admin may move it.
+    if (canManage((await roleInCircle(db, userId, current.circle_id)) ?? undefined)) {
+      const ranks = (await ranksInCircle(db, current.circle_id)).filter((rank) => rank !== current.rank);
+      row.rank = rankForPriority(patch.priority, ranks);
+    }
   }
   if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
   if (patch.assigneeId !== undefined) row.assignee_id = patch.assigneeId;
@@ -446,6 +456,21 @@ function toTask(row: TaskRow): TaskRecord {
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+async function roleInCircle(
+  db: SupabaseClient,
+  userId: string,
+  spaceId: string,
+): Promise<Role | null> {
+  const { data, error } = await db
+    .from('space_members')
+    .select('role')
+    .eq('space_id', spaceId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  throwIf(error);
+  return (data?.role as Role | undefined) ?? null;
 }
 
 async function ranksInCircle(db: SupabaseClient, spaceId: string): Promise<string[]> {
