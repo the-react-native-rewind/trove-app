@@ -126,14 +126,14 @@ export default function TaskView() {
             </Text>
           </View>
         ) : null}
-        {task.assignee ? (
-          <View style={styles.metaItem}>
-            <Avatar name={task.assignee.display_name} uri={task.assignee.avatar_url} size={22} />
+        {task.assignees.map((person) => (
+          <View key={person.id} style={styles.metaItem}>
+            <Avatar name={person.display_name} uri={person.avatar_url} size={22} />
             <Text variant="meta" color={colors.inkSoft}>
-              {task.assignee.display_name ?? 'Member'}
+              {person.display_name ?? 'Member'}
             </Text>
           </View>
-        ) : null}
+        ))}
       </View>
 
       {writable && destinations.length > 0 ? (
@@ -243,7 +243,7 @@ function MoveToCircle({
     const confirmed = await confirmDialog({
       title: `Move to ${circle.name}?`,
       message:
-        'If the current assignee is not in that circle, the task will be unassigned. Photos and videos stay in the current circle.',
+        'People who are not in that circle will be unassigned. Photos and videos stay in the current circle.',
       confirmLabel: 'Move',
       cancelLabel: 'Cancel',
     });
@@ -253,7 +253,9 @@ function MoveToCircle({
       Toast.show({
         type: 'success',
         text1: `Moved to ${circle.name}`,
-        text2: result.assignee_cleared ? 'Unassigned — that person is not in this circle.' : undefined,
+        text2: result.assignee_cleared
+          ? 'People who are not in this circle were unassigned.'
+          : undefined,
       });
       setOpen(false);
     } catch (error) {

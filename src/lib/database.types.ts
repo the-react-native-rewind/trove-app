@@ -52,6 +52,7 @@ export type Database = {
           expires_at: string
           id: string
           invited_by: string | null
+          is_agent: boolean
           role: string
           space_id: string
           status: string
@@ -63,6 +64,7 @@ export type Database = {
           expires_at?: string
           id?: string
           invited_by?: string | null
+          is_agent?: boolean
           role?: string
           space_id: string
           status?: string
@@ -74,6 +76,7 @@ export type Database = {
           expires_at?: string
           id?: string
           invited_by?: string | null
+          is_agent?: boolean
           role?: string
           space_id?: string
           status?: string
@@ -115,6 +118,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_agent: boolean
           role: string
           space_id: string
           user_id: string
@@ -122,6 +126,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_agent?: boolean
           role: string
           space_id: string
           user_id: string
@@ -129,6 +134,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_agent?: boolean
           role?: string
           space_id?: string
           user_id?: string
@@ -192,6 +198,27 @@ export type Database = {
         }
         Relationships: []
       }
+      task_assignees: {
+        Row: {
+          created_at: string
+          position: number
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          position?: number
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          position?: number
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       task_labels: {
         Row: { label_id: string; task_id: string }
         Insert: { label_id: string; task_id: string }
@@ -200,7 +227,6 @@ export type Database = {
       }
       tasks: {
         Row: {
-          assignee_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -221,7 +247,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          assignee_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -242,7 +267,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          assignee_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -306,10 +330,14 @@ export type Database = {
         Args: {
           p_task_ids: string[]
           p_status?: string | null
-          p_assignee_id?: string | null
+          p_assignee_ids?: string[] | null
           p_set_assignee?: boolean
         }
         Returns: number
+      }
+      set_task_assignees: {
+        Args: { p_task_id: string; p_user_ids: string[] }
+        Returns: undefined
       }
       move_task: {
         Args: { p_task_id: string; p_target_space_id: string }

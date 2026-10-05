@@ -4,10 +4,11 @@
  * Circles are rows in public.spaces. "Mine" is not a circle: it is every task
  * assigned to the signed-in person. The personal circle is their is_default space.
  *
- * move_task matches public.move_task in migration 0011: the caller must be able
- * to edit the source circle, must belong to the destination (a viewer may
- * receive a task), and an assignee who is not a member of the destination is
- * cleared. Tags that belong to the old circle are removed.
+ * move_task matches public.move_task: the caller must be able to edit the
+ * source circle, must belong to the destination (a viewer may receive a
+ * task), and any assignee who is not a member of the destination is removed.
+ * People who belong to the destination stay. Tags that belong to the old
+ * circle are removed.
  *
  * create_circle matches the app: insert a spaces row owned by the caller.
  * The on_space_created trigger adds the owner membership. Circles have a name
@@ -94,31 +95,31 @@ export const toolDescriptions: Record<McpToolName, string> = {
   create_circle:
     'Create a circle owned by the signed-in person. name is required (for example Home or Garden). color is an optional accent: sage, brand, moss, teal, dusk, lilac, plum, rose, terracotta, clay, ochre, honey, or a #rrggbb hex. It defaults to sage. Circles do not have an emoji or a description. The creator becomes the owner, the same way creating a circle in the app does. This does not create a second personal circle. Returns the circle, including its id.',
   list_my_tasks:
-    'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). Optional filters: circle, status (todo, in_progress, done), and due date (due_on, due_before, due_after as YYYY-MM-DD). This is not limited to the personal circle. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned. rank is the fractional ordering key shared with the circle.',
+    'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). A task is included when they are any of its assignees. Optional filters: circle, status (todo or done), and due date (due_on, due_before, due_after as YYYY-MM-DD). This is not limited to the personal circle. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned. rank is the fractional ordering key shared with the circle.',
   list_circle_tasks:
     'List every task in one circle, not only tasks assigned to the caller. Viewers can read. Optional filters: status and due date. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned.',
   create_task:
-    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is a member id, a display name, "me", or null. priority is low, medium, high, or null and chooses a starting rank in the overall order of that circle: high above the current top, medium in the middle, low or null at the bottom. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat.',
+    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is one member id, display name, "me", or null. assignees is a list of those same values and replaces the whole set. Pass assignee or assignees, not both. Omitting both assigns the caller. priority is low, medium, high, or null and chooses a starting rank in the overall order of that circle: high above the current top, medium in the middle, low or null at the bottom. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat. status is todo or done.',
   create_tasks_bulk:
     'Create up to 100 tasks in one call, for importing a list. Each item has the same fields as create_task, including the optional repeat fields. A circle set on the call is the default; an item can override it. external_id makes the import safe to retry: a task the caller already created with that id is returned as existing and is not changed. Items that fail are reported; earlier items in the batch are kept.',
   update_task:
-    'Change a task\'s title, notes, status, priority, due date, assignee, tags, or repeat rule. priority is low, medium, high, or null. For an owner or admin it also sets rank in the circle\'s overall order: high above the current top, medium in the middle, low or null at the bottom. A member can set the priority label but cannot change rank. Changing the due date leaves rank unchanged. Tags replace the current set. repeat_unit null or never clears the repeat rule. repeat_interval is 1 to 99. repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only used for week. This does not move the task to another circle; use move_task for that. Only someone who can edit the circle (owner, admin, or member) can update. Viewers cannot. Setting status to done on a repeating task leaves this row done; the database inserts the next occurrence at the bottom of its due-date group.',
+    'Change a task\'s title, notes, status, priority, due date, assignees, tags, or repeat rule. status is todo or done. priority is low, medium, high, or null. For an owner or admin it also sets rank in the circle\'s overall order: high above the current top, medium in the middle, low or null at the bottom. A member can set the priority label but cannot change rank. Changing the due date leaves rank unchanged. assignee or assignees replaces the whole set of people. Pass one of those fields, not both. An empty assignees list, or assignee null, clears everyone. Tags replace the current set. repeat_unit null or never clears the repeat rule. repeat_interval is 1 to 99. repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only used for week. This does not move the task to another circle; use move_task for that. Only someone who can edit the circle (owner, admin, or member) can update. Viewers cannot. Setting status to done on a repeating task leaves this row done; the database inserts the next occurrence at the bottom of its due-date group.',
   complete_task:
     'Mark a task done. Same permission as update_task. If the task repeats, the database inserts the next To do occurrence with the same rule. This result is the completed row, including its repeat fields and recurrence_series_id. recurrence_source_id is not returned.',
   assign_task:
-    'Set or clear a task\'s assignee. assignee is a member id, a display name, "me", or null to unassign. The person must already be a member of the task\'s circle.',
+    'Replace the people assigned to a task. assignee is one member id, display name, "me", or null. assignees is a list of those values. Pass one of them, not both. An empty list or null clears everyone. Each person must already be a member of the task\'s circle.',
   move_task:
-    'Move a task from one circle to another, including from the personal circle into a shared circle. The caller must be able to edit the task where it is now, and must be a member of the destination (a viewer of the destination may still receive it). If the assignee is not a member of the destination, they are unassigned. Tags from the old circle are removed. Photos and videos stay in the original circle and are not moved. Pass circle_id, circle_name, or personal: true.',
+    'Move a task from one circle to another, including from the personal circle into a shared circle. The caller must be able to edit the task where it is now, and must be a member of the destination (a viewer of the destination may still receive it). People who are not members of the destination are unassigned. People who are stay assigned. Tags from the old circle are removed. Photos and videos stay in the original circle and are not moved. Pass circle_id, circle_name, or personal: true.',
   add_task_attachment:
     'Attach an image or video to a task the caller can edit (owner, admin, or member). Viewers cannot. Pass task_id, content_type, and either a public https url (the server downloads it) or data_base64. Allowed types: image/jpeg, image/png, image/webp, image/gif, image/heic, image/heif, video/mp4, video/quicktime, video/webm. Maximum 50 MB. The file is stored like a photo added in the app, under the task\'s circle, and shows in the task media gallery. Several attachments per task are kept in the order they were added. Returns the attachment id.',
   list_members:
-    'List the people in a circle: user id, display name, and role (owner, admin, member, viewer). Email addresses are not included.',
+    'List the people in a circle: user id, display name, role (owner, admin, member, viewer), and whether the membership was created from an agent invite. Email addresses are not included.',
   invite_to_circle:
-    'Invite someone to a circle by email. Only an owner or admin can invite. role is admin, member, or viewer (default member). Returns the invite token and an https link to send the person. The link opens Trove, or offers the download if they do not have it yet. The invite expires in 14 days. One pending invite per email per circle.',
+    'Invite someone to a circle by email. Only an owner or admin can invite. role is admin, member, or viewer (default member). agent true marks the invite as a bot; the flag is copied onto the membership when they join. It defaults to false, a human invite. Returns the invite token and an https link to send the person. The link opens Trove, or offers the download if they do not have it yet. The invite expires in 14 days. One pending invite per email per circle.',
 };
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
-export type Status = 'todo' | 'in_progress' | 'done';
+export type Status = 'todo' | 'done';
 export type Priority = 'low' | 'medium' | 'high';
 export type RepeatUnit = 'day' | 'week' | 'month';
 
@@ -147,6 +148,13 @@ export type Member = {
   user_id: string;
   display_name: string | null;
   role: Role;
+  /** True when this membership was created from an agent invite. */
+  is_agent: boolean;
+};
+
+export type TaskPerson = {
+  user_id: string;
+  display_name: string | null;
 };
 
 export type TaskTag = { name: string; circle_id: string };
@@ -162,8 +170,10 @@ export type TaskRecord = {
   due_date: string | null;
   circle_id: string;
   circle_name: string;
+  /** First assignee, by position. The full set is assignees. */
   assignee_id: string | null;
   assignee_name: string | null;
+  assignees: TaskPerson[];
   tags: string[];
   external_id: string | null;
   repeat_unit: RepeatUnit | null;
@@ -191,7 +201,7 @@ export type TaskWrite = {
   status: Status;
   priority: Priority | null;
   dueDate: string | null;
-  assigneeId: string | null;
+  assigneeIds: string[];
   externalId: string | null;
   tags: string[];
   position: number;
@@ -206,7 +216,7 @@ export type TaskPatch = {
   status?: Status;
   priority?: Priority | null;
   dueDate?: string | null;
-  assigneeId?: string | null;
+  assigneeIds?: string[];
   tags?: string[];
   repeatUnit?: RepeatUnit | null;
   repeatInterval?: number;
@@ -228,6 +238,7 @@ export type InviteResult = {
   circle_id: string;
   email: string;
   role: 'admin' | 'member' | 'viewer';
+  is_agent: boolean;
   token: string;
   expires_at: string;
   url: string;
@@ -283,6 +294,7 @@ export interface TroveStore {
     circleId: string;
     email: string;
     role: 'admin' | 'member' | 'viewer';
+    isAgent?: boolean;
   }): Promise<InviteResult>;
   /**
    * Insert a spaces row the way the app does. The database trigger adds the
@@ -405,13 +417,14 @@ type MovePlan =
       alreadyThere: boolean;
       assigneeCleared: boolean;
       tagsRemoved: number;
-      nextAssigneeId: string | null;
+      nextAssigneeIds: string[];
     }
   | { ok: false; error: string };
 
 /**
- * The same decisions as public.move_task. Tags carry the circle they belong
- * to; ones from anywhere but the destination are removed.
+ * The same decisions as public.move_task. People who belong to the
+ * destination stay, in their existing order. Tags carry the circle they
+ * belong to; ones from anywhere but the destination are removed.
  */
 export function planMove(input: {
   callerSourceRole: Role | null;
@@ -419,7 +432,7 @@ export function planMove(input: {
   targetExists: boolean;
   sourceCircleId: string;
   targetCircleId: string;
-  assigneeId: string | null;
+  assigneeIds: string[];
   targetMemberIds: string[];
   tags: TaskTag[];
 }): MovePlan {
@@ -431,17 +444,22 @@ export function planMove(input: {
     return { ok: false, error: 'Circle not found' };
   }
   if (input.sourceCircleId === input.targetCircleId) {
-    return { ok: true, alreadyThere: true, assigneeCleared: false, tagsRemoved: 0, nextAssigneeId: input.assigneeId };
+    return {
+      ok: true,
+      alreadyThere: true,
+      assigneeCleared: false,
+      tagsRemoved: 0,
+      nextAssigneeIds: input.assigneeIds,
+    };
   }
-  const assigneeCleared =
-    input.assigneeId !== null && !input.targetMemberIds.includes(input.assigneeId);
+  const nextAssigneeIds = input.assigneeIds.filter((id) => input.targetMemberIds.includes(id));
   const tagsRemoved = input.tags.filter((tag) => tag.circle_id !== input.targetCircleId).length;
   return {
     ok: true,
     alreadyThere: false,
-    assigneeCleared,
+    assigneeCleared: nextAssigneeIds.length !== input.assigneeIds.length,
     tagsRemoved,
-    nextAssigneeId: assigneeCleared ? null : input.assigneeId,
+    nextAssigneeIds,
   };
 }
 
@@ -485,7 +503,7 @@ type ListInput = {
   circle_id?: string;
   circle_name?: string;
   personal?: boolean;
-  status?: Status;
+  status?: string;
   due_on?: string;
   due_before?: string;
   due_after?: string;
@@ -502,7 +520,8 @@ async function listFiltered(
     if (typeof limit !== 'number') return { ok: false, error: limit.error };
     const due = readDueFilters(input);
     if ('error' in due) return { ok: false, error: due.error };
-    if (input.status && !isStatus(input.status)) return { ok: false, error: 'Unknown status.' };
+    const status = readStatus(input.status);
+    if (isFieldError(status)) return { ok: false, error: status.error };
 
     let circleId: string | undefined;
     const wantsCircle = Boolean(input.circle_id || input.circle_name || input.personal);
@@ -516,7 +535,7 @@ async function listFiltered(
     const tasks = await store.listTasks({
       circleId,
       assigneeId: options.assigneeId,
-      status: input.status,
+      status,
       dueOn: due.dueOn,
       dueBefore: due.dueBefore,
       dueAfter: due.dueAfter,
@@ -535,9 +554,10 @@ export type CreateTaskInput = {
   circle_name?: string;
   personal?: boolean;
   assignee?: string | null;
+  assignees?: (string | null)[] | null;
   due_date?: string | null;
   tags?: string[];
-  status?: Status;
+  status?: string;
   priority?: Priority | null;
   external_id?: string | null;
   repeat_unit?: string | null;
@@ -617,10 +637,11 @@ export async function updateTask(
     task_id: string;
     title?: string;
     notes?: string | null;
-    status?: Status;
+    status?: string;
     priority?: Priority | null;
     due_date?: string | null;
     assignee?: string | null;
+    assignees?: (string | null)[] | null;
     tags?: string[];
     repeat_unit?: string | null;
     repeat_interval?: number | null;
@@ -649,9 +670,16 @@ export async function completeTask(
 
 export async function assignTask(
   store: TroveStore,
-  input: { task_id: string; assignee: string | null },
+  input: { task_id: string; assignee?: string | null; assignees?: (string | null)[] | null },
 ): Promise<ToolResult<{ task: TaskRecord }>> {
-  return updateTask(store, { task_id: input.task_id, assignee: input.assignee });
+  if (input.assignee === undefined && input.assignees === undefined) {
+    return { ok: false, error: 'Pass assignee or assignees.' };
+  }
+  return updateTask(store, {
+    task_id: input.task_id,
+    assignee: input.assignee,
+    assignees: input.assignees,
+  });
 }
 
 export async function moveTask(
@@ -672,7 +700,7 @@ export async function moveTask(
       targetExists: true,
       sourceCircleId: task.circle_id,
       targetCircleId: target.id,
-      assigneeId: task.assignee_id,
+      assigneeIds: task.assignees.map((person) => person.user_id),
       targetMemberIds: members.map((member) => member.user_id),
       tags: task.tags.map((name) => ({ name, circle_id: task.circle_id })),
     });
@@ -714,7 +742,11 @@ export async function listMembers(
 
 export async function inviteToCircle(
   store: TroveStore,
-  input: CircleTarget & { email: string; role?: 'admin' | 'member' | 'viewer' | 'owner' },
+  input: CircleTarget & {
+    email: string;
+    role?: 'admin' | 'member' | 'viewer' | 'owner';
+    agent?: boolean;
+  },
 ): Promise<ToolResult<{ invite: InviteResult }>> {
   try {
     const circles = await store.listCircles();
@@ -734,7 +766,12 @@ export async function inviteToCircle(
     if (role !== 'admin' && role !== 'member' && role !== 'viewer') {
       return { ok: false, error: 'role must be admin, member, or viewer.' };
     }
-    const invite = await store.createInvite({ circleId: circle.id, email, role });
+    const invite = await store.createInvite({
+      circleId: circle.id,
+      email,
+      role,
+      isAgent: input.agent === true,
+    });
     return { ok: true, data: { invite } };
   } catch (error) {
     return fail(error);
@@ -816,7 +853,8 @@ async function prepareCreate(store: TroveStore, input: CreateTaskInput): Promise
   if (isFieldError(tags)) return { ok: false, error: tags.error };
   const externalId = validateExternalId(input.external_id);
   if (isFieldError(externalId)) return { ok: false, error: externalId.error };
-  if (input.status && !isStatus(input.status)) return { ok: false, error: 'Unknown status.' };
+  const status = readStatus(input.status);
+  if (isFieldError(status)) return { ok: false, error: status.error };
   if (input.priority && !isPriority(input.priority)) return { ok: false, error: 'Unknown priority.' };
 
   if (externalId) {
@@ -843,8 +881,10 @@ async function prepareCreate(store: TroveStore, input: CreateTaskInput): Promise
   }
 
   const members = await store.listMembers(circle.id);
-  const assignee = await resolveAssignee(store.userId, members, input.assignee, true);
-  if ('error' in assignee) return { ok: false, error: assignee.error };
+  const assignees = await resolveAssigneeList(store.userId, members, input, 'create');
+  if (!assignees || 'error' in assignees) {
+    return { ok: false, error: assignees && 'error' in assignees ? assignees.error : 'Choose who to assign.' };
+  }
 
   return {
     ok: true,
@@ -853,10 +893,10 @@ async function prepareCreate(store: TroveStore, input: CreateTaskInput): Promise
       circleId: circle.id,
       title,
       notes,
-      status: input.status ?? 'todo',
+      status: status ?? 'todo',
       priority: input.priority ?? null,
       dueDate: due,
-      assigneeId: assignee.id,
+      assigneeIds: assignees.ids,
       externalId,
       tags,
       position: Date.now(),
@@ -875,7 +915,7 @@ function unusedWrite(): TaskWrite {
     status: 'todo',
     priority: null,
     dueDate: null,
-    assigneeId: null,
+    assigneeIds: [],
     externalId: null,
     tags: [],
     position: 0,
@@ -904,10 +944,11 @@ async function buildPatch(
   input: {
     title?: string;
     notes?: string | null;
-    status?: Status;
+    status?: string;
     priority?: Priority | null;
     due_date?: string | null;
     assignee?: string | null;
+    assignees?: (string | null)[] | null;
     tags?: string[];
     repeat_unit?: string | null;
     repeat_interval?: number | null;
@@ -926,8 +967,11 @@ async function buildPatch(
     patch.notes = notes;
   }
   if (input.status !== undefined) {
-    if (!isStatus(input.status)) return { ok: false, error: 'Unknown status.' };
-    patch.status = input.status;
+    const status = readStatus(input.status);
+    if (isFieldError(status) || status === undefined) {
+      return { ok: false, error: status && 'error' in status ? status.error : 'Unknown status.' };
+    }
+    patch.status = status;
   }
   if (input.priority !== undefined) {
     if (input.priority !== null && !isPriority(input.priority)) {
@@ -940,11 +984,16 @@ async function buildPatch(
     if (isFieldError(due)) return { ok: false, error: due.error };
     patch.dueDate = due;
   }
-  if (input.assignee !== undefined) {
+  if (input.assignee !== undefined || input.assignees !== undefined) {
     const members = await store.listMembers(task.circle_id);
-    const assignee = await resolveAssignee(store.userId, members, input.assignee, false);
-    if ('error' in assignee) return { ok: false, error: assignee.error };
-    patch.assigneeId = assignee.id;
+    const assignees = await resolveAssigneeList(store.userId, members, input, 'update');
+    if (!assignees || 'error' in assignees) {
+      return {
+        ok: false,
+        error: assignees && 'error' in assignees ? assignees.error : 'Choose who to assign.',
+      };
+    }
+    patch.assigneeIds = assignees.ids;
   }
   if (input.tags !== undefined) {
     const tags = validateTags(input.tags);
@@ -972,6 +1021,40 @@ async function buildPatch(
     return { ok: false, error: 'Nothing to update. Pass at least one field.' };
   }
   return { ok: true, patch };
+}
+
+async function resolveAssigneeList(
+  callerId: string,
+  members: Member[],
+  input: { assignee?: string | null; assignees?: (string | null)[] | null },
+  mode: 'create' | 'update',
+): Promise<{ ids: string[] } | { error: string } | undefined> {
+  const hasAssignee = input.assignee !== undefined;
+  const hasAssignees = input.assignees !== undefined;
+  if (hasAssignee && hasAssignees) return { error: 'Pass assignee or assignees, not both.' };
+  if (!hasAssignee && !hasAssignees) {
+    if (mode === 'update') return undefined;
+    const self = await resolveAssignee(callerId, members, undefined, true);
+    if ('error' in self) return self;
+    return { ids: self.id ? [self.id] : [] };
+  }
+  if (input.assignees !== undefined) {
+    const list = input.assignees;
+    if (list === null || list.length === 0) return { ids: [] };
+    const ids: string[] = [];
+    for (const item of list) {
+      if (item === null || item.trim() === '' || item.trim().toLowerCase() === 'unassigned') {
+        return { error: 'Each assignee must be a member. Pass an empty list to unassign.' };
+      }
+      const resolved = await resolveAssignee(callerId, members, item, false);
+      if ('error' in resolved) return resolved;
+      if (resolved.id && !ids.includes(resolved.id)) ids.push(resolved.id);
+    }
+    return { ids };
+  }
+  const resolved = await resolveAssignee(callerId, members, input.assignee, false);
+  if ('error' in resolved) return resolved;
+  return { ids: resolved.id ? [resolved.id] : [] };
 }
 
 async function resolveAssignee(
@@ -1186,8 +1269,13 @@ function parseRepeatWeekday(value: number | null | undefined): number | null | {
   return value;
 }
 
-function isStatus(value: string): value is Status {
-  return value === 'todo' || value === 'in_progress' || value === 'done';
+function readStatus(value: string | undefined): Status | undefined | { error: string } {
+  if (value === undefined) return undefined;
+  if (value === 'in_progress') {
+    return { error: 'Doing is no longer a status. Leave the task as todo, or mark it done.' };
+  }
+  if (value === 'todo' || value === 'done') return value;
+  return { error: 'Unknown status.' };
 }
 
 function isPriority(value: string): value is Priority {

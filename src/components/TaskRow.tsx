@@ -12,8 +12,7 @@ import { TaskCard } from './TaskCard';
 import { Text } from './ui/Text';
 
 const NEXT_ACTIONS: Record<TaskStatus, { label: string; status: TaskStatus; done?: boolean }[]> = {
-  todo: [{ label: 'Doing', status: 'in_progress' }, { label: 'Done', status: 'done', done: true }],
-  in_progress: [{ label: 'To do', status: 'todo' }, { label: 'Done', status: 'done', done: true }],
+  todo: [{ label: 'Done', status: 'done', done: true }],
   done: [{ label: 'Reopen', status: 'todo' }],
 };
 

@@ -84,14 +84,17 @@ begin
 
   insert into public.tasks (
     id, space_id, title, description, status, position,
-    assignee_id, priority, due_date, created_by, external_id,
+    priority, due_date, created_by, external_id,
     repeat_unit, repeat_interval, repeat_weekday
   )
   values (
     parent, garden, 'Water the greenhouse', 'Seedlings dry out by mid-morning.',
-    'todo', 10, sam, 'high', '2026-10-07', alex, 'import-greenhouse',
+    'todo', 10, 'high', '2026-10-07', alex, 'import-greenhouse',
     'week', 1, 3
   );
+
+  insert into public.task_assignees (task_id, user_id, position)
+  values (parent, sam, 0), (parent, alex, 1);
 
   insert into public.task_labels (task_id, label_id) values (parent, label);
 
@@ -109,11 +112,11 @@ begin
   insert into public.user_task_week_plans (user_id, task_id, week_start)
   values (alex, parent, '2026-09-28');
 
-  -- Moving to Doing does not spawn.
-  update public.tasks set status = 'in_progress' where id = parent;
+  -- Staying open does not spawn. Doing is not a status.
+  update public.tasks set title = 'Water the greenhouse beds' where id = parent;
   select count(*) into n from public.tasks where recurrence_source_id = parent;
   if n <> 0 then
-    raise exception 'in-progress task spawned a successor';
+    raise exception 'an open task spawned a successor';
   end if;
 
   update public.tasks set status = 'done' where id = parent;
@@ -125,11 +128,19 @@ begin
   if child.status <> 'todo' then
     raise exception 'successor status is %', child.status;
   end if;
-  if child.title <> 'Water the greenhouse' or child.description <> 'Seedlings dry out by mid-morning.' then
+  if child.title <> 'Water the greenhouse beds' or child.description <> 'Seedlings dry out by mid-morning.' then
     raise exception 'successor did not keep title and notes';
   end if;
-  if child.priority <> 'high' or child.assignee_id <> sam or child.space_id <> garden then
-    raise exception 'successor did not keep priority, assignee, or circle';
+  if child.priority <> 'high' or child.space_id <> garden then
+    raise exception 'successor did not keep priority or circle';
+  end if;
+  if (
+    select count(*)
+    from public.task_assignees
+    where task_id = child.id
+      and user_id in (sam, alex)
+  ) <> 2 then
+    raise exception 'successor did not keep both assignees';
   end if;
   if child.due_date <> '2026-10-14' then
     raise exception 'successor due date %, expected 2026-10-14', child.due_date;

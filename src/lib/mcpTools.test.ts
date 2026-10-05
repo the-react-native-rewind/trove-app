@@ -68,14 +68,14 @@ test('planMove keeps a member assignee and clears anyone outside the destination
     targetExists: true,
     sourceCircleId: PERSONAL,
     targetCircleId: HOUSE,
-    assigneeId: ME,
+    assigneeIds: [ME],
     targetMemberIds: [ME, SAM],
     tags: [{ name: 'shop', circle_id: PERSONAL }],
   });
   assert.equal(kept.ok, true);
   if (!kept.ok) return;
   assert.equal(kept.assigneeCleared, false);
-  assert.equal(kept.nextAssigneeId, ME);
+  assert.deepEqual(kept.nextAssigneeIds, [ME]);
   assert.equal(kept.tagsRemoved, 1);
 
   const cleared = planMove({
@@ -84,14 +84,29 @@ test('planMove keeps a member assignee and clears anyone outside the destination
     targetExists: true,
     sourceCircleId: HOUSE,
     targetCircleId: PERSONAL,
-    assigneeId: SAM,
+    assigneeIds: [SAM],
     targetMemberIds: [ME],
     tags: [],
   });
   assert.equal(cleared.ok, true);
   if (!cleared.ok) return;
   assert.equal(cleared.assigneeCleared, true);
-  assert.equal(cleared.nextAssigneeId, null);
+  assert.deepEqual(cleared.nextAssigneeIds, []);
+
+  const partial = planMove({
+    callerSourceRole: 'member',
+    callerIsTargetMember: true,
+    targetExists: true,
+    sourceCircleId: HOUSE,
+    targetCircleId: PERSONAL,
+    assigneeIds: [SAM, ME],
+    targetMemberIds: [ME],
+    tags: [],
+  });
+  assert.equal(partial.ok, true);
+  if (!partial.ok) return;
+  assert.equal(partial.assigneeCleared, true);
+  assert.deepEqual(partial.nextAssigneeIds, [ME]);
 
   const viewer = planMove({
     callerSourceRole: 'viewer',
@@ -99,7 +114,7 @@ test('planMove keeps a member assignee and clears anyone outside the destination
     targetExists: true,
     sourceCircleId: HOUSE,
     targetCircleId: PERSONAL,
-    assigneeId: null,
+    assigneeIds: [],
     targetMemberIds: [ME],
     tags: [],
   });
@@ -111,7 +126,7 @@ test('planMove keeps a member assignee and clears anyone outside the destination
     targetExists: true,
     sourceCircleId: HOUSE,
     targetCircleId: 'circle-other',
-    assigneeId: null,
+    assigneeIds: [],
     targetMemberIds: [],
     tags: [],
   });
@@ -127,6 +142,10 @@ test('create_task defaults to the personal circle and assigns the caller', async
   assert.equal(created.data.task.title, 'Call the plumber');
   assert.equal(created.data.task.circle_id, PERSONAL);
   assert.equal(created.data.task.assignee_id, ME);
+  assert.deepEqual(
+    created.data.task.assignees.map((person) => person.user_id),
+    [ME],
+  );
   assert.equal(created.data.task.notes, 'Leak under the sink');
   assert.equal(created.data.task.status, 'todo');
 });
@@ -379,7 +398,7 @@ test('list_my_tasks filters by circle, status, and due date', async () => {
     title: 'Later',
     due_date: '2026-10-20',
     circle_name: 'House',
-    status: 'in_progress',
+    status: 'todo',
   });
   await createTask(store, { title: 'Done already', status: 'done', personal: true });
 
@@ -391,7 +410,7 @@ test('list_my_tasks filters by circle, status, and due date', async () => {
     ['Today'],
   );
 
-  const house = await listMyTasks(store, { circle_name: 'House', status: 'in_progress' });
+  const house = await listMyTasks(store, { circle_name: 'House', status: 'todo' });
   assert.equal(house.ok, true);
   if (!house.ok) return;
   assert.deepEqual(
@@ -411,6 +430,35 @@ test('assign_task resolves a display name and complete_task marks done', async (
   assert.equal(assigned.ok, true);
   if (!assigned.ok) return;
   assert.equal(assigned.data.task.assignee_id, SAM);
+  assert.deepEqual(
+    assigned.data.task.assignees.map((person) => person.user_id),
+    [SAM],
+  );
+
+  const both = await assignTask(store, {
+    task_id: created.data.task.id,
+    assignees: ['me', 'Sam'],
+  });
+  assert.equal(both.ok, true);
+  if (!both.ok) return;
+  assert.deepEqual(
+    both.data.task.assignees.map((person) => person.user_id),
+    [ME, SAM],
+  );
+  assert.equal(both.data.task.assignee_id, ME);
+
+  const clash = await assignTask(store, {
+    task_id: created.data.task.id,
+    assignee: 'me',
+    assignees: ['Sam'],
+  });
+  assert.deepEqual(clash, { ok: false, error: 'Pass assignee or assignees, not both.' });
+
+  const doing = await updateTask(store, { task_id: created.data.task.id, status: 'in_progress' });
+  assert.deepEqual(doing, {
+    ok: false,
+    error: 'Doing is no longer a status. Leave the task as todo, or mark it done.',
+  });
 
   const missing = await assignTask(store, { task_id: created.data.task.id, assignee: 'Priya' });
   assert.equal(missing.ok, false);
@@ -419,6 +467,26 @@ test('assign_task resolves a display name and complete_task marks done', async (
   assert.equal(done.ok, true);
   if (!done.ok) return;
   assert.equal(done.data.task.status, 'done');
+});
+
+test('list_my_tasks includes a task where the caller is a later assignee', async () => {
+  const store = memoryStore();
+  const created = await createTask(store, {
+    title: 'Shared greenhouse',
+    circle_name: 'House',
+    assignees: ['Sam', 'me'],
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  assert.equal(created.data.task.assignee_id, SAM);
+
+  const mine = await listMyTasks(store, {});
+  assert.equal(mine.ok, true);
+  if (!mine.ok) return;
+  assert.deepEqual(
+    mine.data.tasks.map((task) => task.title),
+    ['Shared greenhouse'],
+  );
 });
 
 test('invite_to_circle rejects viewers and the owner role', async () => {
@@ -445,8 +513,19 @@ test('invite_to_circle rejects viewers and the owner role', async () => {
   if (!invited.ok) return;
   assert.equal(invited.data.invite.email, 'friend@example.com');
   assert.equal(invited.data.invite.role, 'member');
+  assert.equal(invited.data.invite.is_agent, false);
   assert.equal(invited.data.invite.url.startsWith('https://'), true);
   assert.equal(invited.data.invite.url.includes('/open?to=invite%2F'), true);
+
+  const agent = await inviteToCircle(store, {
+    circle_name: 'House',
+    email: 'helper@example.com',
+    agent: true,
+  });
+  assert.equal(agent.ok, true);
+  if (!agent.ok) return;
+  assert.equal(agent.data.invite.is_agent, true);
+  assert.equal(agent.data.invite.role, 'member');
 });
 
 test('open-task counts are loaded only for circle reads', async () => {
@@ -680,12 +759,22 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
     },
   ];
   const members: Record<string, Member[]> = {
-    [PERSONAL]: [{ user_id: ME, display_name: 'Luke', role: 'owner' }],
+    [PERSONAL]: [{ user_id: ME, display_name: 'Luke', role: 'owner', is_agent: false }],
     [HOUSE]: [
-      { user_id: ME, display_name: 'Luke', role: circles[1]?.role ?? 'owner' },
-      { user_id: SAM, display_name: 'Sam', role: 'member' },
+      { user_id: ME, display_name: 'Luke', role: circles[1]?.role ?? 'owner', is_agent: false },
+      { user_id: SAM, display_name: 'Sam', role: 'member', is_agent: false },
     ],
   };
+
+  function applyAssignees(task: TaskRecord, ids: string[]) {
+    const roster = Object.values(members).flat();
+    task.assignees = ids.map((id) => ({
+      user_id: id,
+      display_name: roster.find((member) => member.user_id === id)?.display_name ?? null,
+    }));
+    task.assignee_id = task.assignees[0]?.user_id ?? null;
+    task.assignee_name = task.assignees[0]?.display_name ?? null;
+  }
   const tasks: TaskRecord[] = [];
   const attachments: AttachmentRecord[] = [];
   const calls = { counts: 0, plain: 0 };
@@ -723,7 +812,9 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
     async listTasks(filter) {
       return tasks
         .filter((task) => (filter.circleId ? task.circle_id === filter.circleId : true))
-        .filter((task) => (filter.assigneeId ? task.assignee_id === filter.assigneeId : true))
+        .filter((task) =>
+          filter.assigneeId ? task.assignees.some((person) => person.user_id === filter.assigneeId) : true,
+        )
         .filter((task) => (filter.status ? task.status === filter.status : true))
         .filter((task) => (filter.dueOn ? task.due_date === filter.dueOn : true))
         .filter((task) => (filter.dueBefore ? task.due_date !== null && task.due_date <= filter.dueBefore : true))
@@ -739,9 +830,6 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
     async insertTask(input: TaskWrite) {
       counter += 1;
       const circle = circles.find((item) => item.id === input.circleId);
-      const assignee = Object.values(members)
-        .flat()
-        .find((member) => member.user_id === input.assigneeId);
       const task: TaskRecord = {
         id: `task-${counter}`,
         title: input.title,
@@ -752,8 +840,9 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         due_date: input.dueDate,
         circle_id: input.circleId,
         circle_name: circle?.name ?? '',
-        assignee_id: input.assigneeId,
-        assignee_name: assignee?.display_name ?? null,
+        assignee_id: null,
+        assignee_name: null,
+        assignees: [],
         tags: input.tags,
         external_id: input.externalId,
         repeat_unit: input.repeatUnit,
@@ -763,6 +852,7 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         created_at: '2026-10-01T00:00:00.000Z',
         updated_at: '2026-10-01T00:00:00.000Z',
       };
+      applyAssignees(task, input.assigneeIds);
       tasks.push(task);
       return task;
     },
@@ -774,13 +864,7 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
       if (patch.status !== undefined) task.status = patch.status;
       if (patch.priority !== undefined) task.priority = patch.priority;
       if (patch.dueDate !== undefined) task.due_date = patch.dueDate;
-      if (patch.assigneeId !== undefined) {
-        task.assignee_id = patch.assigneeId;
-        const assignee = Object.values(members)
-          .flat()
-          .find((member) => member.user_id === patch.assigneeId);
-        task.assignee_name = assignee?.display_name ?? null;
-      }
+      if (patch.assigneeIds !== undefined) applyAssignees(task, patch.assigneeIds);
       if (patch.tags !== undefined) task.tags = patch.tags;
       if (patch.repeatUnit !== undefined) {
         task.repeat_unit = patch.repeatUnit;
@@ -802,7 +886,7 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         targetExists: Boolean(target),
         sourceCircleId: task.circle_id,
         targetCircleId,
-        assigneeId: task.assignee_id,
+        assigneeIds: task.assignees.map((person) => person.user_id),
         targetMemberIds: roster.map((member) => member.user_id),
         tags: task.tags.map((name) => ({ name, circle_id: task.circle_id })),
       });
@@ -811,8 +895,7 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
       if (!plan.alreadyThere) {
         task.circle_id = targetCircleId;
         task.circle_name = target?.name ?? '';
-        task.assignee_id = plan.nextAssigneeId;
-        if (plan.assigneeCleared) task.assignee_name = null;
+        applyAssignees(task, plan.nextAssigneeIds);
         task.tags = [];
       }
       return {
@@ -831,6 +914,7 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         circle_id: input.circleId,
         email: input.email,
         role: input.role,
+        is_agent: input.isAgent === true,
         token: 'invite-token',
         expires_at: '2026-10-15T00:00:00.000Z',
         url: inviteUrl('invite-token'),
@@ -847,7 +931,7 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         open_task_count: 0,
       };
       circles.push(circle);
-      members[circle.id] = [{ user_id: ME, display_name: 'Luke', role: 'owner' }];
+      members[circle.id] = [{ user_id: ME, display_name: 'Luke', role: 'owner', is_agent: false }];
       return circle;
     },
     async addTaskAttachment(input) {

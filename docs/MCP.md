@@ -118,19 +118,19 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 | `list_circle_tasks` | Every task in one circle, including ones assigned to other people. |
 | `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. Optional repeat rule. |
 | `create_tasks_bulk` | Create up to 100 tasks. Safe to retry when each item has an `external_id`. Each item can repeat. |
-| `update_task` | Change title, notes, status, priority, due date, assignee, tags, or the repeat rule. An owner or admin's priority also sets the task's rank. A member can set priority but cannot change rank. Does not change the circle. |
+| `update_task` | Change title, notes, status, priority, due date, assignees, tags, or the repeat rule. An owner or admin's priority also sets the task's rank. A member can set priority but cannot change rank. Does not change the circle. |
 | `complete_task` | Mark a task done. A repeating task stays done, and the database adds the next occurrence. |
-| `assign_task` | Set or clear the assignee. The person must already be in that circle. |
+| `assign_task` | Replace the people assigned to a task. Each person must already be in that circle. |
 | `move_task` | Move a task to another circle, including from your personal circle into a shared one. |
 | `add_task_attachment` | Attach an image or video to a task you can edit. Returns the attachment id. |
-| `list_members` | People in a circle: user id, display name, and role. No email addresses. |
-| `invite_to_circle` | Invite someone by email. Owners and admins only. Returns a `trove://invite/…` link. |
+| `list_members` | People in a circle: user id, display name, role, and whether they joined as an agent. No email addresses. |
+| `invite_to_circle` | Invite someone by email. Owners and admins only. Optional `agent` marks the invite as a bot. |
 
 Circle arguments are `circle_id`, `circle_name` (case-insensitive, must match one of yours), or `personal: true`. The name **Mine** is not a circle. Ask for `list_my_tasks`, or set `personal: true` for the private circle.
 
-Statuses are `todo`, `in_progress`, and `done`. Priority is `low`, `medium`, or `high`. For an owner or admin it chooses a rank in that circle's overall order: `high` places the task above the current top, `medium` between the two central tasks, and `low` or `null` at the bottom. A member can set the label but cannot move an existing task. New tasks with no priority start at the bottom. Lists return `rank`, a fractional index string. A larger rank sorts first. Order is rank (higher first), then due date (earliest first, no date last), then position and creation time. Due filters are `due_on`, `due_before`, and `due_after` as `YYYY-MM-DD`. Lists return 50 tasks unless you set `limit` (maximum 200).
+Statuses are `todo` and `done`. Doing is not a status. Priority is `low`, `medium`, or `high`. For an owner or admin it chooses a rank in that circle's overall order: `high` places the task above the current top, `medium` between the two central tasks, and `low` or `null` at the bottom. A member can set the label but cannot move an existing task. New tasks with no priority start at the bottom. Lists return `rank`, a fractional index string. A larger rank sorts first. Order is rank (higher first), then due date (earliest first, no date last), then position and creation time. Due filters are `due_on`, `due_before`, and `due_after` as `YYYY-MM-DD`. Lists return 50 tasks unless you set `limit` (maximum 200).
 
-Assignee is a member id, a display name (unique in that circle, case-insensitive), `"me"`, or `null`.
+A task can have several assignees. `assignee` is one member id, a display name (unique in that circle, case-insensitive), `"me"`, or `null`. `assignees` is a list of those same values. Either field replaces the whole set. Pass one of them, not both. An empty `assignees` list, or `assignee: null`, clears everyone. Omitting both on create assigns you. Omitting both on update leaves the current people. Results include `assignees` in position order, and `assignee_id` / `assignee_name` for the first person so older clients still see one assignee. Mine includes a task when you are any assignee.
 
 Tags are labels that belong to one circle. Naming a tag creates it if needed. On `update_task`, `tags` replaces the whole set. An empty array clears them.
 
@@ -150,9 +150,9 @@ A week with no weekday uses the due date's weekday. With no due date, it uses to
 
 Task results from list, create, update, complete, assign, and move include `repeat_unit`, `repeat_interval`, `repeat_weekday`, and `recurrence_series_id`. The series id is shared by each occurrence of one repeating task. It is the first task's id. `recurrence_source_id` is not returned and cannot be set. The database uses it so completing the same occurrence twice does not insert two successors.
 
-`complete_task`, or `update_task` with `status: done`, marks that row done. If it repeats, the database inserts the next To do occurrence with the same title, notes, priority, tags, circle, assignee, and rule. The new occurrence starts at the bottom of its due-date group, so it does not keep the completed row's rank. The tool result is the completed row, not the new one. List the circle again to see the next occurrence. Photos stay attached to both, because the new row points at the same file. `external_id` stays on the original row only.
+`complete_task`, or `update_task` with `status: done`, marks that row done. If it repeats, the database inserts the next To do occurrence with the same title, notes, priority, tags, circle, assignees, and rule. The new occurrence starts at the bottom of its due-date group, so it does not keep the completed row's rank. The tool result is the completed row, not the new one. List the circle again to see the next occurrence. Photos stay attached to both, because the new row points at the same file. `external_id` stays on the original row only.
 
-`invite_to_circle` takes `email` and an optional `role` of `admin`, `member`, or `viewer` (default `member`). You cannot invite someone as owner. One pending invite per email per circle. The link expires in 14 days.
+`invite_to_circle` takes `email`, an optional `role` of `admin`, `member`, or `viewer` (default `member`), and an optional `agent` boolean (default false). `agent: true` marks the invite as a bot. When that invite is accepted, the new membership is stored as an agent. An existing member is not changed. You cannot invite someone as owner. One pending invite per email per circle. The link expires in 14 days. `list_members` includes `is_agent` for each person.
 
 ## Creating a circle
 

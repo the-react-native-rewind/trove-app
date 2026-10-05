@@ -9,7 +9,7 @@ import { describeRepeat, repeatRuleFromTask } from '@/lib/recurrence';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { fullBleedMediaCorners, TaskMediaStrip } from './TaskMediaStrip';
-import { Avatar } from './ui/Avatar';
+import { AvatarStack } from './ui/Avatar';
 import { SpaceTag } from './ui/Indicators';
 import { Text } from './ui/Text';
 
@@ -63,9 +63,13 @@ export function TaskCard({
     onLongPress?.();
   }
 
+  const assigneeNames = task.assignees
+    .map((person) => person.display_name ?? 'Member')
+    .join(', ');
   const label = [
     selected ? 'Selected' : selecting && selectable ? 'Not selected' : null,
     task.title,
+    assigneeNames ? `Assigned to ${assigneeNames}` : null,
     repeats,
   ]
     .filter(Boolean)
@@ -121,7 +125,7 @@ export function TaskCard({
           </Text>
         ) : null}
 
-        {(due || task.assignee || heat || repeats) && (
+        {(due || task.assignees.length > 0 || heat || repeats) && (
           <View style={styles.meta}>
             {heat ? (
               <View
@@ -150,9 +154,13 @@ export function TaskCard({
               </View>
             ) : null}
             <View style={styles.spacer} />
-            {task.assignee ? (
-              <Avatar name={task.assignee.display_name} uri={task.assignee.avatar_url} size={26} />
-            ) : null}
+            <AvatarStack
+              people={task.assignees}
+              size={26}
+              ringColor={
+                selected ? colors.brandSoft : overdue ? colors.overdueSurface : colors.surface
+              }
+            />
           </View>
         )}
       </Pressable>

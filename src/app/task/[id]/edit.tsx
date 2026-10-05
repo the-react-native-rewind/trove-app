@@ -195,8 +195,8 @@ export default function TaskEdit() {
       />
       <AssigneePicker
         spaceId={task.space_id}
-        value={task.assignee_id}
-        onChange={(assignee_id) => patch({ id: task.id, assignee_id })}
+        value={task.assignees.map((person) => person.id)}
+        onChange={(assignee_ids) => patch({ id: task.id, assignee_ids })}
       />
       <DueDatePicker
         value={task.due_date}

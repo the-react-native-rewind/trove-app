@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQueries } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 
 import { fetchRoster } from '@/data/members';
 import { useBulkUpdateTasks } from '@/data/tasks';
-import { peopleInEveryCircle, uniqueSpaceIds, type AssignablePerson } from '@/lib/assign';
+import { peopleInEveryCircle, sharedAssigneeIds, uniqueSpaceIds, type AssignablePerson } from '@/lib/assign';
 import { qk } from '@/lib/queryClient';
 import type { RosterMember, TaskWithRefs } from '@/lib/types';
 import { useSelection } from '@/providers/SelectionProvider';
@@ -126,19 +126,17 @@ export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }
         tasks={selected}
         pending={bulk.isPending}
         onClose={() => setAssignOpen(false)}
-        onPick={async (person) => {
+        onApply={async (people) => {
           try {
             await bulk.mutateAsync({
               ids,
-              setAssignee: true,
-              assigneeId: person?.userId ?? null,
-              assignee: person
-                ? {
-                    id: person.userId,
-                    display_name: person.displayName,
-                    avatar_url: person.avatarUrl,
-                  }
-                : null,
+              setAssignees: true,
+              assigneeIds: people.map((person) => person.userId),
+              assignees: people.map((person) => ({
+                id: person.userId,
+                display_name: person.displayName,
+                avatar_url: person.avatarUrl,
+              })),
             });
             setAssignOpen(false);
             exit();
@@ -156,13 +154,13 @@ function AssignSheet({
   tasks,
   pending,
   onClose,
-  onPick,
+  onApply,
 }: {
   visible: boolean;
   tasks: readonly TaskWithRefs[];
   pending: boolean;
   onClose: () => void;
-  onPick: (person: AssignablePerson | null) => void;
+  onApply: (people: AssignablePerson[]) => void;
 }) {
   const insets = useSafeAreaInsets();
   const spaceIds = uniqueSpaceIds(tasks);
@@ -180,6 +178,22 @@ function AssignSheet({
   );
   const severalCircles = spaceIds.length > 1;
   const loaded = rosters.length > 0 && rosters.every((query) => query.isSuccess);
+  const [picked, setPicked] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (visible) setPicked(null);
+  }, [visible]);
+
+  const selectedIds = picked ?? sharedAssigneeIds(tasks);
+  const everyEmpty = tasks.length > 0 && tasks.every((task) => task.assignees.length === 0);
+  const unassignedSelected = selectedIds.length === 0 && (picked !== null || everyEmpty);
+
+  function togglePerson(userId: string) {
+    setPicked((current) => {
+      const base = current ?? sharedAssigneeIds(tasks);
+      return base.includes(userId) ? base.filter((id) => id !== userId) : [...base, userId];
+    });
+  }
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -192,6 +206,10 @@ function AssignSheet({
               <Ionicons name="close" size={24} color={colors.inkSoft} />
             </Pressable>
           </View>
+
+          <Text variant="meta" color={colors.inkSoft}>
+            This replaces the assignees on every selected task.
+          </Text>
 
           {severalCircles ? (
             <Text variant="meta" color={colors.inkSoft}>
@@ -211,21 +229,44 @@ function AssignSheet({
           <ScrollView style={styles.roster} contentContainerStyle={styles.rosterContent}>
             <AssignRow
               label="Unassigned"
-              selected={tasks.length > 0 && tasks.every((task) => task.assignee_id == null)}
+              selected={unassignedSelected}
               disabled={pending}
-              onPress={() => onPick(null)}
+              onPress={() => setPicked([])}
             />
             {people.map((person) => (
               <AssignRow
                 key={person.userId}
                 label={person.displayName ?? 'Member'}
                 person={person}
-                selected={tasks.length > 0 && tasks.every((task) => task.assignee_id === person.userId)}
+                selected={selectedIds.includes(person.userId)}
                 disabled={pending}
-                onPress={() => onPick(person)}
+                onPress={() => togglePerson(person.userId)}
               />
             ))}
           </ScrollView>
+
+          <Pressable
+            onPress={() =>
+              onApply(
+                selectedIds.flatMap((id) => {
+                  const person = people.find((candidate) => candidate.userId === id);
+                  return person ? [person] : [];
+                }),
+              )
+            }
+            disabled={pending || loading || failed || !loaded}
+            accessibilityRole="button"
+            accessibilityLabel="Apply assignees"
+            style={[styles.apply, (pending || loading || failed || !loaded) && styles.disabled]}
+          >
+            {pending ? (
+              <ActivityIndicator color={colors.onBrand} />
+            ) : (
+              <Text variant="bodyMedium" color={colors.onBrand}>
+                Apply
+              </Text>
+            )}
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -249,9 +290,9 @@ function AssignRow({
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ selected, disabled }}
-      accessibilityLabel={selected ? `${label}, current assignee` : `Assign to ${label}`}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected, disabled }}
+      accessibilityLabel={label}
       style={[styles.row, selected && styles.rowSelected, disabled && styles.disabled]}
     >
       {person ? (
@@ -286,7 +327,7 @@ function rosterPeople(roster: RosterMember[]): AssignablePerson[] {
 function showBulkError(error: unknown) {
   const message = error instanceof Error ? error.message : '';
   const detail = /not in every circle/i.test(message)
-    ? 'That person isn’t in every circle.'
+    ? 'Those people aren’t in every circle.'
     : 'Nothing was changed.';
   Toast.show({ type: 'error', text1: 'Couldn’t update those tasks', text2: detail });
 }
@@ -328,6 +369,13 @@ const styles = StyleSheet.create({
   },
   assign: { backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.hairline },
   complete: { backgroundColor: colors.brand },
+  apply: {
+    minHeight: 48,
+    borderRadius: radii.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.brand,
+  },
   disabled: { opacity: 0.45 },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(43, 38, 32, 0.35)' },
   sheet: {

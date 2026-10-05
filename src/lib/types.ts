@@ -9,13 +9,12 @@ export type Task = Tables['tasks']['Row'];
 export type Label = Tables['labels']['Row'];
 export type Invite = Tables['invites']['Row'];
 
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'done';
 export type SpaceRole = 'owner' | 'admin' | 'member' | 'viewer';
 export type Priority = 'low' | 'medium' | 'high';
 
 export const STATUSES: { key: TaskStatus; label: string }[] = [
   { key: 'todo', label: 'To do' },
-  { key: 'in_progress', label: 'Doing' },
   { key: 'done', label: 'Done' },
 ];
 
@@ -25,10 +24,12 @@ export type SpaceWithMeta = Space & {
   openCount: number;
 };
 
-/** A task joined with its space (name + color) and assignee profile. */
+export type TaskAssignee = Pick<Profile, 'id' | 'display_name' | 'avatar_url'>;
+
+/** A task joined with its space (name + color) and the people assigned to it. */
 export type TaskWithRefs = Task & {
   space: Pick<Space, 'id' | 'name' | 'color'> | null;
-  assignee: Pick<Profile, 'id' | 'display_name' | 'avatar_url'> | null;
+  assignees: TaskAssignee[];
 };
 
 /** A roster entry: membership joined with the member's profile. */

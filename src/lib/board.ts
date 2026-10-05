@@ -25,9 +25,9 @@ export function sortTasksByUrgency(tasks: TaskWithRefs[]): TaskWithRefs[] {
   });
 }
 
-/** Map stored status onto the three columns. Unknown or legacy values stay visible as To do. */
+/** Map stored status onto the open list or Done. Legacy values such as backlog and in_progress stay open. */
 export function normalizeStatus(status: string): TaskStatus {
-  if (status === 'in_progress' || status === 'done') return status;
+  if (status === 'done') return 'done';
   return 'todo';
 }
 
@@ -35,7 +35,6 @@ export function normalizeStatus(status: string): TaskStatus {
 export function groupByStatus(tasks: TaskWithRefs[]): Record<TaskStatus, TaskWithRefs[]> {
   const groups: Record<TaskStatus, TaskWithRefs[]> = {
     todo: [],
-    in_progress: [],
     done: [],
   };
   for (const t of tasks) {

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { normalizeAssignees, type AssigneeLink } from '@/lib/assignees';
 import { type BulkAssignee, type BulkPatch, patchCachedTasks } from '@/lib/bulk';
 import { celebrate } from '@/lib/celebrate';
 import { hapticSuccess } from '@/lib/haptics';
@@ -21,7 +22,15 @@ import { useAuth } from '@/providers/AuthProvider';
 export { positionBetween };
 
 export const TASK_SELECT =
-  '*, space:spaces(id,name,color), assignee:profiles!tasks_assignee_id_fkey(id,display_name,avatar_url)';
+  '*, space:spaces(id,name,color), assignees:task_assignees(position, profile:profiles(id,display_name,avatar_url))';
+
+export function mapTaskRow(row: unknown): TaskWithRefs {
+  const record = row as Omit<TaskWithRefs, 'assignees'> & { assignees?: AssigneeLink[] | null };
+  return {
+    ...record,
+    assignees: normalizeAssignees(record.assignees),
+  };
+}
 
 /**
  * spaceId === 'all' is Mine: tasks assigned to the signed-in person, across
@@ -34,13 +43,23 @@ export function useTasks(spaceId: string) {
     enabled: !!userId,
     queryFn: async (): Promise<TaskWithRefs[]> => {
       let query = supabase.from('tasks').select(TASK_SELECT);
-      if (spaceId === MINE_VIEW_ID) query = query.eq('assignee_id', userId!);
-      else query = query.eq('space_id', spaceId);
+      if (spaceId === MINE_VIEW_ID) {
+        const { data: links, error: linkError } = await supabase
+          .from('task_assignees')
+          .select('task_id')
+          .eq('user_id', userId!);
+        if (linkError) throw linkError;
+        const ids = [...new Set((links ?? []).map((link) => link.task_id))];
+        if (ids.length === 0) return [];
+        query = query.in('id', ids);
+      } else {
+        query = query.eq('space_id', spaceId);
+      }
       const { data, error } = await query
         .order('position', { ascending: true })
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as unknown as TaskWithRefs[];
+      return (data ?? []).map((row) => mapTaskRow(row));
     },
   });
 }
@@ -56,7 +75,7 @@ export function useTask(taskId: string) {
         .eq('id', taskId)
         .maybeSingle();
       if (error) throw error;
-      return (data as unknown as TaskWithRefs) ?? null;
+      return data ? mapTaskRow(data) : null;
     },
   });
 }
@@ -66,7 +85,7 @@ export type TaskInput = {
   title: string;
   description?: string | null;
   status: TaskStatus;
-  assignee_id?: string | null;
+  assignee_ids?: string[];
   priority?: Priority | null;
   due_date?: string | null;
 };
@@ -91,15 +110,28 @@ export function useCreateTask() {
           status: input.status,
           priority: input.priority ?? null,
           due_date: input.due_date ?? null,
-          // New captures start on the creator's Mine list. Reassign from the task.
-          assignee_id: input.assignee_id === undefined ? userId : input.assignee_id,
           created_by: userId,
           position: Date.now(), // append to the end of its status column
         })
-        .select(TASK_SELECT)
+        .select('id')
         .single();
       if (error) throw error;
-      return data as unknown as TaskWithRefs;
+      const assigneeIds =
+        input.assignee_ids === undefined ? (userId ? [userId] : []) : input.assignee_ids;
+      if (assigneeIds.length > 0) {
+        const { error: assignError } = await supabase.rpc('set_task_assignees', {
+          p_task_id: data.id,
+          p_user_ids: assigneeIds,
+        });
+        if (assignError) throw assignError;
+      }
+      const { data: full, error: readError } = await supabase
+        .from('tasks')
+        .select(TASK_SELECT)
+        .eq('id', data.id)
+        .single();
+      if (readError) throw readError;
+      return mapTaskRow(full);
     },
     onSuccess: () => invalidateTasks(qc),
   });
@@ -114,7 +146,6 @@ export function useUpdateTask() {
         title?: string;
         description?: string | null;
         status?: TaskStatus;
-        assignee_id?: string | null;
         priority?: Priority | null;
         due_date?: string | null;
         repeat_unit?: RepeatUnit | null;
@@ -124,14 +155,22 @@ export function useUpdateTask() {
       if (rest.title !== undefined) patch.title = rest.title.trim();
       if (rest.description !== undefined) patch.description = rest.description?.trim() || null;
       if (rest.status !== undefined) patch.status = rest.status;
-      if (rest.assignee_id !== undefined) patch.assignee_id = rest.assignee_id;
       if (rest.priority !== undefined) patch.priority = rest.priority;
       if (rest.due_date !== undefined) patch.due_date = rest.due_date;
       if (rest.repeat_unit !== undefined) patch.repeat_unit = rest.repeat_unit;
       if (rest.repeat_interval !== undefined) patch.repeat_interval = rest.repeat_interval;
       if (rest.repeat_weekday !== undefined) patch.repeat_weekday = rest.repeat_weekday;
-      const { error } = await supabase.from('tasks').update(patch).eq('id', id);
-      if (error) throw error;
+      if (Object.keys(patch).length > 0) {
+        const { error } = await supabase.from('tasks').update(patch).eq('id', id);
+        if (error) throw error;
+      }
+      if (rest.assignee_ids !== undefined) {
+        const { error } = await supabase.rpc('set_task_assignees', {
+          p_task_id: id,
+          p_user_ids: rest.assignee_ids,
+        });
+        if (error) throw error;
+      }
     },
     onSuccess: (_d, vars) => {
       invalidateTasks(qc);
@@ -279,9 +318,9 @@ export function useReorderTask() {
 export type BulkUpdateInput = {
   ids: string[];
   status?: TaskStatus;
-  setAssignee?: boolean;
-  assigneeId?: string | null;
-  assignee?: BulkAssignee;
+  setAssignees?: boolean;
+  assigneeIds?: string[];
+  assignees?: BulkAssignee[];
   /** Confetti when this completion newly finishes at least one task. */
   celebrateCompletion?: boolean;
 };
@@ -297,8 +336,8 @@ export function useBulkUpdateTasks() {
       const { data, error } = await supabase.rpc('bulk_update_tasks', {
         p_task_ids: input.ids,
         p_status: input.status ?? null,
-        p_assignee_id: input.setAssignee ? (input.assigneeId ?? null) : null,
-        p_set_assignee: input.setAssignee ?? false,
+        p_assignee_ids: input.setAssignees ? (input.assigneeIds ?? []) : null,
+        p_set_assignee: input.setAssignees ?? false,
       });
       if (error) throw error;
       return data;
@@ -315,9 +354,8 @@ export function useBulkUpdateTasks() {
       const patch: BulkPatch = {
         ids: new Set(input.ids),
         status: input.status,
-        setAssignee: input.setAssignee,
-        assigneeId: input.assigneeId,
-        assignee: input.setAssignee ? (input.assignee ?? null) : undefined,
+        setAssignees: input.setAssignees,
+        assignees: input.setAssignees ? (input.assignees ?? []) : undefined,
       };
       const apply = (data: unknown) => patchCachedTasks(data, patch);
       qc.setQueriesData({ queryKey: ['tasks'] }, apply);

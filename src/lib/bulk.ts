@@ -2,21 +2,19 @@ export type BulkAssignee = {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
-} | null;
+};
 
 export type BulkPatch = {
   ids: ReadonlySet<string>;
   status?: string;
-  setAssignee?: boolean;
-  assigneeId?: string | null;
-  assignee?: BulkAssignee;
+  setAssignees?: boolean;
+  assignees?: BulkAssignee[];
 };
 
 type TaskLike = {
   id: string;
   status: string;
-  assignee_id: string | null;
-  assignee: BulkAssignee;
+  assignees: BulkAssignee[];
 };
 
 /** Optimistic row patch. Tasks outside the selection are returned unchanged. */
@@ -25,8 +23,7 @@ export function applyBulkPatch<T extends TaskLike>(task: T, patch: BulkPatch): T
   return {
     ...task,
     status: patch.status ?? task.status,
-    assignee_id: patch.setAssignee ? (patch.assigneeId ?? null) : task.assignee_id,
-    assignee: patch.setAssignee ? (patch.assignee ?? null) : task.assignee,
+    assignees: patch.setAssignees ? (patch.assignees ?? []) : task.assignees,
   };
 }
 

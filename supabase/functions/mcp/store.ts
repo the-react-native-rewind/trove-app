@@ -30,7 +30,7 @@ import { readEnv, userClient } from './auth.ts';
 import { DEFAULT_SITE_URL, inviteUrl } from '../_shared/site.ts';
 
 const TASK_SELECT =
-  'id, title, description, status, priority, rank, due_date, space_id, assignee_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignee:profiles!tasks_assignee_id_fkey(id,display_name), task_labels(label:labels(name))';
+  'id, title, description, status, priority, rank, due_date, space_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignees:task_assignees(position, profile:profiles(id,display_name)), task_labels(label:labels(name))';
 
 type TaskRow = {
   id: string;
@@ -41,7 +41,6 @@ type TaskRow = {
   rank: string;
   due_date: string | null;
   space_id: string;
-  assignee_id: string | null;
   external_id: string | null;
   repeat_unit: string | null;
   repeat_interval: number | null;
@@ -50,7 +49,15 @@ type TaskRow = {
   created_at: string;
   updated_at: string;
   space: { id: string; name: string } | { id: string; name: string }[] | null;
-  assignee: { id: string; display_name: string | null } | { id: string; display_name: string | null }[] | null;
+  assignees:
+    | {
+        position?: number | null;
+        profile:
+          | { id: string; display_name: string | null }
+          | { id: string; display_name: string | null }[]
+          | null;
+      }[]
+    | null;
   task_labels: { label: { name: string } | { name: string }[] | null }[] | null;
 };
 
@@ -120,7 +127,7 @@ async function openTaskCounts(db: SupabaseClient): Promise<Map<string, number>> 
 async function listMembers(db: SupabaseClient, circleId: string): Promise<Member[]> {
   const { data, error } = await db
     .from('space_members')
-    .select('user_id, role, profile:profiles(display_name)')
+    .select('user_id, role, is_agent, profile:profiles(display_name)')
     .eq('space_id', circleId)
     .order('created_at', { ascending: true });
   throwIf(error);
@@ -130,14 +137,26 @@ async function listMembers(db: SupabaseClient, circleId: string): Promise<Member
       user_id: row.user_id,
       display_name: profile?.display_name ?? null,
       role: row.role as Role,
+      is_agent: Boolean(row.is_agent),
     };
   });
 }
 
 async function listTasks(db: SupabaseClient, filter: TaskFilter): Promise<TaskRecord[]> {
+  let assignedIds: string[] | undefined;
+  if (filter.assigneeId) {
+    const { data: links, error: linkError } = await db
+      .from('task_assignees')
+      .select('task_id')
+      .eq('user_id', filter.assigneeId);
+    throwIf(linkError);
+    assignedIds = [...new Set((links ?? []).map((link) => link.task_id as string))];
+    if (assignedIds.length === 0) return [];
+  }
+
   let query = db.from('tasks').select(TASK_SELECT);
+  if (assignedIds) query = query.in('id', assignedIds);
   if (filter.circleId) query = query.eq('space_id', filter.circleId);
-  if (filter.assigneeId) query = query.eq('assignee_id', filter.assigneeId);
   if (filter.status) query = query.eq('status', filter.status);
   if (filter.dueOn) query = query.eq('due_date', filter.dueOn);
   if (filter.dueBefore) query = query.lte('due_date', filter.dueBefore);
@@ -185,7 +204,6 @@ async function insertTask(db: SupabaseClient, userId: string, input: TaskWrite):
       priority: input.priority,
       rank: rankForPriority(input.priority, ranks),
       due_date: input.dueDate,
-      assignee_id: input.assigneeId,
       external_id: input.externalId,
       created_by: userId,
       position: input.position,
@@ -205,6 +223,7 @@ async function insertTask(db: SupabaseClient, userId: string, input: TaskWrite):
   }
   const task = toTask(data as unknown as TaskRow);
   if (input.tags.length) await replaceTags(db, task.id, task.circle_id, input.tags);
+  if (input.assigneeIds.length) await replaceAssignees(db, task.id, input.assigneeIds);
   return (await getTask(db, task.id)) ?? task;
 }
 
@@ -230,7 +249,6 @@ async function updateTask(
     }
   }
   if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
-  if (patch.assigneeId !== undefined) row.assignee_id = patch.assigneeId;
   if (patch.repeatUnit !== undefined) {
     row.repeat_unit = patch.repeatUnit;
     row.repeat_interval = patch.repeatInterval ?? 1;
@@ -248,7 +266,17 @@ async function updateTask(
     await replaceTags(db, id, current.circle_id, patch.tags);
   }
 
+  if (patch.assigneeIds !== undefined) await replaceAssignees(db, id, patch.assigneeIds);
+
   return getTask(db, id);
+}
+
+async function replaceAssignees(db: SupabaseClient, taskId: string, userIds: string[]): Promise<void> {
+  const { error } = await db.rpc('set_task_assignees', {
+    p_task_id: taskId,
+    p_user_ids: userIds,
+  });
+  throwIf(error);
 }
 
 async function moveTask(db: SupabaseClient, taskId: string, targetCircleId: string): Promise<MoveResult> {
@@ -368,7 +396,7 @@ async function addTaskAttachment(
 async function createInvite(
   db: SupabaseClient,
   userId: string,
-  input: { circleId: string; email: string; role: 'admin' | 'member' | 'viewer' },
+  input: { circleId: string; email: string; role: 'admin' | 'member' | 'viewer'; isAgent?: boolean },
 ): Promise<InviteResult> {
   const { data, error } = await db
     .from('invites')
@@ -377,8 +405,9 @@ async function createInvite(
       email: input.email,
       role: input.role,
       invited_by: userId,
+      is_agent: input.isAgent === true,
     })
-    .select('id, email, role, token, expires_at, space_id')
+    .select('id, email, role, token, expires_at, space_id, is_agent')
     .single();
   if (error?.code === '23505') {
     throw new TroveError('An invite is already pending for that email in this circle.');
@@ -389,6 +418,7 @@ async function createInvite(
     circle_id: data.space_id,
     email: data.email,
     role: data.role as InviteResult['role'],
+    is_agent: Boolean(data.is_agent),
     token: data.token,
     expires_at: data.expires_at,
     url: inviteUrl(data.token, Deno.env.get('TROVE_SITE_URL') ?? DEFAULT_SITE_URL),
@@ -427,9 +457,20 @@ async function replaceTags(db: SupabaseClient, taskId: string, circleId: string,
   throwIf(linkError);
 }
 
+function assigneesOf(links: TaskRow['assignees']): TaskRecord['assignees'] {
+  const people = (links ?? []).flatMap((link) => {
+    const profile = one(link.profile);
+    if (!profile) return [];
+    return [{ user_id: profile.id, display_name: profile.display_name, position: link.position ?? 0 }];
+  });
+  people.sort((a, b) => a.position - b.position || a.user_id.localeCompare(b.user_id));
+  return people.map(({ user_id, display_name }) => ({ user_id, display_name }));
+}
+
 function toTask(row: TaskRow): TaskRecord {
   const space = one(row.space);
-  const assignee = one(row.assignee);
+  const assignees = assigneesOf(row.assignees);
+  const primary = assignees[0] ?? null;
   const tags = (row.task_labels ?? []).flatMap((link) => {
     const label = one(link.label);
     return label?.name ? [label.name] : [];
@@ -444,8 +485,9 @@ function toTask(row: TaskRow): TaskRecord {
     due_date: row.due_date,
     circle_id: row.space_id,
     circle_name: space?.name ?? '',
-    assignee_id: row.assignee_id,
-    assignee_name: assignee?.display_name ?? null,
+    assignee_id: primary?.user_id ?? null,
+    assignee_name: primary?.display_name ?? null,
+    assignees,
     tags,
     external_id: row.external_id,
     repeat_unit: isRepeatUnit(row.repeat_unit) ? row.repeat_unit : null,
