@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent, type ViewProps } from 'react-native';
 import Animated, {
   Easing,
@@ -28,7 +28,10 @@ export function useCollapsingHeader(topInset: number, estimate = 112, pinned = f
   const lastYRef = useRef(0);
   const [blockHeight, setBlockHeight] = useState(estimate);
   const [interactive, setInteractive] = useState(true);
-  pinnedSv.value = pinned;
+
+  useEffect(() => {
+    pinnedSv.value = pinned;
+  }, [pinned, pinnedSv]);
 
   function reveal(nextHidden: boolean, height: number) {
     translateY.value = withTiming(nextHidden ? -height : 0, {
