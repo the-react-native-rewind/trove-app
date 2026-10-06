@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { MCP_TOOL_NAMES } from '../../supabase/functions/_shared/mcpTools';
-import { mcpImplementation, toolMetadata } from '../../supabase/functions/_shared/mcpMeta';
+import { SERVER_VERSION, mcpImplementation, toolMetadata } from '../../supabase/functions/_shared/mcpMeta';
 import {
   authorizationServerIssuer,
   canonicalMcpResourceUrl,
@@ -53,7 +53,7 @@ test('protected resource metadata points at the Supabase authorization server', 
   const metadata = protectedResourceMetadata({
     resourceUrl: resource,
     authorizationServerUrl: 'https://pxjqqogxemsmufopmlsv.supabase.co/auth/v1',
-    documentationUrl: 'https://trove-website-sooty.vercel.app/docs/mcp',
+    documentationUrl: 'https://troving.app/docs/mcp',
   });
   assert.equal(metadata.resource, resource);
   assert.deepEqual(metadata.authorization_servers, ['https://pxjqqogxemsmufopmlsv.supabase.co/auth/v1']);
@@ -87,9 +87,14 @@ test('protected resource metadata points at the Supabase authorization server', 
 });
 
 test('server info carries the website and icons', () => {
-  const info = mcpImplementation('https://trove-website-sooty.vercel.app/');
+  const info = mcpImplementation('https://troving.app/');
   assert.equal(info.title, 'Trove');
-  assert.equal(info.websiteUrl, 'https://trove-website-sooty.vercel.app');
-  assert.equal(info.icons[0]?.src, 'https://trove-website-sooty.vercel.app/apple-touch-icon.png');
+  assert.equal(info.version, SERVER_VERSION);
+  assert.equal(info.version, '1.1.1');
+  assert.equal(info.websiteUrl, 'https://troving.app');
+  assert.equal(info.icons[0]?.src, 'https://troving.app/apple-touch-icon.png');
+  assert.deepEqual(info.icons[0]?.sizes, ['180x180']);
+  assert.equal(info.icons[1]?.src, 'https://troving.app/mark.png');
+  assert.deepEqual(info.icons[1]?.sizes, ['160x160']);
   assert.equal(info.icons[1]?.mimeType, 'image/png');
 });

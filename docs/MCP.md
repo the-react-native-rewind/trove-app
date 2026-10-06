@@ -284,7 +284,7 @@ Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVI
 | `TROVE_JWT_SIGNING_KEY` | Yes, for personal tokens | Private JWK of the active ES256 signing key you imported. `kid` must match. |
 | `TROVE_JWT_SECRET` | Only if you are not using the signing key | Legacy HS256 secret. Ignored when the signing key is set. |
 | `TROVE_MCP_RESOURCE_URL` | Yes, for the public host | Canonical MCP resource URL, no trailing slash. Production is `https://mcp.troving.app/mcp`. If it is unset, the function falls back to `$SUPABASE_URL/functions/v1/mcp`, which is the upstream, not the URL clients should use. |
-| `TROVE_SITE_URL` | No | Product website for the server card and icons. Defaults to `https://trove-website-sooty.vercel.app`. `https://troving.app` is the planned site and is not the default until that host resolves. |
+| `TROVE_SITE_URL` | No | Product website for the server card, icons, and the docs link (`${site}/docs/mcp`). Defaults to `https://troving.app`. Set this only to override that host. If a production secret still points at the old Vercel site, set it to `https://troving.app` or unset it so the default applies. |
 
 ```bash
 supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256","x":"…","y":"…","d":"…"}'

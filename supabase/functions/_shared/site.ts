@@ -9,7 +9,7 @@
 //
 // No imports: the app, the node tests and the edge functions all load this.
 
-export const DEFAULT_SITE_URL = 'https://trove-website-sooty.vercel.app';
+export const DEFAULT_SITE_URL = 'https://troving.app';
 
 /** Paths the app understands after trove://. Empty opens the app. */
 export const APP_PATH = /^(invite\/[A-Za-z0-9]{16,128})?$/;

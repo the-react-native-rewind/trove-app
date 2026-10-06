@@ -16,8 +16,8 @@ function deps(overrides: Partial<McpDeps> = {}): McpDeps {
   return {
     resourceUrl: RESOURCE,
     authorizationServerUrl: 'https://example.supabase.co/auth/v1',
-    siteUrl: 'https://trove-website-sooty.vercel.app',
-    documentationUrl: 'https://trove-website-sooty.vercel.app/docs/mcp',
+    siteUrl: 'https://troving.app',
+    documentationUrl: 'https://troving.app/docs/mcp',
     authenticatePersonal: async () => ({
       userId: USER,
       accessToken: 'minted-user-jwt',
@@ -200,10 +200,12 @@ Deno.test('initialize returns the server card', async () => {
   const { json } = await readBody(response);
   const result = json.result as { serverInfo?: Record<string, unknown> };
   assertEquals(result.serverInfo?.title, 'Trove');
-  assertEquals(result.serverInfo?.websiteUrl, 'https://trove-website-sooty.vercel.app');
+  assertEquals(result.serverInfo?.version, '1.1.1');
+  assertEquals(result.serverInfo?.websiteUrl, 'https://troving.app');
   const icons = result.serverInfo?.icons as Array<{ src?: string }> | undefined;
-  assert(icons && icons.length >= 1, JSON.stringify(result.serverInfo));
-  assert(String(icons[0]?.src).includes('apple-touch-icon.png'));
+  assert(icons && icons.length >= 2, JSON.stringify(result.serverInfo));
+  assertEquals(icons[0]?.src, 'https://troving.app/apple-touch-icon.png');
+  assertEquals(icons[1]?.src, 'https://troving.app/mark.png');
 });
 
 Deno.test('a missing signing key is an actionable JSON-RPC error', async () => {

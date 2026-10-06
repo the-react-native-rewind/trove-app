@@ -85,7 +85,7 @@ The `--no-verify-jwt` flag is required even though `config.toml` sets `verify_jw
 
 Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. If neither Trove secret is set, a personal token gets a JSON-RPC error whose `data.reason` is `server_misconfigured`. See `docs/MCP.md`.
 
-`TROVE_MCP_RESOURCE_URL` is the public MCP resource URL (no trailing slash). Production is `https://mcp.troving.app/mcp`. A Cloudflare Worker there proxies to this function, including the protected-resource metadata paths. If the secret is unset, the function falls back to `$SUPABASE_URL/functions/v1/mcp`. Do not hardcode the host in the function. `TROVE_SITE_URL` is the product website used for server icons and the docs link. It defaults to `https://trove-website-sooty.vercel.app`.
+`TROVE_MCP_RESOURCE_URL` is the public MCP resource URL (no trailing slash). Production is `https://mcp.troving.app/mcp`. A Cloudflare Worker there proxies to this function, including the protected-resource metadata paths. If the secret is unset, the function falls back to `$SUPABASE_URL/functions/v1/mcp`. Do not hardcode the host in the function. `TROVE_SITE_URL` is the product website used for server icons and the docs link. It defaults to `https://troving.app`.
 
 OAuth access tokens are checked with GoTrue `GET /auth/v1/user` so a revoked grant stops working within about a minute. That result is cached in the isolate for 60 seconds. Personal tokens still go through `api_tokens`.
 
@@ -130,4 +130,4 @@ select vault.create_secret('https://<ref>.supabase.co/functions/v1/send-email', 
 select vault.create_secret('<same TROVE_EMAIL_HOOK_SECRET>', 'trove_email_hook_secret');
 ```
 
-Optional function secrets: `TROVE_EMAIL_FROM`, `TROVE_EMAIL_REPLY_TO`, `TROVE_SITE_URL` (defaults to the Vercel site until trove.thereactnativerewind.com is attached).
+Optional function secrets: `TROVE_EMAIL_FROM`, `TROVE_EMAIL_REPLY_TO`, `TROVE_SITE_URL` (defaults to `https://troving.app`).
