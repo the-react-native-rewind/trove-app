@@ -14,7 +14,7 @@ import { createMcpHandler, McpServer } from 'npm:@modelcontextprotocol/server@2.
 import { z } from 'npm:zod@4.6.5';
 
 import { loadSupabaseJwks, verifySupabaseAccessJwt } from '../_shared/accessJwt.ts';
-import { readMcpAuthorization } from '../_shared/apiToken.ts';
+import { bearerTokenPresented, readMcpAuthorization } from '../_shared/apiToken.ts';
 import { jsonRpcErrorBody, mcpTransportError, readJsonRpcId, rewriteInternalErrorBody } from '../_shared/jsonRpc.ts';
 import { SERVER_VERSION, mcpImplementation, toolMetadata, type ToolMetadata } from '../_shared/mcpMeta.ts';
 import {
@@ -25,6 +25,7 @@ import {
   resourceMetadataUrl,
   wwwAuthenticate,
 } from '../_shared/oauthResource.ts';
+import { oauthSessionIsActive } from '../_shared/oauthSession.ts';
 import { DEFAULT_SITE_URL } from '../_shared/site.ts';
 import {
   addTaskAttachment,
@@ -46,7 +47,7 @@ import {
   type ToolResult,
   type TroveStore,
 } from '../_shared/mcpTools.ts';
-import { authenticate } from './auth.ts';
+import { authenticate, readEnv } from './auth.ts';
 import { supabaseStore } from './store.ts';
 
 const corsHeaders: Record<string, string> = {
@@ -185,14 +186,15 @@ async function dispatchMcp(req: Request, deps: McpDeps): Promise<Response> {
   }
 
   const rpcId = await requestRpcId(req);
-  const credential = readMcpAuthorization(req.headers.get('Authorization'));
-  if (!credential) return unauthorized(deps);
+  const authorization = req.headers.get('Authorization');
+  const credential = readMcpAuthorization(authorization);
+  if (!credential) return unauthorized(deps, bearerTokenPresented(authorization));
 
   try {
     const caller = credential.kind === 'personal'
       ? await deps.authenticatePersonal(credential.token)
       : await deps.authenticateOauth(credential.token);
-    if (!caller) return unauthorized(deps);
+    if (!caller) return unauthorized(deps, true);
     const store = await deps.openStore(caller.userId, caller.accessToken);
     const response = await handler.fetch(req, {
       authInfo: {
@@ -463,6 +465,14 @@ function productionDeps(): McpDeps {
       const jwks = await loadSupabaseJwks(supabaseUrl);
       const verified = await verifySupabaseAccessJwt(token, { supabaseUrl, resource: resourceUrl, jwks });
       if (!verified.ok) return null;
+      const env = readEnv();
+      const active = await oauthSessionIsActive({
+        token,
+        sessionId: verified.sessionId,
+        supabaseUrl: env.url,
+        apiKey: env.anonKey,
+      });
+      if (!active) return null;
       return {
         userId: verified.userId,
         accessToken: token,
@@ -487,22 +497,22 @@ function metadataResponse(deps: McpDeps): Response {
   });
 }
 
-function unauthorized(deps: McpDeps): Response {
-  return new Response(
-    JSON.stringify({ error: 'invalid_token', error_description: UNAUTHORIZED_DESCRIPTION }),
-    {
-      status: 401,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-        'WWW-Authenticate': wwwAuthenticate({
-          resourceMetadataUrl: resourceMetadataUrl(deps.resourceUrl),
-          error: 'invalid_token',
-          description: UNAUTHORIZED_DESCRIPTION,
-        }),
-      },
+function unauthorized(deps: McpDeps, tokenPresented: boolean): Response {
+  const challenge = wwwAuthenticate({
+    resourceMetadataUrl: resourceMetadataUrl(deps.resourceUrl),
+    ...(tokenPresented ? { error: 'invalid_token' as const, description: UNAUTHORIZED_DESCRIPTION } : {}),
+  });
+  const body = tokenPresented
+    ? { error: 'invalid_token', error_description: UNAUTHORIZED_DESCRIPTION }
+    : { error_description: UNAUTHORIZED_DESCRIPTION };
+  return new Response(JSON.stringify(body), {
+    status: 401,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+      'WWW-Authenticate': challenge,
     },
-  );
+  });
 }
 
 function jsonRpcError(id: string | number | null, message: string, reason: string): Response {

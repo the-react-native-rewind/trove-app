@@ -8,6 +8,7 @@ export {
   formatApiToken,
   generateApiToken,
   hashApiToken,
+  bearerTokenPresented,
   readBearerToken,
   readMcpAuthorization,
   tokenAccessDecision,

@@ -7,6 +7,7 @@ const SUPABASE = 'https://pxjqqogxemsmufopmlsv.supabase.co';
 const RESOURCE = 'https://mcp.example.com';
 const USER = '11111111-1111-4111-8111-111111111111';
 const CLIENT = '22222222-2222-4222-8222-222222222222';
+const SESSION = '33333333-3333-4333-8333-333333333333';
 const NOW = 1_700_000_000;
 
 function claims(overrides: Record<string, unknown> = {}) {
@@ -17,6 +18,7 @@ function claims(overrides: Record<string, unknown> = {}) {
     exp: NOW + 3600,
     role: 'authenticated',
     client_id: CLIENT,
+    session_id: SESSION,
     scope: 'openid email',
     ...overrides,
   };
@@ -28,6 +30,7 @@ test('OAuth access tokens must be this project, this user, and an OAuth client',
   if (!ok.ok) return;
   assert.equal(ok.userId, USER);
   assert.equal(ok.clientId, CLIENT);
+  assert.equal(ok.sessionId, SESSION);
   assert.deepEqual(ok.scopes, ['openid', 'email']);
 
   const resourceAud = decideAccessClaims(claims({ aud: [RESOURCE, 'authenticated'] }), {
@@ -48,6 +51,14 @@ test('OAuth access tokens must be this project, this user, and an OAuth client',
     nowSeconds: NOW,
   });
   assert.equal(missing.ok, false);
+
+  const noSession = decideAccessClaims(claims({ session_id: undefined }), {
+    supabaseUrl: SUPABASE,
+    resource: RESOURCE,
+    nowSeconds: NOW,
+  });
+  assert.equal(noSession.ok, false);
+  if (!noSession.ok) assert.equal(noSession.reason, 'missing_session');
   if (missing.ok) return;
   assert.equal(missing.reason, 'missing_client');
 

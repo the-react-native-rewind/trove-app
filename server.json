@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.the-react-native-rewind/trove",
+  "name": "app.troving/trove",
   "title": "Trove",
   "description": "Shared lists for the circles you belong to. Assistants see only the tasks you can.",
   "websiteUrl": "https://trove-website-sooty.vercel.app",
@@ -9,10 +9,22 @@
     "source": "github"
   },
   "version": "1.1.0",
+  "icons": [
+    {
+      "src": "https://trove-website-sooty.vercel.app/apple-touch-icon.png",
+      "mimeType": "image/png",
+      "sizes": ["180x180"]
+    },
+    {
+      "src": "https://trove-website-sooty.vercel.app/mark.png",
+      "mimeType": "image/png",
+      "sizes": ["160x160"]
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://mcp.example.com/TODO-replace-with-the-trove-mcp-domain"
+      "url": "https://mcp.troving.app/mcp"
     }
   ]
 }

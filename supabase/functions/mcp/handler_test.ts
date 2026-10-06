@@ -93,7 +93,13 @@ Deno.test('protected resource metadata is served and 401 points at it', async ()
   assertEquals(missing.status, 401);
   const challenge = missing.headers.get('www-authenticate') ?? '';
   assert(challenge.includes(`resource_metadata="${RESOURCE}/.well-known/oauth-protected-resource"`), challenge);
-  assert(challenge.includes('error="invalid_token"'), challenge);
+  assert(!challenge.includes('error='), challenge);
+
+  const rejected = await handleMcpRequest(rpc('tools/list', 'not-a-token'), deps());
+  assertEquals(rejected.status, 401);
+  const rejectedChallenge = rejected.headers.get('www-authenticate') ?? '';
+  assert(rejectedChallenge.includes(`resource_metadata="${RESOURCE}/.well-known/oauth-protected-resource"`), rejectedChallenge);
+  assert(rejectedChallenge.includes('error="invalid_token"'), rejectedChallenge);
 
   const wrongMethod = await handleMcpRequest(
     new Request(`${RESOURCE}/.well-known/oauth-protected-resource`, { method: 'POST' }),
