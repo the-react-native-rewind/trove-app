@@ -11,6 +11,7 @@ import {
   generateApiToken,
   hashApiToken,
   readBearerToken,
+  readMcpAuthorization,
   tokenAccessDecision,
 } from './apiToken';
 
@@ -94,6 +95,16 @@ test('readBearerToken accepts only a Trove token', () => {
   assert.equal(readBearerToken('Basic abc'), null);
   assert.equal(readBearerToken('Bearer eyJhbGciOiJIUzI1NiJ9.e30.sig'), null);
   assert.equal(readBearerToken('Bearer trove_short'), null);
+});
+
+test('readMcpAuthorization keeps personal tokens and accepts OAuth JWTs', () => {
+  const token = generateApiToken();
+  assert.deepEqual(readMcpAuthorization(`Bearer ${token}`), { kind: 'personal', token });
+  assert.equal(readMcpAuthorization('Bearer trove_short'), null);
+  const jwt = 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.sig';
+  assert.deepEqual(readMcpAuthorization(`Bearer ${jwt}`), { kind: 'oauth', token: jwt });
+  assert.equal(readMcpAuthorization('Bearer not-a-token'), null);
+  assert.equal(readMcpAuthorization(null), null);
 });
 
 test('tokenAccessDecision rejects missing and revoked tokens and throttles last_used writes', () => {

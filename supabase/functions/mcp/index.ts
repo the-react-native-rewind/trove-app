@@ -1,16 +1,31 @@
-// Trove MCP server (Streamable HTTP).
+// Trove MCP server (Streamable HTTP, stateless).
 //
-// Auth is a personal access token created in the app (Account → Connect an
-// AI assistant). verify_jwt is false: those tokens are not Supabase JWTs.
-// Deploy with: supabase functions deploy mcp --no-verify-jwt
+// Callers send either a personal access token (trove_…) or a Supabase Auth
+// OAuth access token. verify_jwt is false so the gateway lets the OAuth
+// discovery request through. Deploy with:
+//   supabase functions deploy mcp --no-verify-jwt
 //
-// Queries run as the token's user, so row level security still applies.
+// Queries run as that person, so row level security still applies. Personal
+// tokens are exchanged for a one-hour user JWT. OAuth tokens are already
+// user JWTs and are used as-is after signature, issuer, audience, and
+// client_id checks.
 
 import { createMcpHandler, McpServer } from 'npm:@modelcontextprotocol/server@2.2.0';
 import { z } from 'npm:zod@4.6.5';
 
-import { readBearerToken } from '../_shared/apiToken.ts';
-import { jsonRpcErrorBody, readJsonRpcId } from '../_shared/jsonRpc.ts';
+import { loadSupabaseJwks, verifySupabaseAccessJwt } from '../_shared/accessJwt.ts';
+import { readMcpAuthorization } from '../_shared/apiToken.ts';
+import { jsonRpcErrorBody, mcpTransportError, readJsonRpcId, rewriteInternalErrorBody } from '../_shared/jsonRpc.ts';
+import { SERVER_VERSION, mcpImplementation, toolMetadata, type ToolMetadata } from '../_shared/mcpMeta.ts';
+import {
+  authorizationServerIssuer,
+  canonicalMcpResourceUrl,
+  isProtectedResourceMetadataPath,
+  protectedResourceMetadata,
+  resourceMetadataUrl,
+  wwwAuthenticate,
+} from '../_shared/oauthResource.ts';
+import { DEFAULT_SITE_URL } from '../_shared/site.ts';
 import {
   addTaskAttachment,
   assignTask,
@@ -31,18 +46,36 @@ import {
   type ToolResult,
   type TroveStore,
 } from '../_shared/mcpTools.ts';
-import { ServerMisconfiguredError } from '../_shared/userJwt.ts';
 import { authenticate } from './auth.ts';
 import { supabaseStore } from './store.ts';
-
-const SERVER_VERSION = '1.0.0';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
     'authorization, apikey, content-type, accept, mcp-protocol-version, mcp-session-id, last-event-id',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Expose-Headers': 'mcp-session-id',
+  'Access-Control-Expose-Headers': 'mcp-session-id, www-authenticate',
+};
+
+const UNAUTHORIZED_DESCRIPTION =
+  'Send Authorization: Bearer with a Trove personal token (trove_...) or a Supabase OAuth access token. Create a personal token in the app under Account, Connect an AI assistant, or approve the connection at the OAuth consent page.';
+
+export type McpCaller = {
+  userId: string;
+  accessToken: string;
+  clientId: string;
+  scopes: string[];
+  expiresAt?: number;
+};
+
+export type McpDeps = {
+  resourceUrl: string;
+  authorizationServerUrl: string;
+  siteUrl: string;
+  documentationUrl: string;
+  authenticatePersonal: (token: string) => Promise<McpCaller | null>;
+  authenticateOauth: (token: string) => Promise<McpCaller | null>;
+  openStore: (userId: string, accessToken: string) => Promise<TroveStore>;
 };
 
 const circleTarget = {
@@ -123,51 +156,78 @@ const taskInput = z.object({
 
 const handler = createMcpHandler((ctx) => {
   const store = ctx.authInfo?.extra?.store;
+  const siteUrl = ctx.authInfo?.extra?.siteUrl;
   if (!isStore(store)) throw new Error('Not authenticated');
-  return buildServer(store);
+  return buildServer(store, typeof siteUrl === 'string' ? siteUrl : DEFAULT_SITE_URL);
 });
 
-Deno.serve(async (req) => {
+export async function handleMcpRequest(req: Request, deps?: McpDeps): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
+  let resolved: McpDeps;
+  try {
+    resolved = deps ?? productionDeps();
+  } catch (error) {
+    console.error('mcp is not configured', error instanceof Error ? error.message : error);
+    const failure = mcpTransportError(error);
+    return withCors(jsonRpcError(await requestRpcId(req), failure.message, failure.reason));
+  }
+  return dispatchMcp(req, resolved);
+}
+
+async function dispatchMcp(req: Request, deps: McpDeps): Promise<Response> {
+
+  const url = new URL(req.url);
+  if (isProtectedResourceMetadataPath(url.pathname)) {
+    if (req.method !== 'GET') {
+      return withCors(new Response(null, { status: 405, headers: { allow: 'GET, OPTIONS' } }));
+    }
+    return withCors(metadataResponse(deps));
+  }
 
   const rpcId = await requestRpcId(req);
-  const token = readBearerToken(req.headers.get('Authorization'));
-  if (!token) return unauthorized();
+  const credential = readMcpAuthorization(req.headers.get('Authorization'));
+  if (!credential) return unauthorized(deps);
 
   try {
-    const caller = await authenticate(token);
-    if (!caller) return unauthorized();
-    const store = await supabaseStore(caller.userId, caller.accessToken);
+    const caller = credential.kind === 'personal'
+      ? await deps.authenticatePersonal(credential.token)
+      : await deps.authenticateOauth(credential.token);
+    if (!caller) return unauthorized(deps);
+    const store = await deps.openStore(caller.userId, caller.accessToken);
     const response = await handler.fetch(req, {
       authInfo: {
-        token: token.slice(0, 12),
-        clientId: caller.userId,
-        scopes: ['trove'],
-        extra: { store },
+        token: credential.token.slice(0, 12),
+        clientId: caller.clientId,
+        scopes: caller.scopes,
+        expiresAt: caller.expiresAt,
+        extra: { store, siteUrl: deps.siteUrl },
       },
     });
-    return withCors(response);
+    return withCors(await actionable(response, rpcId));
   } catch (error) {
     console.error('mcp request failed', error instanceof Error ? error.message : error);
-    const message = error instanceof ServerMisconfiguredError ? 'server_misconfigured' : 'Internal error';
-    return withCors(jsonRpcError(rpcId, message));
+    const failure = mcpTransportError(error);
+    return withCors(jsonRpcError(rpcId, failure.message, failure.reason));
   }
-});
+}
 
-function buildServer(store: TroveStore): McpServer {
-  const server = new McpServer({ name: 'trove', version: SERVER_VERSION, title: 'Trove' });
+if (import.meta.main) {
+  Deno.serve((req) => handleMcpRequest(req));
+}
+
+function buildServer(store: TroveStore, siteUrl: string): McpServer {
+  const server = new McpServer(mcpImplementation(siteUrl, SERVER_VERSION));
 
   server.registerTool(
     'list_circles',
-    { description: toolDescriptions.list_circles, annotations: { readOnlyHint: true } },
+    described('list_circles'),
     async () => asTool(await listCircles(store)),
   );
 
   server.registerTool(
     'get_circle',
     {
-      description: toolDescriptions.get_circle,
-      annotations: { readOnlyHint: true },
+      ...described('get_circle'),
       inputSchema: z.object(circleTarget),
     },
     async (args) => asTool(await getCircle(store, args)),
@@ -176,7 +236,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'create_circle',
     {
-      description: toolDescriptions.create_circle,
+      ...described('create_circle'),
       inputSchema: z.object({
         name: z.string().describe('Circle name, such as Home or Garden.'),
         color: z
@@ -193,8 +253,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'list_my_tasks',
     {
-      description: toolDescriptions.list_my_tasks,
-      annotations: { readOnlyHint: true },
+      ...described('list_my_tasks'),
       inputSchema: z.object({ ...circleTarget, status: statusField, ...dueFields, limit: limitField }),
     },
     async (args) => asTool(await listMyTasks(store, args)),
@@ -203,8 +262,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'list_circle_tasks',
     {
-      description: toolDescriptions.list_circle_tasks,
-      annotations: { readOnlyHint: true },
+      ...described('list_circle_tasks'),
       inputSchema: z.object({ ...circleTarget, status: statusField, ...dueFields, limit: limitField }),
     },
     async (args) => asTool(await listCircleTasks(store, args)),
@@ -212,14 +270,14 @@ function buildServer(store: TroveStore): McpServer {
 
   server.registerTool(
     'create_task',
-    { description: toolDescriptions.create_task, inputSchema: taskInput },
+    { ...described('create_task'), inputSchema: taskInput },
     async (args) => asTool(await createTask(store, args)),
   );
 
   server.registerTool(
     'create_tasks_bulk',
     {
-      description: toolDescriptions.create_tasks_bulk,
+      ...described('create_tasks_bulk'),
       inputSchema: z.object({
         ...circleTarget,
         tasks: z.array(taskInput).min(1).max(100).describe('Up to 100 tasks. A circle on this call is the default.'),
@@ -231,7 +289,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'update_task',
     {
-      description: toolDescriptions.update_task,
+      ...described('update_task'),
       inputSchema: z.object({
         task_id: z.string().uuid(),
         title: z.string().optional(),
@@ -254,7 +312,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'complete_task',
     {
-      description: toolDescriptions.complete_task,
+      ...described('complete_task'),
       inputSchema: z.object({ task_id: z.string().uuid() }),
     },
     async (args) => asTool(await completeTask(store, args)),
@@ -263,7 +321,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'assign_task',
     {
-      description: toolDescriptions.assign_task,
+      ...described('assign_task'),
       inputSchema: z.object({
         task_id: z.string().uuid(),
         assignee: assigneeFields.assignee.describe('Member id, display name, "me", or null. Replaces the whole set.'),
@@ -276,7 +334,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'move_task',
     {
-      description: toolDescriptions.move_task,
+      ...described('move_task'),
       inputSchema: z.object({
         task_id: z.string().uuid(),
         ...circleTarget,
@@ -288,7 +346,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'add_task_attachment',
     {
-      description: toolDescriptions.add_task_attachment,
+      ...described('add_task_attachment'),
       inputSchema: z.object({
         task_id: z.string().uuid().describe('Task to attach the file to.'),
         url: z
@@ -312,8 +370,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'list_members',
     {
-      description: toolDescriptions.list_members,
-      annotations: { readOnlyHint: true },
+      ...described('list_members'),
       inputSchema: z.object(circleTarget),
     },
     async (args) => asTool(await listMembers(store, args)),
@@ -322,7 +379,7 @@ function buildServer(store: TroveStore): McpServer {
   server.registerTool(
     'invite_to_circle',
     {
-      description: toolDescriptions.invite_to_circle,
+      ...described('invite_to_circle'),
       inputSchema: z.object({
         ...circleTarget,
         email: z.string().describe('Email address to invite.'),
@@ -370,29 +427,99 @@ function isStore(value: unknown): value is TroveStore {
   return value != null && typeof value === 'object' && 'listCircles' in value && 'userId' in value;
 }
 
-function unauthorized(): Response {
+function described(name: keyof typeof toolMetadata) {
+  const meta: ToolMetadata = toolMetadata[name];
+  return {
+    title: meta.title,
+    description: toolDescriptions[name],
+    annotations: {
+      title: meta.title,
+      readOnlyHint: meta.readOnlyHint,
+      destructiveHint: meta.destructiveHint,
+      idempotentHint: meta.idempotentHint,
+      openWorldHint: meta.openWorldHint,
+    },
+  };
+}
+
+function productionDeps(): McpDeps {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const siteUrl = (Deno.env.get('TROVE_SITE_URL') ?? DEFAULT_SITE_URL).replace(/\/$/, '');
+  const resourceUrl = canonicalMcpResourceUrl({
+    resourceUrl: Deno.env.get('TROVE_MCP_RESOURCE_URL'),
+    supabaseUrl,
+  });
+  return {
+    resourceUrl,
+    authorizationServerUrl: authorizationServerIssuer(supabaseUrl),
+    siteUrl,
+    documentationUrl: `${siteUrl}/docs/mcp`,
+    authenticatePersonal: async (token) => {
+      const caller = await authenticate(token);
+      if (!caller) return null;
+      return { userId: caller.userId, accessToken: caller.accessToken, clientId: caller.userId, scopes: ['trove'] };
+    },
+    authenticateOauth: async (token) => {
+      const jwks = await loadSupabaseJwks(supabaseUrl);
+      const verified = await verifySupabaseAccessJwt(token, { supabaseUrl, resource: resourceUrl, jwks });
+      if (!verified.ok) return null;
+      return {
+        userId: verified.userId,
+        accessToken: token,
+        clientId: verified.clientId,
+        scopes: verified.scopes,
+        expiresAt: verified.expiresAt,
+      };
+    },
+    openStore: (userId, accessToken) => supabaseStore(userId, accessToken),
+  };
+}
+
+function metadataResponse(deps: McpDeps): Response {
+  const body = protectedResourceMetadata({
+    resourceUrl: deps.resourceUrl,
+    authorizationServerUrl: deps.authorizationServerUrl,
+    documentationUrl: deps.documentationUrl,
+  });
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' },
+  });
+}
+
+function unauthorized(deps: McpDeps): Response {
   return new Response(
-    JSON.stringify({
-      error: 'invalid_token',
-      error_description:
-        'Send a Trove personal access token as Authorization: Bearer trove_… Create one in the app under Account → Connect an AI assistant.',
-    }),
+    JSON.stringify({ error: 'invalid_token', error_description: UNAUTHORIZED_DESCRIPTION }),
     {
       status: 401,
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/json',
-        'WWW-Authenticate': 'Bearer realm="trove", error="invalid_token"',
+        'WWW-Authenticate': wwwAuthenticate({
+          resourceMetadataUrl: resourceMetadataUrl(deps.resourceUrl),
+          error: 'invalid_token',
+          description: UNAUTHORIZED_DESCRIPTION,
+        }),
       },
     },
   );
 }
 
-function jsonRpcError(id: string | number | null, message: string): Response {
-  return new Response(jsonRpcErrorBody(id, message), {
+function jsonRpcError(id: string | number | null, message: string, reason: string): Response {
+  return new Response(jsonRpcErrorBody(id, message, { reason }), {
     status: 500,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+async function actionable(response: Response, rpcId: string | number | null): Promise<Response> {
+  if (response.status < 500) return response;
+  const body = await response.text();
+  const rewritten = rewriteInternalErrorBody(response.status, body, rpcId);
+  if (!rewritten) {
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  }
+  return new Response(rewritten, { status: 500, headers: { 'Content-Type': 'application/json' } });
 }
 
 async function requestRpcId(req: Request): Promise<string | number | null> {

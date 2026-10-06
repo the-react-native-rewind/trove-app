@@ -528,6 +528,25 @@ test('invite_to_circle rejects viewers and the owner role', async () => {
   assert.equal(agent.data.invite.role, 'member');
 });
 
+test('invite_to_circle stops at the daily email cap before creating an invite', async () => {
+  const store = memoryStore({ recentInvites: 25 });
+  let created = 0;
+  const original = store.createInvite.bind(store);
+  store.createInvite = async (input) => {
+    created += 1;
+    return original(input);
+  };
+  const limited = await inviteToCircle(store, {
+    circle_name: 'House',
+    email: 'one-more@example.com',
+  });
+  assert.equal(limited.ok, false);
+  if (limited.ok) return;
+  assert.equal(/25 invites/.test(limited.error), true);
+  assert.equal(/no email was sent/.test(limited.error), true);
+  assert.equal(created, 0);
+});
+
 test('open-task counts are loaded only for circle reads', async () => {
   const store = memoryStore();
   await createTask(store, { title: 'No count' });
@@ -733,7 +752,7 @@ test('update_task replaces tags and does not take a circle id', async () => {
   assert.equal(updated.data.task.circle_id, HOUSE);
 });
 
-function memoryStore(options?: { houseRole?: Role }): TroveStore & {
+function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): TroveStore & {
   tasks: TaskRecord[];
   attachments: AttachmentRecord[];
   calls: { counts: number; plain: number };
@@ -907,6 +926,9 @@ function memoryStore(options?: { houseRole?: Role }): TroveStore & {
         tags_removed: plan.tagsRemoved,
         task,
       };
+    },
+    async countRecentInvites() {
+      return options?.recentInvites ?? 0;
     },
     async createInvite(input): Promise<InviteResult> {
       return {

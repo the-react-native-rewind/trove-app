@@ -17,6 +17,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { useIsWide } from '@/hooks/useIsWide';
+import { hrefAfterSignIn } from '@/lib/pendingOAuth';
 import { supabase } from '@/lib/supabase';
 import { colors, fonts, radii, shadows, spacing } from '@/theme/tokens';
 
@@ -63,7 +64,7 @@ function useSignInForm() {
       setError('That email and password do not match. Try again.');
       return;
     }
-    router.replace('/');
+    router.replace((await hrefAfterSignIn()) as never);
   }
 
   async function onForgotPassword() {

@@ -1,33 +1,87 @@
 # Trove MCP server
 
-Trove has a remote [MCP](https://modelcontextprotocol.io) server so Claude, Cursor, ChatGPT, Codex, and other assistants can create and manage tasks in your circles. You sign in with a personal access token. The assistant can do what you can do in the app, and nothing more.
+Trove has a remote [MCP](https://modelcontextprotocol.io) server so Claude, ChatGPT, Cursor, Claude Code, Grok, and other assistants can create and manage tasks in your circles. The assistant can do what you can do in the app, and nothing more.
 
 A **circle** is a shared place for tasks: a house, a side business, a personal list, a community. In the database these are still called spaces. **Mine** is not a circle. It is every task assigned to you, across every circle you belong to. Your private list is the personal circle created when you signed up (usually named Personal).
 
-Server URL:
+There are two ways to connect:
+
+1. **OAuth.** The assistant sends you to Trove to sign in and approve it. This is what Claude, ChatGPT, Cursor, and other directory connectors use. You can disconnect it later under Account → Connect an AI assistant.
+2. **A personal access token** (`trove_…`). Use this when a client can send an `Authorization` header and cannot do OAuth.
+
+Server URL, until a Trove-owned host such as `mcp.<domain>` is in front of the function:
 
 ```text
 https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp
 ```
 
-The server speaks Streamable HTTP. Send the token on every request:
+The server speaks Streamable HTTP and does not keep a session between requests. The public URL is the `TROVE_MCP_RESOURCE_URL` function secret when that is set, and the Supabase function URL otherwise. The app shows the same value from `EXPO_PUBLIC_MCP_RESOURCE_URL` when that is set.
+
+## Connect with OAuth
+
+The assistant discovers how to sign in from the server. You do not paste a token.
+
+1. Add the server URL in the assistant.
+2. When it asks you to sign in, the browser opens Trove at `/oauth/consent` on the web app (`https://trove-app-one.vercel.app/oauth/consent`).
+3. Sign in if you are not already.
+4. Read the assistant's name and what it is asking to see. Allow, or don't.
+5. The browser returns to the assistant. It can then use your circles.
+
+Disconnect it under **Account → Connect an AI assistant → Connected apps → Revoke**. That signs that assistant out. Your personal tokens are separate.
+
+OAuth access is the same as yours. Row level security still applies. Approving an assistant does not give it anyone else's circles.
+
+### Claude
+
+In Claude's connectors directory, or in a custom connector, add the server URL. Claude uses OAuth. Do not put a personal token in the connector if the form is asking you to sign in.
+
+### ChatGPT
+
+Add a custom connector (or the app entry, once Trove is listed) with the server URL. ChatGPT requires OAuth. The consent page is the sign-in it is asking for.
+
+### Cursor
+
+In Cursor's MCP settings, add the server URL and leave the header empty so Cursor can sign you in. A personal token still works if you set the header instead:
+
+```json
+{
+  "mcpServers": {
+    "trove": {
+      "url": "https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp"
+    }
+  }
+}
+```
+
+### Claude Code
+
+```bash
+claude mcp add --transport http trove \
+  https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp
+```
+
+Leave off the `Authorization` header. Claude Code follows the `401` and opens the consent page. To use a personal token instead, add `--header "Authorization: Bearer trove_…"`.
+
+### Grok
+
+Add a custom connector with the server URL. When Grok asks to sign in, approve Trove on the consent page. If that form only has a header field, use a personal token.
+
+## Connect with a personal token
+
+Replace `trove_…` with the token you create below. Send it on every request:
 
 ```text
 Authorization: Bearer trove_…
 ```
 
-## Create a token
+### Create a token
 
 1. Open Trove and go to **Account → Connect an AI assistant** (API tokens).
 2. Name the token after the app that will use it, for example `Claude` or `Cursor`.
 3. Create it. The full token is shown once. Copy it then. Trove stores only a hash.
-4. You can keep up to 10 active tokens. Revoke one you no longer use. Revoking takes effect immediately and cannot be undone. The database enforces that cap, not only the app.
+4. You can keep up to **10** active tokens. The database enforces that cap (`0012_api_token_limits.sql` and `ACTIVE_TOKEN_LIMIT`). Revoke one you no longer use. Revoking takes effect on the next request and cannot be undone.
 
 A token looks like `trove_` followed by a random string. Treat it like a password. Do not commit it, paste it into a shared chat, or send it to anyone else.
-
-## Connect an assistant
-
-Replace `trove_…` with the token you just copied.
 
 ### Claude Code
 
@@ -89,11 +143,7 @@ If that build only speaks stdio, use `mcp-remote`. The header form has no space 
 }
 ```
 
-### ChatGPT and Codex
-
-If the connector form has a bearer-token or header field, use the server URL above and `Authorization: Bearer trove_…`.
-
-Codex can send the header directly:
+### Codex
 
 ```toml
 [mcp_servers.trove]
@@ -101,11 +151,9 @@ url = "https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp"
 http_headers = { Authorization = "Bearer trove_…" }
 ```
 
-ChatGPT custom connectors often require OAuth. Trove does not offer OAuth yet. If the ChatGPT form will not take a bearer token, use Codex, Claude, or Cursor until OAuth ships.
-
 ### If the gateway asks for an API key
 
-Some Supabase gateways also want the project's publishable anon key in an `apikey` header, in addition to `Authorization`. That key is already in the app. It is not a secret and it does not sign you in. The Trove token is what identifies you. Do not send the service role key.
+Some Supabase gateways also want the project's publishable anon key in an `apikey` header, in addition to `Authorization`. That key is already in the app. It is not a secret and it does not sign you in. The Trove token, or the OAuth access token, is what identifies you. Do not send the service role key.
 
 ## Tools
 
@@ -118,13 +166,15 @@ Some Supabase gateways also want the project's publishable anon key in an `apike
 | `list_circle_tasks` | Every task in one circle, including ones assigned to other people. |
 | `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. Optional repeat rule. |
 | `create_tasks_bulk` | Create up to 100 tasks. Safe to retry when each item has an `external_id`. Each item can repeat. |
-| `update_task` | Change title, notes, status, priority, due date, assignees, tags, or the repeat rule. An owner or admin's priority also sets the task's rank. A member can set priority but cannot change rank. Does not change the circle. |
-| `complete_task` | Mark a task done. A repeating task stays done, and the database adds the next occurrence. |
-| `assign_task` | Replace the people assigned to a task. Each person must already be in that circle. |
-| `move_task` | Move a task to another circle, including from your personal circle into a shared one. |
-| `add_task_attachment` | Attach an image or video to a task you can edit. Returns the attachment id. |
+| `update_task` | Change title, notes, status, priority, due date, assignees, tags, or the repeat rule. An owner or admin's priority also sets the task's rank. A member can set priority but cannot change rank. Can clear notes, tags, or assignees. Does not change the circle. |
+| `complete_task` | Mark a task done. You can set it back to to do. A repeating task stays done, and the database adds the next occurrence. |
+| `assign_task` | Replace the people assigned to a task. Passing null or an empty list clears everyone. Each person must already be in that circle. |
+| `move_task` | Move a task to another circle. Tags from the old circle are removed, and people who are not in the new circle are unassigned. |
+| `add_task_attachment` | Attach an image or video to a task you can edit. A URL is downloaded by the server. Returns the attachment id. |
 | `list_members` | People in a circle: user id, display name, role, and whether they joined as an agent. No email addresses. |
-| `invite_to_circle` | Invite someone by email. Owners and admins only. Optional `agent` marks the invite as a bot. |
+| `invite_to_circle` | Invite someone by email. Owners and admins only. **This sends an email** to that address. Limited to 25 invites in 24 hours. Optional `agent` marks the invite as a bot. |
+
+Each tool has a human title and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` values. Reads are not destructive. Completing a task is not destructive, because it can be undone. Updating, assigning, and moving can remove data, so those are marked destructive. Inviting someone and attaching a file from a URL reach outside Trove, so those are marked open-world.
 
 Circle arguments are `circle_id`, `circle_name` (case-insensitive, must match one of yours), or `personal: true`. The name **Mine** is not a circle. Ask for `list_my_tasks`, or set `personal: true` for the private circle.
 
@@ -152,7 +202,7 @@ Task results from list, create, update, complete, assign, and move include `repe
 
 `complete_task`, or `update_task` with `status: done`, marks that row done. If it repeats, the database inserts the next To do occurrence with the same title, notes, priority, tags, circle, assignees, and rule. The new occurrence starts at the bottom of its due-date group, so it does not keep the completed row's rank. The tool result is the completed row, not the new one. List the circle again to see the next occurrence. Photos stay attached to both, because the new row points at the same file. `external_id` stays on the original row only.
 
-`invite_to_circle` takes `email`, an optional `role` of `admin`, `member`, or `viewer` (default `member`), and an optional `agent` boolean (default false). `agent: true` marks the invite as a bot. When that invite is accepted, the new membership is stored as an agent. An existing member is not changed. You cannot invite someone as owner. One pending invite per email per circle. The link expires in 14 days. `list_members` includes `is_agent` for each person.
+`invite_to_circle` takes `email`, an optional `role` of `admin`, `member`, or `viewer` (default `member`), and an optional `agent` boolean (default false). Creating the invite sends an email to that address (database trigger `invites_send_email`). You can create 25 invites in 24 hours. Over that, the invite is not created and no email is sent. `agent: true` marks the invite as a bot. When that invite is accepted, the new membership is stored as an agent. An existing member is not changed. You cannot invite someone as owner. One pending invite per email per circle. The link expires in 14 days. `list_members` includes `is_agent` for each person.
 
 ## Creating a circle
 
@@ -187,7 +237,7 @@ The bytes must actually be that type. The maximum size is 50 MB, the bucket limi
 
 You must be able to edit the task where it is now (owner, admin, or member). A viewer of the source circle cannot move it. You must belong to the destination. A viewer of the destination can still receive a task.
 
-If the assignee is not a member of the destination, they are **unassigned**. They are not reassigned to you. If you move your own task into a circle you belong to, you stay assigned.
+If an assignee is not a member of the destination, they are **unassigned**. They are not reassigned to you. If you move your own task into a circle you belong to, you stay assigned.
 
 Tags from the old circle are removed. Photos and videos stay behind: they remain stored under the original circle and people who cannot see that circle cannot open them.
 
@@ -203,39 +253,78 @@ Tags from the old circle are removed. Photos and videos stay behind: they remain
 - "Move 'Sketch the spring menu' from my personal circle into Household, and assign it to Sam."
 - "Invite sam@example.com to House as a member."
 
-A bulk import that sends more than 100 tasks fails the whole call and inserts nothing. Split the list. If one item in a batch fails, earlier items in that batch are kept and the failure is reported.
+A bulk import that sends more than 100 tasks fails the whole call and inserts nothing. Split the list. If one item in a batch fails, earlier items in that batch are kept and the failure is reported. Inviting someone emails them. Do not invite a list of people unless the person asked you to.
 
 ## Security
 
-- The token is hashed with SHA-256 before it is stored. Trove cannot show it again.
-- Requests run as you. Row level security still applies. The server does not use a service role to skip membership checks.
-- Revoke a token from Account → Connect an AI assistant. The next request with that token is rejected.
-- Someone with your token can create circles, create, edit, complete, assign, and move tasks, set or clear a repeat rule, attach photos and videos to tasks you can edit, and invite people to circles you administer. Completing a repeating task creates the next occurrence. They cannot see tokens, email addresses of members, or circles you do not belong to. They cannot attach a file to a task they cannot edit, and they cannot set `recurrence_source_id`.
-- OAuth is not available yet. Until it is, a personal access token is the only way in.
+- A personal token is hashed with SHA-256 before it is stored. Trove cannot show it again.
+- An OAuth access token is a Supabase user JWT. The server checks the signature against the project JWKS, the issuer, expiry, the `authenticated` role, and that the token has an OAuth `client_id`. A first-party session without `client_id` is not accepted. The token is then used as you, so row level security applies.
+- Supabase Auth does not yet put the MCP resource URL in the token audience. It sets `aud` to `authenticated` and ignores the RFC 8707 `resource` parameter. That gap is [supabase/auth#2610](https://github.com/supabase/auth/issues/2610). Until it ships, Trove accepts `aud` of `authenticated` or of the configured resource URL. It does not accept tokens from another issuer.
+- Requests run as you. The server does not use a service role to skip membership checks.
+- Revoke a personal token, or an OAuth grant, from Account → Connect an AI assistant.
+- Someone with access can create circles, create, edit, complete, assign, and move tasks, set or clear a repeat rule, attach photos and videos to tasks you can edit, and invite people to circles you administer. An invite sends an email. Completing a repeating task creates the next occurrence. They cannot see tokens, email addresses of members, or circles you do not belong to.
+- A request with no token gets HTTP 401 and a `WWW-Authenticate` header whose `resource_metadata` URL is the protected-resource document. That document names the Supabase Auth server (`/auth/v1`) as the authorization server.
+- A failure inside the server is a JSON-RPC error (`-32603`) with a message a client can show and `data.reason` of `server_misconfigured` or `internal_error`. It is not a bare `Internal error` body.
 
 ## Deploying the function
 
-This is for the person who operates the Supabase project. It is not part of connecting an assistant.
+This is for the person who operates the Supabase project. It is not part of connecting an assistant. Do not flip these switches from a script against production.
 
-Migration `0011_api_tokens_and_move_task.sql` is already applied. Apply `supabase/migrations/0012_api_token_limits.sql` before deploying this version of the function. Do not run the seed or `supabase/tests/bootstrap.sql` on the hosted project.
+### Database
 
-The function signs a one-hour user JWT locally and does not create an Auth session. It needs a signing secret you set yourself. Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`, and it rejects any function secret whose name starts with `SUPABASE_` (`Secret name must not start with the SUPABASE_ prefix`). Use the `TROVE_` names below. Do not commit the key.
+Migration `0012_api_token_limits.sql` caps active personal tokens at 10. Migration `0024_invite_rate_limit.sql` caps invites at 25 per person per 24 hours and adds `recent_invite_count()` for the MCP tool. Apply 0024 in the SQL editor or with `supabase db push`. Do not run the seed or `supabase/tests/bootstrap.sql` on the hosted project.
 
-The project's active Auth signing key is ES256. The legacy HS256 secret is `previously_used` and is still accepted for verification, so a token signed with it still works. The key that matches what Auth uses now is the ES256 private JWK you generated and imported (`kid` must match that key). Supabase will not export a private key it generated itself.
+### Function secrets
+
+Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`, and it rejects any function secret whose name starts with `SUPABASE_`.
+
+| Secret | Required | Purpose |
+| --- | --- | --- |
+| `TROVE_JWT_SIGNING_KEY` | Yes, for personal tokens | Private JWK of the active ES256 signing key you imported. `kid` must match. |
+| `TROVE_JWT_SECRET` | Only if you are not using the signing key | Legacy HS256 secret. Ignored when the signing key is set. |
+| `TROVE_MCP_RESOURCE_URL` | When the public host is not the function URL | Canonical MCP resource URL, no trailing slash. Example, once the domain exists: `https://mcp.example.com`. Until then, leave it unset. The function then uses `$SUPABASE_URL/functions/v1/mcp`. |
+| `TROVE_SITE_URL` | No | Product website for the server card and icons. Defaults to `https://trove-website-sooty.vercel.app`. |
 
 ```bash
 supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256","x":"…","y":"…","d":"…"}'
 supabase functions deploy mcp --no-verify-jwt
 ```
 
-To sign with the legacy HS256 secret instead (Dashboard → Settings → API → JWT Settings):
+`--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. The gateway must let the unauthenticated discovery request through. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
 
-```bash
-supabase secrets set TROVE_JWT_SECRET="<legacy JWT secret>"
-```
+When you attach `mcp.<domain>`, proxy these paths to the function:
 
-`TROVE_JWT_SIGNING_KEY` wins when both are set. Supported signing-key shapes are ES256 (P-256), RS256, and an `oct` HMAC JWK. Local `supabase functions serve` may still inject `SUPABASE_JWT_SECRET` or `SUPABASE_JWT_SIGNING_KEY`; those are read only when the `TROVE_` name is unset. They cannot be set on the hosted project.
+- the MCP endpoint itself (`/` or whatever path you set as `TROVE_MCP_RESOURCE_URL`)
+- `GET /.well-known/oauth-protected-resource` (and the same path under the function URL)
 
-`--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
+Set `TROVE_MCP_RESOURCE_URL` to that public URL and replace the placeholder in `server.json`. The registry file ships with `https://mcp.example.com/TODO-replace-with-the-trove-mcp-domain` on purpose.
 
-If none of those secrets is set, or PostgREST rejects the signature, a signed-in token gets HTTP 500 and a JSON-RPC error (`-32603`) whose message is `server_misconfigured`. A request with no Trove token still gets 401.
+The web app should get `EXPO_PUBLIC_MCP_RESOURCE_URL` set to the same public URL so Account shows it.
+
+### Supabase dashboard
+
+Do these by hand. This change does not enable them.
+
+**Authentication → OAuth Server** (the OAuth 2.1 server is still in beta):
+
+- Enable the OAuth 2.1 server.
+- Authorization path: `/oauth/consent`.
+- Allow dynamic client registration: **on**. Claude, ChatGPT, Cursor, and Claude Code register themselves. Dynamic registration lets any MCP client register. People still have to approve each one on the consent page. Review the registered clients from time to time.
+- Leave client authentication as the defaults the clients negotiate. Public clients use `none` (PKCE, no secret). Do not require a client secret for directory clients.
+
+**Authentication → URL configuration:**
+
+- Site URL is what the OAuth server prefixes to the authorization path. It must be the Expo web app, `https://trove-app-one.vercel.app`, so the browser opens `https://trove-app-one.vercel.app/oauth/consent`. A Site URL of `trove://` would send the consent redirect into the custom scheme, which a desktop browser cannot show.
+- Keep the existing additional redirect URLs: `trove://`, `trove://reset-password`, `trove://**`, `http://localhost:8081/**`, and add `https://trove-app-one.vercel.app/**` if it is not already there.
+- The app already passes `redirectTo` for email confirmation (`Linking.createURL('/')`) and password recovery (`Linking.createURL('/reset-password')`). Those keep going to the app as long as the `trove://` URLs stay on the allow list. Changing the Site URL changes the default only for a flow that does not pass `redirectTo`.
+
+**Signing keys:**
+
+- The project already signs with ES256. OAuth tokens are checked against `.../auth/v1/.well-known/jwks.json`. Do not switch the active key to HS256-only. Legacy HS256 session tokens are not accepted as MCP OAuth tokens. Personal `trove_` tokens still work, because the function signs its own one-hour JWT with `TROVE_JWT_SIGNING_KEY`.
+
+**What this does not do:**
+
+- It does not turn on the OAuth server, dynamic registration, or a new Site URL. Those stay off until you flip them.
+- It does not bind the access token audience to the MCP resource. [supabase/auth#2610](https://github.com/supabase/auth/issues/2610) tracks that. Until then, a token minted for this project with `aud: authenticated` and a `client_id` is accepted.
+- Supabase OAuth scopes are the standard identity scopes (`openid`, `email`, `profile`, `phone`). They do not narrow which tables the assistant can touch. Row level security does that. There is no per-circle scope.
+- The consent page and Connected apps list need the OAuth server enabled before they can load a real grant. The personal-token UI works without it.

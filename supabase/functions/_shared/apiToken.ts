@@ -78,6 +78,31 @@ export function readBearerToken(header: string | null | undefined): string | nul
   return token;
 }
 
+const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const MAX_JWT_LENGTH = 8192;
+
+export type McpCredential =
+  | { kind: 'personal'; token: string }
+  | { kind: 'oauth'; token: string };
+
+/**
+ * Personal trove_ tokens and Supabase OAuth access tokens (JWTs).
+ * A trove_ value that fails the personal-token shape is rejected, not treated
+ * as an OAuth token.
+ */
+export function readMcpAuthorization(header: string | null | undefined): McpCredential | null {
+  if (!header) return null;
+  const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
+  if (!match) return null;
+  const token = match[1] ?? '';
+  if (token.startsWith(API_TOKEN_PREFIX)) {
+    const personal = readBearerToken(header);
+    return personal ? { kind: 'personal', token: personal } : null;
+  }
+  if (token.length > MAX_JWT_LENGTH || !JWT_SHAPE.test(token)) return null;
+  return { kind: 'oauth', token };
+}
+
 export type StoredApiToken = {
   user_id: string;
   revoked_at: string | null;
