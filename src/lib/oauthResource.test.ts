@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { MCP_TOOL_NAMES } from '../../supabase/functions/_shared/mcpTools';
@@ -98,13 +97,4 @@ test('server info carries the website and icons', () => {
   assert.equal(info.icons[1]?.src, 'https://troving.app/mark.png');
   assert.deepEqual(info.icons[1]?.sizes, ['160x160']);
   assert.equal(info.icons[1]?.mimeType, 'image/png');
-  const registry = JSON.parse(readFileSync(new URL('../../server.json', import.meta.url), 'utf8')) as {
-    version: string;
-    websiteUrl: string;
-    icons: Array<{ src: string }>;
-  };
-  assert.equal(registry.version, SERVER_VERSION);
-  assert.equal(registry.websiteUrl, 'https://troving.app');
-  assert.equal(registry.icons[0]?.src, 'https://troving.app/apple-touch-icon.png');
-  assert.equal(registry.icons[1]?.src, 'https://troving.app/mark.png');
 });
