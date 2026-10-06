@@ -90,6 +90,12 @@ export type McpCredential =
  * A trove_ value that fails the personal-token shape is rejected, not treated
  * as an OAuth token.
  */
+/** True when the caller sent a Bearer token, even if the value is not one we accept. */
+export function bearerTokenPresented(header: string | null | undefined): boolean {
+  if (!header) return false;
+  return /^Bearer\s+\S+/i.test(header.trim());
+}
+
 export function readMcpAuthorization(header: string | null | undefined): McpCredential | null {
   if (!header) return null;
   const match = /^Bearer\s+(\S+)$/i.exec(header.trim());

@@ -85,11 +85,15 @@ The `--no-verify-jwt` flag is required even though `config.toml` sets `verify_jw
 
 Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. If neither Trove secret is set, a personal token gets a JSON-RPC error whose `data.reason` is `server_misconfigured`. See `docs/MCP.md`.
 
-Optional function secret `TROVE_MCP_RESOURCE_URL` is the public MCP resource URL (no trailing slash). Leave it unset and the function uses `$SUPABASE_URL/functions/v1/mcp`. Set it to `https://mcp.<domain>` when that host proxies to the function, including `GET /.well-known/oauth-protected-resource`. Do not hardcode the host in the function. `TROVE_SITE_URL` is the product website used for server icons and the docs link. It defaults to `https://trove-website-sooty.vercel.app`.
+`TROVE_MCP_RESOURCE_URL` is the public MCP resource URL (no trailing slash). Production is `https://mcp.troving.app/mcp`. A Cloudflare Worker there proxies to this function, including the protected-resource metadata paths. If the secret is unset, the function falls back to `$SUPABASE_URL/functions/v1/mcp`. Do not hardcode the host in the function. `TROVE_SITE_URL` is the product website used for server icons and the docs link. It defaults to `https://trove-website-sooty.vercel.app`.
+
+OAuth access tokens are checked with GoTrue `GET /auth/v1/user` so a revoked grant stops working within about a minute. That result is cached in the isolate for 60 seconds. Personal tokens still go through `api_tokens`.
 
 OAuth itself is turned on in the Supabase dashboard, not by this function. The exact switches are listed in `docs/MCP.md`. Do not change Auth settings from a script.
 
-Server URL: `https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp`
+Public server URL: `https://mcp.troving.app/mcp`
+
+Function URL behind the worker: `https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp`
 
 People create tokens in the app under Account → Connect an AI assistant. Do not put the service role key in any client config.
 

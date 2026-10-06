@@ -10,6 +10,7 @@ import {
   buildApiToken,
   generateApiToken,
   hashApiToken,
+  bearerTokenPresented,
   readBearerToken,
   readMcpAuthorization,
   tokenAccessDecision,
@@ -105,6 +106,11 @@ test('readMcpAuthorization keeps personal tokens and accepts OAuth JWTs', () => 
   assert.deepEqual(readMcpAuthorization(`Bearer ${jwt}`), { kind: 'oauth', token: jwt });
   assert.equal(readMcpAuthorization('Bearer not-a-token'), null);
   assert.equal(readMcpAuthorization(null), null);
+  assert.equal(bearerTokenPresented(null), false);
+  assert.equal(bearerTokenPresented('Basic abc'), false);
+  assert.equal(bearerTokenPresented('Bearer'), false);
+  assert.equal(bearerTokenPresented('Bearer not-a-token'), true);
+  assert.equal(bearerTokenPresented(`Bearer ${token}`), true);
 });
 
 test('tokenAccessDecision rejects missing and revoked tokens and throttles last_used writes', () => {

@@ -12,8 +12,7 @@ import { confirmDialog } from '@/lib/dialog';
 import { describeScope } from '@/lib/oauthScopes';
 import { colors, radii, spacing } from '@/theme/tokens';
 
-const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://pxjqqogxemsmufopmlsv.supabase.co').replace(/\/$/, '');
-const MCP_URL = (process.env.EXPO_PUBLIC_MCP_RESOURCE_URL ?? `${SUPABASE_URL}/functions/v1/mcp`).replace(/\/$/, '');
+const MCP_URL = (process.env.EXPO_PUBLIC_MCP_RESOURCE_URL ?? 'https://mcp.troving.app/mcp').replace(/\/$/, '');
 
 export default function ConnectAssistant() {
   const tokens = useApiTokens();

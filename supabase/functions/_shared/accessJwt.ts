@@ -22,13 +22,22 @@ export type AccessJwtOk = {
   ok: true;
   userId: string;
   clientId: string;
+  sessionId: string;
   expiresAt: number;
   scopes: string[];
 };
 
 export type AccessJwtFailure = {
   ok: false;
-  reason: 'malformed' | 'bad_signature' | 'expired' | 'wrong_issuer' | 'wrong_audience' | 'not_user' | 'missing_client';
+  reason:
+    | 'malformed'
+    | 'bad_signature'
+    | 'expired'
+    | 'wrong_issuer'
+    | 'wrong_audience'
+    | 'not_user'
+    | 'missing_client'
+    | 'missing_session';
 };
 
 export type AccessJwtResult = AccessJwtOk | AccessJwtFailure;
@@ -43,6 +52,7 @@ type JwtPayload = {
   role?: string;
   client_id?: string;
   scope?: string;
+  session_id?: string;
 };
 
 export async function verifySupabaseAccessJwt(
@@ -103,11 +113,14 @@ export function decideAccessClaims(
     return { ok: false, reason: 'missing_client' };
   }
 
+  const sessionId = payload.session_id?.trim() ?? '';
+  if (!UUID.test(sessionId)) return { ok: false, reason: 'missing_session' };
+
   const scopes = typeof payload.scope === 'string'
     ? payload.scope.split(/\s+/).filter((scope) => scope.length > 0)
     : ['openid'];
 
-  return { ok: true, userId: payload.sub, clientId, expiresAt: payload.exp, scopes };
+  return { ok: true, userId: payload.sub, clientId, sessionId, expiresAt: payload.exp, scopes };
 }
 
 function audienceAllows(aud: string | string[] | undefined, resource: string): boolean {

@@ -9,13 +9,13 @@ There are two ways to connect:
 1. **OAuth.** The assistant sends you to Trove to sign in and approve it. This is what Claude, ChatGPT, Cursor, and other directory connectors use. You can disconnect it later under Account → Connect an AI assistant.
 2. **A personal access token** (`trove_…`). Use this when a client can send an `Authorization` header and cannot do OAuth.
 
-Server URL, until a Trove-owned host such as `mcp.<domain>` is in front of the function:
+Server URL:
 
 ```text
-https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp
+https://mcp.troving.app/mcp
 ```
 
-The server speaks Streamable HTTP and does not keep a session between requests. The public URL is the `TROVE_MCP_RESOURCE_URL` function secret when that is set, and the Supabase function URL otherwise. The app shows the same value from `EXPO_PUBLIC_MCP_RESOURCE_URL` when that is set.
+The server speaks Streamable HTTP and does not keep a session between requests. That URL is a Cloudflare Worker in front of the Supabase function. The app shows it under Account → Connect an AI assistant. Set `EXPO_PUBLIC_MCP_RESOURCE_URL` only to override it.
 
 ## Connect with OAuth
 
@@ -47,7 +47,7 @@ In Cursor's MCP settings, add the server URL and leave the header empty so Curso
 {
   "mcpServers": {
     "trove": {
-      "url": "https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp"
+      "url": "https://mcp.troving.app/mcp"
     }
   }
 }
@@ -57,7 +57,7 @@ In Cursor's MCP settings, add the server URL and leave the header empty so Curso
 
 ```bash
 claude mcp add --transport http trove \
-  https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp
+  https://mcp.troving.app/mcp
 ```
 
 Leave off the `Authorization` header. Claude Code follows the `401` and opens the consent page. To use a personal token instead, add `--header "Authorization: Bearer trove_…"`.
@@ -87,7 +87,7 @@ A token looks like `trove_` followed by a random string. Treat it like a passwor
 
 ```bash
 claude mcp add --transport http trove \
-  https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp \
+  https://mcp.troving.app/mcp \
   --header "Authorization: Bearer trove_…"
 ```
 
@@ -99,7 +99,7 @@ Add this to `~/.cursor/mcp.json` (or the project `.cursor/mcp.json`):
 {
   "mcpServers": {
     "trove": {
-      "url": "https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp",
+      "url": "https://mcp.troving.app/mcp",
       "headers": {
         "Authorization": "Bearer trove_…"
       }
@@ -115,7 +115,7 @@ Add this to `~/.cursor/mcp.json` (or the project `.cursor/mcp.json`):
   "mcpServers": {
     "trove": {
       "type": "http",
-      "url": "https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp",
+      "url": "https://mcp.troving.app/mcp",
       "headers": {
         "Authorization": "Bearer trove_…"
       }
@@ -134,7 +134,7 @@ If that build only speaks stdio, use `mcp-remote`. The header form has no space 
       "args": [
         "-y",
         "mcp-remote",
-        "https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp",
+        "https://mcp.troving.app/mcp",
         "--header",
         "Authorization:Bearer trove_…"
       ]
@@ -147,13 +147,13 @@ If that build only speaks stdio, use `mcp-remote`. The header form has no space 
 
 ```toml
 [mcp_servers.trove]
-url = "https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp"
+url = "https://mcp.troving.app/mcp"
 http_headers = { Authorization = "Bearer trove_…" }
 ```
 
-### If the gateway asks for an API key
+### Headers
 
-Some Supabase gateways also want the project's publishable anon key in an `apikey` header, in addition to `Authorization`. That key is already in the app. It is not a secret and it does not sign you in. The Trove token, or the OAuth access token, is what identifies you. Do not send the service role key.
+Send the OAuth access token, or `Authorization: Bearer trove_…`. The public host does not need a Supabase `apikey` header. Do not send the service role key.
 
 ## Tools
 
@@ -258,12 +258,13 @@ A bulk import that sends more than 100 tasks fails the whole call and inserts no
 ## Security
 
 - A personal token is hashed with SHA-256 before it is stored. Trove cannot show it again.
-- An OAuth access token is a Supabase user JWT. The server checks the signature against the project JWKS, the issuer, expiry, the `authenticated` role, and that the token has an OAuth `client_id`. A first-party session without `client_id` is not accepted. The token is then used as you, so row level security applies.
+- An OAuth access token is a Supabase user JWT. The server checks the signature against the project JWKS, the issuer, expiry, the `authenticated` role, an OAuth `client_id`, and a `session_id`. A first-party session without `client_id` is not accepted. The token is then used as you, so row level security applies.
+- Revoking a Connected app deletes that Auth session. The function asks Auth whether the session still exists, and remembers the answer for about a minute, so the old access token stops working within a minute. A personal `trove_` token is still checked against `api_tokens` on each use.
 - Supabase Auth does not yet put the MCP resource URL in the token audience. It sets `aud` to `authenticated` and ignores the RFC 8707 `resource` parameter. That gap is [supabase/auth#2610](https://github.com/supabase/auth/issues/2610). Until it ships, Trove accepts `aud` of `authenticated` or of the configured resource URL. It does not accept tokens from another issuer.
 - Requests run as you. The server does not use a service role to skip membership checks.
 - Revoke a personal token, or an OAuth grant, from Account → Connect an AI assistant.
 - Someone with access can create circles, create, edit, complete, assign, and move tasks, set or clear a repeat rule, attach photos and videos to tasks you can edit, and invite people to circles you administer. An invite sends an email. Completing a repeating task creates the next occurrence. They cannot see tokens, email addresses of members, or circles you do not belong to.
-- A request with no token gets HTTP 401 and a `WWW-Authenticate` header whose `resource_metadata` URL is the protected-resource document. That document names the Supabase Auth server (`/auth/v1`) as the authorization server.
+- A request with no token gets HTTP 401 and a `WWW-Authenticate` header with `resource_metadata` and no `error` code. A request that sends a token which is missing, rejected, or revoked gets the same header with `error="invalid_token"`. The protected-resource document names the Supabase Auth server (`/auth/v1`) as the authorization server.
 - A failure inside the server is a JSON-RPC error (`-32603`) with a message a client can show and `data.reason` of `server_misconfigured` or `internal_error`. It is not a bare `Internal error` body.
 
 ## Deploying the function
@@ -282,8 +283,8 @@ Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVI
 | --- | --- | --- |
 | `TROVE_JWT_SIGNING_KEY` | Yes, for personal tokens | Private JWK of the active ES256 signing key you imported. `kid` must match. |
 | `TROVE_JWT_SECRET` | Only if you are not using the signing key | Legacy HS256 secret. Ignored when the signing key is set. |
-| `TROVE_MCP_RESOURCE_URL` | When the public host is not the function URL | Canonical MCP resource URL, no trailing slash. Example, once the domain exists: `https://mcp.example.com`. Until then, leave it unset. The function then uses `$SUPABASE_URL/functions/v1/mcp`. |
-| `TROVE_SITE_URL` | No | Product website for the server card and icons. Defaults to `https://trove-website-sooty.vercel.app`. |
+| `TROVE_MCP_RESOURCE_URL` | Yes, for the public host | Canonical MCP resource URL, no trailing slash. Production is `https://mcp.troving.app/mcp`. If it is unset, the function falls back to `$SUPABASE_URL/functions/v1/mcp`, which is the upstream, not the URL clients should use. |
+| `TROVE_SITE_URL` | No | Product website for the server card and icons. Defaults to `https://trove-website-sooty.vercel.app`. `https://troving.app` is the planned site and is not the default until that host resolves. |
 
 ```bash
 supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256","x":"…","y":"…","d":"…"}'
@@ -292,14 +293,16 @@ supabase functions deploy mcp --no-verify-jwt
 
 `--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. The gateway must let the unauthenticated discovery request through. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
 
-When you attach `mcp.<domain>`, proxy these paths to the function:
+The public host is already live. A Cloudflare Worker at `https://mcp.troving.app` proxies to the function `https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp`. `TROVE_MCP_RESOURCE_URL` is `https://mcp.troving.app/mcp`. Keep these paths proxied:
 
-- the MCP endpoint itself (`/` or whatever path you set as `TROVE_MCP_RESOURCE_URL`)
-- `GET /.well-known/oauth-protected-resource` (and the same path under the function URL)
+- `https://mcp.troving.app/mcp` (the MCP endpoint)
+- `GET https://mcp.troving.app/.well-known/oauth-protected-resource`
+- `GET https://mcp.troving.app/.well-known/oauth-protected-resource/mcp` (the URL clients read from `WWW-Authenticate` for a resource that has a path)
+- `GET https://mcp.troving.app/mcp/.well-known/oauth-protected-resource`
 
-Set `TROVE_MCP_RESOURCE_URL` to that public URL and replace the placeholder in `server.json`. The registry file ships with `https://mcp.example.com/TODO-replace-with-the-trove-mcp-domain` on purpose.
+`server.json` publishes `app.troving/trove` at `https://mcp.troving.app/mcp`. Registry DNS auth is on `troving.app` (the reverse-DNS namespace `app.troving`). The app defaults Account to that same URL. Set `EXPO_PUBLIC_MCP_RESOURCE_URL` only to override it.
 
-The web app should get `EXPO_PUBLIC_MCP_RESOURCE_URL` set to the same public URL so Account shows it.
+Direct calls to the function URL can still need the project's publishable anon key in an `apikey` header. The worker adds that. Clients of `https://mcp.troving.app/mcp` do not.
 
 ### Supabase dashboard
 
