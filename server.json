@@ -3,20 +3,20 @@
   "name": "app.troving/trove",
   "title": "Trove",
   "description": "Shared lists for the circles you belong to. Assistants see only the tasks you can.",
-  "websiteUrl": "https://trove-website-sooty.vercel.app",
+  "websiteUrl": "https://troving.app",
   "repository": {
     "url": "https://github.com/the-react-native-rewind/trove-app",
     "source": "github"
   },
-  "version": "1.1.0",
+  "version": "1.1.1",
   "icons": [
     {
-      "src": "https://trove-website-sooty.vercel.app/apple-touch-icon.png",
+      "src": "https://troving.app/apple-touch-icon.png",
       "mimeType": "image/png",
       "sizes": ["180x180"]
     },
     {
-      "src": "https://trove-website-sooty.vercel.app/mark.png",
+      "src": "https://troving.app/mark.png",
       "mimeType": "image/png",
       "sizes": ["160x160"]
     }

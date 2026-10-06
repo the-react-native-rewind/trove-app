@@ -16,7 +16,7 @@ export type ToolMetadata = {
   openWorldHint: boolean;
 };
 
-export const SERVER_VERSION = '1.1.0';
+export const SERVER_VERSION = '1.1.1';
 
 export const toolMetadata: Record<McpToolName, ToolMetadata> = {
   list_circles: {

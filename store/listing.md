@@ -36,15 +36,15 @@ Primary: Productivity. Secondary: Lifestyle.
 
 ## Support URL
 
-https://trove-website-sooty.vercel.app/support
+https://troving.app/support
 
 ## Marketing URL
 
-https://trove-website-sooty.vercel.app
+https://troving.app
 
 ## Privacy policy URL
 
-https://trove-website-sooty.vercel.app/privacy
+https://troving.app/privacy
 
 ## Copyright
 

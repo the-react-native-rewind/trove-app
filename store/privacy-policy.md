@@ -35,7 +35,7 @@ OAuth lets an assistant such as Claude, ChatGPT, Cursor, or another MCP client s
 
 Connected apps are listed under Account → Connect an AI assistant. Revoking one signs that assistant out. Revoking a personal token does the same for that token.
 
-The published policy is https://trove-website-sooty.vercel.app/privacy.
+The published policy is https://troving.app/privacy.
 
 ## Contact
 
