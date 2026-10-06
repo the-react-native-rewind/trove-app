@@ -25,7 +25,7 @@ import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { toastConfig } from '@/components/ui/AppToast';
 import { Celebration } from '@/components/Celebration';
 import { useIsWide } from '@/hooks/useIsWide';
-import { readPendingInvite } from '@/lib/pendingInvite';
+import { hrefAfterSignIn } from '@/lib/pendingOAuth';
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { SpaceProvider } from '@/providers/SpaceProvider';
@@ -43,6 +43,7 @@ function useProtectedRoute() {
     const root = segments[0];
     const inAuthGroup = root === '(auth)';
     const onInvite = root === 'invite';
+    const onOAuth = root === 'oauth';
     const onReset = root === 'reset-password';
 
     if (recovery) {
@@ -51,15 +52,16 @@ function useProtectedRoute() {
     }
 
     if (!session) {
-      if (!inAuthGroup && !onInvite) router.replace('/(auth)/sign-in');
+      if (!inAuthGroup && !onInvite && !onOAuth) router.replace('/(auth)/sign-in');
       return;
     }
 
     // Only leave the auth screens automatically. Doing this from every route
     // would send someone who dismissed an invite straight back to it.
+    // OAuth consent is checked first so a sign-in returns to the assistant.
     if (inAuthGroup) {
-      void readPendingInvite().then((token) => {
-        router.replace(token ? (`/invite/${token}` as never) : '/');
+      void hrefAfterSignIn().then((href) => {
+        router.replace(href as never);
       });
     }
   }, [session, initializing, recovery, segments, router]);
@@ -93,6 +95,7 @@ function RootNavigator() {
       <Stack.Screen name="space/[id]/settings" options={modalOptions} />
       <Stack.Screen name="account" options={modalOptions} />
       <Stack.Screen name="connect" options={modalOptions} />
+      <Stack.Screen name="oauth/consent" />
       <Stack.Screen name="invite/[token]" options={modalOptions} />
       <Stack.Screen name="reset-password" />
     </Stack>

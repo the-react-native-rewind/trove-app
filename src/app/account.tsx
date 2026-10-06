@@ -149,7 +149,7 @@ export default function Account() {
       <View style={styles.connect}>
         <Text variant="sectionHeading">Connect an AI assistant</Text>
         <Text variant="body" color={colors.inkSoft}>
-          Create an API token so Claude, Cursor, or ChatGPT can work with your circles and tasks.
+          Approve an assistant when it asks to sign in, or create a personal token, so Claude, Cursor, or ChatGPT can work with your circles and tasks.
         </Text>
         <Button
           label="API tokens"

@@ -7,15 +7,20 @@ import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { useApiTokens, useCreateApiToken, useRevokeApiToken } from '@/data/apiTokens';
+import { useOAuthGrants, useRevokeOAuthGrant } from '@/data/oauthGrants';
 import { confirmDialog } from '@/lib/dialog';
+import { describeScope } from '@/lib/oauthScopes';
 import { colors, radii, spacing } from '@/theme/tokens';
 
-const MCP_URL = `${(process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://pxjqqogxemsmufopmlsv.supabase.co').replace(/\/$/, '')}/functions/v1/mcp`;
+const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://pxjqqogxemsmufopmlsv.supabase.co').replace(/\/$/, '');
+const MCP_URL = (process.env.EXPO_PUBLIC_MCP_RESOURCE_URL ?? `${SUPABASE_URL}/functions/v1/mcp`).replace(/\/$/, '');
 
 export default function ConnectAssistant() {
   const tokens = useApiTokens();
   const createToken = useCreateApiToken();
   const revokeToken = useRevokeApiToken();
+  const grants = useOAuthGrants();
+  const revokeGrant = useRevokeOAuthGrant();
   const [name, setName] = useState('');
   const [revealed, setRevealed] = useState<string | null>(null);
   const [copied, setCopied] = useState<'token' | 'url' | null>(null);
@@ -36,6 +41,22 @@ export default function ConnectAssistant() {
   async function onCopy(value: string, which: 'token' | 'url') {
     await Clipboard.setStringAsync(value);
     setCopied(which);
+  }
+
+  async function onRevokeGrant(clientId: string, clientName: string) {
+    const confirmed = await confirmDialog({
+      title: `Disconnect ${clientName}?`,
+      message: 'That assistant loses access until you approve it again. Personal tokens are not affected.',
+      confirmLabel: 'Disconnect',
+      cancelLabel: 'Keep',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      await revokeGrant.mutateAsync(clientId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not disconnect that app.');
+    }
   }
 
   async function onRevoke(id: string, tokenName: string) {
@@ -112,6 +133,49 @@ export default function ConnectAssistant() {
           />
         </View>
       ) : null}
+
+      <View style={styles.list}>
+        <Text variant="sectionHeading">Connected apps</Text>
+        <Text variant="body" color={colors.inkSoft}>
+          Assistants you approve with OAuth show up here. Revoking one signs that assistant out. A personal token is separate.
+        </Text>
+        {grants.isLoading ? (
+          <Text variant="meta" color={colors.inkFaint}>
+            Loading…
+          </Text>
+        ) : null}
+        {grants.isError ? (
+          <Text variant="meta" color={colors.inkFaint}>
+            Connected apps appear after OAuth sign-in is turned on. Personal tokens still work.
+          </Text>
+        ) : null}
+        {!grants.isLoading && !grants.isError && (grants.data ?? []).length === 0 ? (
+          <Text variant="body" color={colors.inkFaint}>
+            No connected apps yet.
+          </Text>
+        ) : null}
+        {(grants.data ?? []).map((grant) => (
+          <View key={grant.client.id} style={styles.row}>
+            <View style={styles.rowCopy}>
+              <Text variant="bodyMedium">{grant.client.name || 'Assistant'}</Text>
+              <Text variant="meta" color={colors.inkFaint}>
+                {grant.scopes.map((scope) => describeScope(scope)).join(' · ') || 'Signed in as you'}
+                {grant.granted_at ? ` · since ${formatWhen(grant.granted_at)}` : ''}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => onRevokeGrant(grant.client.id, grant.client.name || 'this app')}
+              accessibilityRole="button"
+              accessibilityLabel={`Disconnect ${grant.client.name || 'app'}`}
+              style={styles.revoke}
+            >
+              <Text variant="meta" color={colors.priorityHigh}>
+                Revoke
+              </Text>
+            </Pressable>
+          </View>
+        ))}
+      </View>
 
       <View style={styles.list}>
         <Text variant="sectionHeading">API tokens</Text>

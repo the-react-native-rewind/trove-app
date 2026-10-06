@@ -72,7 +72,7 @@ supabase functions deploy delete-account
 
 `supabase/functions/enrich-task` polishes a captured task when `OPENAI_API_KEY` is set. `verify_jwt` is true. The app still saves the task if the function is missing or the key is unset.
 
-`supabase/functions/mcp` is the remote MCP server (Streamable HTTP). `verify_jwt` is **false**: callers send a personal access token (`trove_…`), not a Supabase JWT. The function hashes the token, signs a short-lived user JWT, and queries as that user so row level security still applies. It does not create an Auth session. `create_circle` inserts a space the way the app does, and `add_task_attachment` uploads to the private `task-media` bucket as that user. Deploy it only after migration 0012. No later migration is required for those two tools.
+`supabase/functions/mcp` is the remote MCP server (Streamable HTTP). `verify_jwt` is **false**. Callers send a personal access token (`trove_…`) or a Supabase OAuth access token. A personal token is hashed, then exchanged for a short-lived user JWT. An OAuth token is verified against the project JWKS and used as that user JWT. Either way, queries run as the person, so row level security still applies. The function does not create an Auth session. `create_circle` inserts a space the way the app does, and `add_task_attachment` uploads to the private `task-media` bucket as that user. Deploy it only after migration 0012. Apply migration `0024_invite_rate_limit.sql` before relying on the invite cap inside the function. The email sender still skips invite mail over the same daily cap if that migration is not applied yet.
 
 Hosted Supabase rejects function secrets whose names start with `SUPABASE_`. Set `TROVE_JWT_SIGNING_KEY` to the private JWK of the active ES256 signing key (the one you imported; `kid` must match). The legacy HS256 secret is `previously_used` and still verifies, so `TROVE_JWT_SECRET` is the alternative. Do not commit either value. `SUPABASE_JWT_SECRET` and `SUPABASE_JWT_SIGNING_KEY` are read only when the `TROVE_` name is unset, for local dev.
 
@@ -83,7 +83,11 @@ supabase functions deploy mcp --no-verify-jwt
 
 The `--no-verify-jwt` flag is required even though `config.toml` sets `verify_jwt = false`. If the gateway answers `Invalid JWT` or `Missing authorization` before the function logs anything, verification is still on.
 
-Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. If neither Trove secret is set, the function returns `server_misconfigured`. See `docs/MCP.md`.
+Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. If neither Trove secret is set, a personal token gets a JSON-RPC error whose `data.reason` is `server_misconfigured`. See `docs/MCP.md`.
+
+Optional function secret `TROVE_MCP_RESOURCE_URL` is the public MCP resource URL (no trailing slash). Leave it unset and the function uses `$SUPABASE_URL/functions/v1/mcp`. Set it to `https://mcp.<domain>` when that host proxies to the function, including `GET /.well-known/oauth-protected-resource`. Do not hardcode the host in the function. `TROVE_SITE_URL` is the product website used for server icons and the docs link. It defaults to `https://trove-website-sooty.vercel.app`.
+
+OAuth itself is turned on in the Supabase dashboard, not by this function. The exact switches are listed in `docs/MCP.md`. Do not change Auth settings from a script.
 
 Server URL: `https://pxjqqogxemsmufopmlsv.supabase.co/functions/v1/mcp`
 

@@ -28,6 +28,8 @@
  * done: the database trigger inserts the next occurrence.
  */
 
+import { INVITE_LIMIT_PER_DAY } from './inviteLimit.ts';
+
 export const BULK_LIMIT = 100;
 export const LIST_DEFAULT_LIMIT = 50;
 export const LIST_MAX_LIMIT = 200;
@@ -115,7 +117,7 @@ export const toolDescriptions: Record<McpToolName, string> = {
   list_members:
     'List the people in a circle: user id, display name, role (owner, admin, member, viewer), and whether the membership was created from an agent invite. Email addresses are not included.',
   invite_to_circle:
-    'Invite someone to a circle by email. Only an owner or admin can invite. role is admin, member, or viewer (default member). agent true marks the invite as a bot; the flag is copied onto the membership when they join. It defaults to false, a human invite. Returns the invite token and an https link to send the person. The link opens Trove, or offers the download if they do not have it yet. The invite expires in 14 days. One pending invite per email per circle.',
+    'Invite someone to a circle by email. Only an owner or admin can invite. This sends an email to that address as soon as the invite is created (database trigger invites_send_email). You can create 25 invites in 24 hours; over that, the invite is not created and no email is sent. role is admin, member, or viewer (default member). agent true marks the invite as a bot; the flag is copied onto the membership when they join. It defaults to false, a human invite. Returns the invite token and an https link. The link opens Trove, or offers the download if they do not have the app yet. The invite expires in 14 days. One pending invite per email per circle.',
 };
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
@@ -296,6 +298,8 @@ export interface TroveStore {
     role: 'admin' | 'member' | 'viewer';
     isAgent?: boolean;
   }): Promise<InviteResult>;
+  /** Invites this person created in the last 24 hours, including ones that were later revoked. */
+  countRecentInvites(): Promise<number>;
   /**
    * Insert a spaces row the way the app does. The database trigger adds the
    * caller as owner. is_default stays false.
@@ -765,6 +769,13 @@ export async function inviteToCircle(
     const role = input.role ?? 'member';
     if (role !== 'admin' && role !== 'member' && role !== 'viewer') {
       return { ok: false, error: 'role must be admin, member, or viewer.' };
+    }
+    const recent = await store.countRecentInvites();
+    if (recent >= INVITE_LIMIT_PER_DAY) {
+      return {
+        ok: false,
+        error: `You can send ${INVITE_LIMIT_PER_DAY} invites in 24 hours. This one was not created, and no email was sent. Try again later.`,
+      };
     }
     const invite = await store.createInvite({
       circleId: circle.id,

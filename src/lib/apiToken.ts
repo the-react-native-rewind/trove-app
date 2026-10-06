@@ -9,6 +9,7 @@ export {
   generateApiToken,
   hashApiToken,
   readBearerToken,
+  readMcpAuthorization,
   tokenAccessDecision,
 } from '../../supabase/functions/_shared/apiToken';
 export type { StoredApiToken, TokenAccess } from '../../supabase/functions/_shared/apiToken';

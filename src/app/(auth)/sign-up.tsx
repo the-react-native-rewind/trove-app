@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
+import { hrefAfterSignIn } from '@/lib/pendingOAuth';
 import { supabase } from '@/lib/supabase';
 import { colors, fonts, spacing } from '@/theme/tokens';
 
@@ -51,7 +52,7 @@ export default function SignUp() {
       return;
     }
     if (data.session) {
-      router.replace('/');
+      router.replace((await hrefAfterSignIn()) as never);
     } else {
       setCheckEmail(true);
     }

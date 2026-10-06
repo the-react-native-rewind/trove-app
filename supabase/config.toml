@@ -11,9 +11,11 @@ verify_jwt = true
 [functions.delete-account]
 verify_jwt = true
 
-# Personal access tokens are not Supabase JWTs. The function checks the bearer
-# token itself. Deploy with `supabase functions deploy mcp --no-verify-jwt`
-# so the gateway does not reject the token before this code runs.
+# Personal access tokens are not Supabase JWTs, and OAuth discovery is
+# unauthenticated. The function checks trove_ tokens and Supabase OAuth
+# access tokens itself. Deploy with
+# `supabase functions deploy mcp --no-verify-jwt`
+# so the gateway does not reject the request before this code runs.
 [functions.mcp]
 verify_jwt = false
 

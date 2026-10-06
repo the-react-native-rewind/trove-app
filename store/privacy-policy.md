@@ -23,7 +23,19 @@ People in a circle can see that circle's list and the names of its members. They
 
 ## Deleting your account
 
-Account, inside the app, has Delete account. That removes your profile, your personal circle, and your sign-in. Circles you own are handed to another member when one exists, and deleted when you are the only member.
+Account, inside the app, has Delete account. That removes your profile, your personal circle, and your sign-in. Circles you own are handed to another member when one exists, and deleted when you are the only member. You do not have to email support to delete an account.
+
+## AI assistants and connected apps
+
+You can connect an AI assistant in two ways.
+
+A personal access token (`trove_…`) is created in the app under Account → Connect an AI assistant. Trove stores only a hash of the token. Anyone with the token can do what you can do in Trove until you revoke it there.
+
+OAuth lets an assistant such as Claude, ChatGPT, Cursor, or another MCP client sign in as you. You approve the assistant on the web app at `/oauth/consent`. The screen shows the assistant's name and the identity scopes it asked for (`openid`, `email`, `profile`). Approving it lets that assistant read and change the circles and tasks you can already see. It cannot see a circle you have not joined. Row level security still applies. Inviting someone from an assistant sends that person an email.
+
+Connected apps are listed under Account → Connect an AI assistant. Revoking one signs that assistant out. Revoking a personal token does the same for that token.
+
+The published policy is https://trove-website-sooty.vercel.app/privacy.
 
 ## Contact
 

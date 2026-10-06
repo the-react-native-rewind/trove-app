@@ -27,6 +27,7 @@ import {
   taskMediaPath,
 } from '../_shared/mcpTools.ts';
 import { readEnv, userClient } from './auth.ts';
+import { INVITE_LIMIT_PER_DAY } from '../_shared/inviteLimit.ts';
 import { DEFAULT_SITE_URL, inviteUrl } from '../_shared/site.ts';
 
 const TASK_SELECT =
@@ -75,6 +76,7 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     updateTask: (id, patch) => updateTask(db, userId, id, patch),
     moveTask: (taskId, targetCircleId) => moveTask(db, taskId, targetCircleId),
     createInvite: (input) => createInvite(db, userId, input),
+    countRecentInvites: () => countRecentInvites(db),
     createCircle: (input) => createCircle(db, userId, input),
     addTaskAttachment: (input) => addTaskAttachment(db, userId, input),
   };
@@ -393,6 +395,20 @@ async function addTaskAttachment(
   };
 }
 
+async function countRecentInvites(db: SupabaseClient): Promise<number> {
+  const { data, error } = await db.rpc('recent_invite_count');
+  if (error) {
+    // Migration 0024 is not applied yet. The email function still skips sends
+    // over the daily cap, and the insert trigger enforces it once deployed.
+    if (error.code === 'PGRST202' || /recent_invite_count/i.test(error.message)) {
+      console.warn('recent_invite_count is not deployed; the invite cap is not checked before insert');
+      return 0;
+    }
+    throw new TroveError(error.message);
+  }
+  return typeof data === 'number' ? data : Number(data ?? 0);
+}
+
 async function createInvite(
   db: SupabaseClient,
   userId: string,
@@ -411,6 +427,11 @@ async function createInvite(
     .single();
   if (error?.code === '23505') {
     throw new TroveError('An invite is already pending for that email in this circle.');
+  }
+  if (error?.message?.includes(`${INVITE_LIMIT_PER_DAY} invites`)) {
+    throw new TroveError(
+      `You can send ${INVITE_LIMIT_PER_DAY} invites in 24 hours. This one was not created, and no email was sent. Try again later.`,
+    );
   }
   throwIf(error);
   return {

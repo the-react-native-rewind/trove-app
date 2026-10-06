@@ -18,13 +18,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { inviteEmail, welcomeEmail, type RenderedEmail } from '../_shared/emailCopy.ts';
+import { INVITE_LIMIT_PER_DAY } from '../_shared/inviteLimit.ts';
 import { DEFAULT_SITE_URL, inviteUrl, openPageUrl } from '../_shared/site.ts';
 
 const FROM = Deno.env.get('TROVE_EMAIL_FROM') ?? 'Trove <hello@trove.thereactnativerewind.com>';
 const REPLY_TO = Deno.env.get('TROVE_EMAIL_REPLY_TO') ?? 'luke@thereactnativerewind.com';
 const SITE_URL = (Deno.env.get('TROVE_SITE_URL') ?? DEFAULT_SITE_URL).replace(/\/$/, '');
-/** Invite emails one person can trigger per rolling 24 hours. */
-const INVITES_PER_DAY = 25;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -129,7 +128,8 @@ Deno.serve(async (req) => {
           .select('id', { count: 'exact', head: true })
           .eq('invited_by', invite.invited_by)
           .gte('created_at', since);
-        if ((count ?? 0) > INVITES_PER_DAY) {
+        // Backstop if a row is inserted over the cap. Migration 0024 rejects the insert first.
+        if ((count ?? 0) > INVITE_LIMIT_PER_DAY) {
           console.warn('invite email skipped: daily limit', invite.invited_by);
           return json({ skipped: 'daily invite email limit' });
         }
