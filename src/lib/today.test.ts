@@ -10,8 +10,16 @@ import {
   dayMatches,
   daysFromWeekdays,
   planTodayMaterialisation,
+  bottomTodayRank,
+  insertTodayLine,
+  momentumAppearance,
   momentumCount,
+  momentumPlaybackRate,
+  momentumScale,
+  preferFreshTodayLines,
   previewRoutineIds,
+  reconcileTodayLines,
+  withLinePatch,
   repeatLabel,
   rolloverRanks,
   shiftDay,
@@ -19,6 +27,7 @@ import {
   weekdayBit,
   weekdayIndex,
   weekdaysFromDays,
+  type TodayLine,
   type TodayRoutinePlan,
   type TodaySourceItem,
 } from './today';
@@ -166,6 +175,141 @@ test('momentum counts lines ticked on that day', () => {
   assert.equal(momentumCount(lines, MONDAY), 1);
   assert.equal(momentumCount(lines, SATURDAY), 0);
   assert.equal(momentumCount([], TUESDAY), 0);
+});
+
+function channel(value: number): number {
+  const scaled = value / 255;
+  return scaled <= 0.04045 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
+}
+
+function contrast(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const red = channel(parseInt(hex.slice(1, 3), 16));
+    const green = channel(parseInt(hex.slice(3, 5), 16));
+    const blue = channel(parseInt(hex.slice(5, 7), 16));
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const left = lum(a);
+  const right = lum(b);
+  const lighter = Math.max(left, right);
+  const darker = Math.min(left, right);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+test('momentum pitch rises a semitone per tick, and unticking steps it back', () => {
+  assert.equal(momentumPlaybackRate(0), 1);
+  assert.equal(momentumPlaybackRate(1), 1);
+  const second = 2 ** (1 / 12);
+  assert.ok(Math.abs(momentumPlaybackRate(2) - second) < 1e-12);
+  assert.ok(momentumPlaybackRate(3) > momentumPlaybackRate(2));
+  assert.equal(momentumPlaybackRate(3), momentumPlaybackRate(4 - 1));
+  assert.equal(momentumPlaybackRate(40), momentumPlaybackRate(8));
+  assert.ok(momentumPlaybackRate(8) < 1.5);
+});
+
+test('momentum badge grows with the count and the number stays readable', () => {
+  assert.equal(momentumScale(0), 1);
+  assert.equal(momentumScale(1), 1.05);
+  assert.ok(momentumScale(2) - momentumScale(1) - 0.05 < 1e-12);
+  assert.equal(momentumScale(8), 1.4);
+  assert.equal(momentumScale(30), momentumScale(8));
+
+  let previousLight = '';
+  let previousDark = '';
+  for (let count = 0; count <= 12; count += 1) {
+    for (const scheme of ['light', 'dark'] as const) {
+      const appearance = momentumAppearance(count, scheme);
+      assert.ok(contrast(appearance.ink, appearance.fill) >= 4.5, `${scheme} ${count}`);
+    }
+    const light = momentumAppearance(count, 'light').ink;
+    const dark = momentumAppearance(count, 'dark').ink;
+    if (count > 0 && count <= 7) {
+      assert.ok(light !== previousLight);
+      assert.ok(dark !== previousDark);
+    }
+    previousLight = light;
+    previousDark = dark;
+  }
+  assert.ok(momentumAppearance(0, 'light').ink !== momentumAppearance(6, 'light').ink);
+});
+
+function line(id: string, patch: Partial<TodayLine> = {}): TodayLine {
+  return {
+    id,
+    day: TUESDAY,
+    text: id,
+    taskId: null,
+    taskTitle: null,
+    taskStatus: null,
+    spaceId: null,
+    spaceName: null,
+    spaceColor: null,
+    routineId: null,
+    repeatDays: null,
+    routineActive: false,
+    rank: id,
+    checkedAt: null,
+    createdAt: '2026-10-27T00:00:00.000Z',
+    ...patch,
+  };
+}
+
+test('a today refetch keeps row identity when only the checked timestamp changed', () => {
+  const current = [line('a', { checkedAt: '2026-10-27T08:00:00.000Z', rank: 'a1' }), line('b', { rank: 'a0' })];
+  const incoming = [
+    line('a', { checkedAt: '2026-10-27T08:00:01.000Z', rank: 'a1' }),
+    line('b', { rank: 'a0' }),
+  ];
+  assert.equal(reconcileTodayLines(current, incoming), current);
+  const edited = withLinePatch(current, 'b', { checkedAt: '2026-10-27T09:00:00.000Z' });
+  assert.equal(edited[0], current[0]);
+  assert.equal(edited[1]?.checkedAt, '2026-10-27T09:00:00.000Z');
+  assert.equal(withLinePatch(current, 'missing', { text: 'nope' }), current);
+  const added = insertTodayLine(current, line('c', { rank: 'a2', text: 'new' }));
+  assert.deepEqual(added.map((item) => item.id), ['c', 'a', 'b']);
+  assert.ok(compareRank('a0', bottomTodayRank(current)) < 0);
+  const stale = preferFreshTodayLines({
+    startedGeneration: 1,
+    currentGeneration: 2,
+    startedSettled: 0,
+    currentSettled: 0,
+    editsInFlight: 0,
+    fetched: [line('server')],
+    cached: current,
+  });
+  assert.equal(stale, current);
+  const settledDuringFetch = preferFreshTodayLines({
+    startedGeneration: 2,
+    currentGeneration: 2,
+    startedSettled: 1,
+    currentSettled: 2,
+    editsInFlight: 0,
+    fetched: [line('server')],
+    cached: current,
+  });
+  assert.equal(settledDuringFetch, current);
+  assert.deepEqual(
+    preferFreshTodayLines({
+      startedGeneration: 2,
+      currentGeneration: 2,
+      startedSettled: 2,
+      currentSettled: 2,
+      editsInFlight: 0,
+      fetched: [line('server')],
+      cached: current,
+    }).map((item) => item.id),
+    ['server'],
+  );
+  const stillEditing = preferFreshTodayLines({
+    startedGeneration: 2,
+    currentGeneration: 2,
+    startedSettled: 2,
+    currentSettled: 2,
+    editsInFlight: 1,
+    fetched: [line('server')],
+    cached: current,
+  });
+  assert.equal(stillEditing, current);
 });
 
 test('tomorrow is not prepared, and a routine already on the day is not previewed twice', () => {
