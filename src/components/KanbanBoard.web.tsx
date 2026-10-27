@@ -9,8 +9,8 @@ import { useSelection } from '@/providers/SelectionProvider';
 import { TaskCard } from './TaskCard';
 
 /**
- * Web board: To do and Done, with drag-and-drop across columns using the
- * HTML5 Drag and Drop API (react-dom renders this file, so DOM events work).
+ * Web board: To do, In progress, and Done. Dropping a card on a column
+ * sets that status. Drag uses the HTML5 Drag and Drop API.
  */
 /**
  * Replace the browser's default drag snapshot (a square, opaque box that can
@@ -147,6 +147,7 @@ export function KanbanBoard({
                       showSpaceTag={showSpaceTag}
                       heat={heatColor(index, column.length)}
                       selectable={canWriteTask(task.space_id)}
+                      showProgressTag={false}
                       media={mediaByTaskId?.[task.id]}
                       onPress={() => onOpen(task.id)}
                     />

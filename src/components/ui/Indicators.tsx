@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { colors, priority as priorityTokens, radii, resolveAccent, spacing } from '@/theme/tokens';
+import { colors, labelChips, priority as priorityTokens, radii, resolveAccent, spacing } from '@/theme/tokens';
 import type { Priority } from '@/lib/types';
 import { Text } from './Text';
 
@@ -32,6 +32,17 @@ export function PriorityDot({ level, size = 9 }: { level: Priority | null; size?
   );
 }
 
+/** Small warm pill for a task that is in progress inside the single open list. */
+export function InProgressTag() {
+  return (
+    <View style={styles.progress} accessible={false}>
+      <Text variant="meta" color={labelChips.content.text}>
+        In progress
+      </Text>
+    </View>
+  );
+}
+
 export function SpaceTag({ name, color }: { name: string; color: string }) {
   return (
     <View style={styles.tag}>
@@ -54,5 +65,12 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     alignSelf: 'flex-start',
     maxWidth: '60%',
+  },
+  progress: {
+    backgroundColor: labelChips.content.bg,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    flexShrink: 0,
   },
 });

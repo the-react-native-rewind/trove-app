@@ -41,6 +41,7 @@ import {
   listMembers,
   listMyTasks,
   moveTask,
+  TASK_STATUSES,
   toolDescriptions,
   type TaskMediaContentType,
   updateTask,
@@ -95,9 +96,9 @@ const dueFields = {
 };
 
 const statusField = z
-  .enum(['todo', 'done'])
+  .enum(TASK_STATUSES)
   .optional()
-  .describe('todo or done. Doing is no longer a status.');
+  .describe('todo, in_progress, or done. A list filter is exact: todo does not include in_progress.');
 
 const assigneeFields = {
   assignee: z

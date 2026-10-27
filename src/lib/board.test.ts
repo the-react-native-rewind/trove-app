@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { groupByStatus, normalizeStatus, sortTasksByUrgency } from './board';
+import { groupByStatus, listBucket, normalizeStatus, sortTasksByUrgency } from './board';
 import { rankAfterDrop } from './rank';
-import type { TaskWithRefs } from './types';
+import { STATUSES, type TaskWithRefs } from './types';
 
 function task(overrides: Partial<TaskWithRefs> & { id: string }): TaskWithRefs {
   return {
@@ -24,11 +24,18 @@ function task(overrides: Partial<TaskWithRefs> & { id: string }): TaskWithRefs {
   } as TaskWithRefs;
 }
 
-test('legacy and unknown statuses stay on the open list', () => {
+test('known statuses stay themselves and unknown values stay open', () => {
   assert.equal(normalizeStatus('backlog'), 'todo');
-  assert.equal(normalizeStatus('in_progress'), 'todo');
+  assert.equal(normalizeStatus('in_progress'), 'in_progress');
   assert.equal(normalizeStatus('mystery'), 'todo');
   assert.equal(normalizeStatus('done'), 'done');
+  assert.equal(listBucket('in_progress'), 'todo');
+  assert.equal(listBucket('todo'), 'todo');
+  assert.equal(listBucket('done'), 'done');
+  assert.deepEqual(
+    STATUSES.map((status) => status.key),
+    ['todo', 'in_progress', 'done'],
+  );
 });
 
 test('rank sorts first, so a later due date can sit above an earlier one', () => {
@@ -81,14 +88,30 @@ test('equal due date and rank keep position, then creation time, then id', () =>
   );
 });
 
-test('grouping folds legacy statuses into To do', () => {
-  const groups = groupByStatus([
-    task({ id: 'old', status: 'backlog' as never }),
-    task({ id: 'doing', status: 'in_progress' as never }),
-  ]);
+test('in progress is its own column and stays in the open list order', () => {
+  const tasks = [
+    task({ id: 'later', status: 'todo', rank: 'a0' }),
+    task({ id: 'doing', status: 'in_progress', rank: 'a9' }),
+    task({ id: 'old', status: 'backlog' as never, rank: 'a5' }),
+    task({ id: 'finished', status: 'done', rank: 'b0' }),
+  ];
+  const groups = groupByStatus(tasks);
   assert.deepEqual(
-    groups.todo.map((item) => item.id).sort(),
-    ['doing', 'old'],
+    groups.todo.map((item) => item.id),
+    ['old', 'later'],
   );
-  assert.equal(groups.done.length, 0);
+  assert.deepEqual(
+    groups.in_progress.map((item) => item.id),
+    ['doing'],
+  );
+  assert.deepEqual(
+    groups.done.map((item) => item.id),
+    ['finished'],
+  );
+
+  const openList = sortTasksByUrgency(tasks.filter((item) => listBucket(item.status) === 'todo'));
+  assert.deepEqual(
+    openList.map((item) => item.id),
+    ['doing', 'old', 'later'],
+  );
 });

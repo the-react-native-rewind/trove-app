@@ -25,7 +25,8 @@
  * week. null or "never" clears the rule. The first occurrence's
  * recurrence_series_id is its own id. recurrence_source_id stays server-only
  * and is never returned. Completing a repeating task is still just status
- * done: the database trigger inserts the next occurrence.
+ * done: the database trigger inserts the next occurrence. in_progress does
+ * not. Status is todo, in_progress, or done.
  */
 
 import { INVITE_LIMIT_PER_DAY } from './inviteLimit.ts';
@@ -97,15 +98,15 @@ export const toolDescriptions: Record<McpToolName, string> = {
   create_circle:
     'Create a circle owned by the signed-in person. name is required (for example Home or Garden). color is an optional accent: sage, brand, moss, teal, dusk, lilac, plum, rose, terracotta, clay, ochre, honey, or a #rrggbb hex. It defaults to sage. Circles do not have an emoji or a description. The creator becomes the owner, the same way creating a circle in the app does. This does not create a second personal circle. Returns the circle, including its id.',
   list_my_tasks:
-    'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). A task is included when they are any of its assignees. Optional filters: circle, status (todo or done), and due date (due_on, due_before, due_after as YYYY-MM-DD). This is not limited to the personal circle. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned. rank is the fractional ordering key shared with the circle.',
+    'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). A task is included when they are any of its assignees. Optional filters: circle, status (todo, in_progress, or done), and due date (due_on, due_before, due_after as YYYY-MM-DD). A status filter is exact: todo does not include in_progress. This is not limited to the personal circle. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned. rank is the fractional ordering key shared with the circle.',
   list_circle_tasks:
-    'List every task in one circle, not only tasks assigned to the caller. Viewers can read. Optional filters: status and due date. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned.',
+    'List every task in one circle, not only tasks assigned to the caller. Viewers can read. Optional filters: status (todo, in_progress, or done) and due date. A status filter is exact: todo does not include in_progress. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned.',
   create_task:
-    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is one member id, display name, "me", or null. assignees is a list of those same values and replaces the whole set. Pass assignee or assignees, not both. Omitting both assigns the caller. priority is low, medium, high, or null and chooses a starting rank in the overall order of that circle: high above the current top, medium in the middle, low or null at the bottom. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat. status is todo or done.',
+    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is one member id, display name, "me", or null. assignees is a list of those same values and replaces the whole set. Pass assignee or assignees, not both. Omitting both assigns the caller. priority is low, medium, high, or null and chooses a starting rank in the overall order of that circle: high above the current top, medium in the middle, low or null at the bottom. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat. status is todo, in_progress, or done.',
   create_tasks_bulk:
     'Create up to 100 tasks in one call, for importing a list. Each item has the same fields as create_task, including the optional repeat fields. A circle set on the call is the default; an item can override it. external_id makes the import safe to retry: a task the caller already created with that id is returned as existing and is not changed. Items that fail are reported; earlier items in the batch are kept.',
   update_task:
-    'Change a task\'s title, notes, status, priority, due date, assignees, tags, or repeat rule. status is todo or done. priority is low, medium, high, or null. For an owner or admin it also sets rank in the circle\'s overall order: high above the current top, medium in the middle, low or null at the bottom. A member can set the priority label but cannot change rank. Changing the due date leaves rank unchanged. assignee or assignees replaces the whole set of people. Pass one of those fields, not both. An empty assignees list, or assignee null, clears everyone. Tags replace the current set. repeat_unit null or never clears the repeat rule. repeat_interval is 1 to 99. repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only used for week. This does not move the task to another circle; use move_task for that. Only someone who can edit the circle (owner, admin, or member) can update. Viewers cannot. Setting status to done on a repeating task leaves this row done; the database inserts the next occurrence at the bottom of its due-date group.',
+    'Change a task\'s title, notes, status, priority, due date, assignees, tags, or repeat rule. status is todo, in_progress, or done. priority is low, medium, high, or null. For an owner or admin it also sets rank in the circle\'s overall order: high above the current top, medium in the middle, low or null at the bottom. A member can set the priority label but cannot change rank. Changing the due date leaves rank unchanged. assignee or assignees replaces the whole set of people. Pass one of those fields, not both. An empty assignees list, or assignee null, clears everyone. Tags replace the current set. repeat_unit null or never clears the repeat rule. repeat_interval is 1 to 99. repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only used for week. This does not move the task to another circle; use move_task for that. Only someone who can edit the circle (owner, admin, or member) can update. Viewers cannot. Setting status to done on a repeating task leaves this row done; the database inserts the next occurrence at the bottom of its due-date group.',
   complete_task:
     'Mark a task done. Same permission as update_task. If the task repeats, the database inserts the next To do occurrence with the same rule. This result is the completed row, including its repeat fields and recurrence_series_id. recurrence_source_id is not returned.',
   assign_task:
@@ -121,7 +122,8 @@ export const toolDescriptions: Record<McpToolName, string> = {
 };
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
-export type Status = 'todo' | 'done';
+export const TASK_STATUSES = ['todo', 'in_progress', 'done'] as const;
+export type Status = (typeof TASK_STATUSES)[number];
 export type Priority = 'low' | 'medium' | 'high';
 export type RepeatUnit = 'day' | 'week' | 'month';
 
@@ -1282,10 +1284,7 @@ function parseRepeatWeekday(value: number | null | undefined): number | null | {
 
 function readStatus(value: string | undefined): Status | undefined | { error: string } {
   if (value === undefined) return undefined;
-  if (value === 'in_progress') {
-    return { error: 'Doing is no longer a status. Leave the task as todo, or mark it done.' };
-  }
-  if (value === 'todo' || value === 'done') return value;
+  if ((TASK_STATUSES as readonly string[]).includes(value)) return value as Status;
   return { error: 'Unknown status.' };
 }
 

@@ -112,8 +112,9 @@ begin
   insert into public.user_task_week_plans (user_id, task_id, week_start)
   values (alex, parent, '2026-09-28');
 
-  -- Staying open does not spawn. Doing is not a status.
+  -- Staying open does not spawn. In progress is still open.
   update public.tasks set title = 'Water the greenhouse beds' where id = parent;
+  update public.tasks set status = 'in_progress' where id = parent;
   select count(*) into n from public.tasks where recurrence_source_id = parent;
   if n <> 0 then
     raise exception 'an open task spawned a successor';

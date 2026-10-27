@@ -96,6 +96,15 @@ begin
     raise exception 'assign spawned a successor';
   end if;
 
+  perform public.bulk_update_tasks(array[parent], 'in_progress', null, false);
+  if (select status from public.tasks where id = parent) <> 'in_progress' then
+    raise exception 'in progress was rejected';
+  end if;
+  select count(*) into n from public.tasks where recurrence_source_id = parent;
+  if n <> 0 then
+    raise exception 'in progress spawned a successor';
+  end if;
+
   perform public.bulk_update_tasks(array[parent], null, null, true);
   if exists (select 1 from public.task_assignees where task_id = parent) then
     raise exception 'bulk unassign left an assignee';

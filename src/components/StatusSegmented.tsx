@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { hapticLight } from '@/lib/haptics';
-import { STATUSES, type TaskStatus } from '@/lib/types';
+import { LIST_STATUSES, type ListStatus } from '@/lib/types';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { Text } from './ui/Text';
 
@@ -10,9 +10,9 @@ export function StatusSegmented({
   counts,
   onChange,
 }: {
-  value: TaskStatus;
-  counts: Record<TaskStatus, number>;
-  onChange: (status: TaskStatus) => void;
+  value: ListStatus;
+  counts: Record<ListStatus, number>;
+  onChange: (status: ListStatus) => void;
 }) {
   return (
     <ScrollView
@@ -21,7 +21,7 @@ export function StatusSegmented({
       style={styles.bar}
       contentContainerStyle={styles.track}
     >
-      {STATUSES.map(({ key, label }) => {
+      {LIST_STATUSES.map(({ key, label }) => {
         const active = key === value;
         return (
           <Pressable

@@ -16,7 +16,7 @@ import { Text } from '@/components/ui/Text';
 import { useTaskAttachments } from '@/data/attachments';
 import { useMyWeekEnabled } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
-import { useMoveTask, useTask } from '@/data/tasks';
+import { useMoveTask, useTask, useUpdateTask } from '@/data/tasks';
 import { confirmDialog } from '@/lib/dialog';
 import {
   useRemoveTaskWeekPlan,
@@ -43,6 +43,7 @@ export default function TaskView() {
   const { data: media = [] } = useTaskAttachments(id ?? '');
   const setWeekPlan = useSetTaskWeekPlan();
   const removeWeekPlan = useRemoveTaskWeekPlan();
+  const updateStatus = useUpdateTask();
   const currentWeek = getCurrentWeekStart();
 
   if (isLoading) {
@@ -135,6 +136,29 @@ export default function TaskView() {
           </View>
         ))}
       </View>
+
+      {writable && task.status !== 'done' ? (
+        <Button
+          label={task.status === 'in_progress' ? 'Back to to do' : 'Mark in progress'}
+          variant="secondary"
+          size="md"
+          loading={updateStatus.isPending}
+          onPress={() => {
+            const next = task.status === 'in_progress' ? 'todo' : 'in_progress';
+            updateStatus.mutate(
+              { id: task.id, status: next },
+              {
+                onError: () =>
+                  Toast.show({
+                    type: 'error',
+                    text1: 'Could not update that task',
+                    text2: 'Please try again.',
+                  }),
+              },
+            );
+          }}
+        />
+      ) : null}
 
       {writable && destinations.length > 0 ? (
         <MoveToCircle taskId={task.id} destinations={destinations} />

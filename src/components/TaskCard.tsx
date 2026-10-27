@@ -10,7 +10,7 @@ import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { fullBleedMediaCorners, TaskMediaStrip } from './TaskMediaStrip';
 import { AvatarStack } from './ui/Avatar';
-import { SpaceTag } from './ui/Indicators';
+import { InProgressTag, SpaceTag } from './ui/Indicators';
 import { Text } from './ui/Text';
 
 type TaskCardProps = {
@@ -20,6 +20,11 @@ type TaskCardProps = {
   heat?: string;
   /** The signed-in person can change this task. Long-press selects it. */
   selectable?: boolean;
+  /**
+   * Show the In progress pill. Narrow lists do. A status column already
+   * says it, so the board hides the pill.
+   */
+  showProgressTag?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
   media?: Attachment[];
@@ -30,6 +35,7 @@ export function TaskCard({
   showSpaceTag,
   heat,
   selectable = false,
+  showProgressTag = true,
   onPress,
   onLongPress,
   media,
@@ -38,6 +44,8 @@ export function TaskCard({
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
   const done = task.status === 'done';
+  const inProgress = task.status === 'in_progress';
+  const showTag = Boolean(showSpaceTag && task.space);
   const repeats = describeRepeat(repeatRuleFromTask(task));
   const notes = plainTextFromMarkdown(task.description ?? '');
   const selecting = selection.active;
@@ -69,6 +77,7 @@ export function TaskCard({
   const label = [
     selected ? 'Selected' : selecting && selectable ? 'Not selected' : null,
     task.title,
+    inProgress ? 'In progress' : null,
     assigneeNames ? `Assigned to ${assigneeNames}` : null,
     repeats,
   ]
@@ -97,9 +106,12 @@ export function TaskCard({
         accessibilityState={{ selected }}
         style={styles.body}
       >
-        {showSpaceTag && task.space ? (
-          <View style={styles.tagRow}>
-            <SpaceTag name={task.space.name} color={task.space.color} />
+        {showTag || (showProgressTag && inProgress) ? (
+          <View style={[styles.tagRow, !showTag && styles.tagRowEnd]}>
+            {showTag && task.space ? (
+              <SpaceTag name={task.space.name} color={task.space.color} />
+            ) : null}
+            {showProgressTag && inProgress ? <InProgressTag /> : null}
           </View>
         ) : null}
 
@@ -194,7 +206,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   checkOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  tagRow: { flexDirection: 'row' },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  tagRowEnd: { justifyContent: 'flex-end' },
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
   heatDot: { width: 9, height: 9, borderRadius: 4.5 },
   dueWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },

@@ -9,7 +9,7 @@ import { fetchRoster } from '@/data/members';
 import { useBulkUpdateTasks } from '@/data/tasks';
 import { peopleInEveryCircle, sharedAssigneeIds, uniqueSpaceIds, type AssignablePerson } from '@/lib/assign';
 import { qk } from '@/lib/queryClient';
-import type { RosterMember, TaskWithRefs } from '@/lib/types';
+import type { RosterMember, TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Avatar } from './ui/Avatar';
@@ -68,15 +68,22 @@ export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }
   const { active, selectedIds, count, exit } = useSelection();
   const bulk = useBulkUpdateTasks();
   const [assignOpen, setAssignOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'complete' | 'progress' | null>(null);
 
   if (!active) return null;
 
   const selected = tasks.filter((task) => selectedIds.has(task.id));
   const ids = selected.map((task) => task.id);
   const canComplete = selected.some((task) => task.status !== 'done');
+  const open = selected.filter((task) => task.status !== 'done');
+  const markingTodo = open.length > 0 && open.every((task) => task.status === 'in_progress');
+  const progressStatus: TaskStatus = markingTodo ? 'todo' : 'in_progress';
+  const progressIds = open.filter((task) => task.status !== progressStatus).map((task) => task.id);
+  const canSetProgress = progressIds.length > 0;
 
   async function complete() {
     if (!canComplete || bulk.isPending) return;
+    setPendingAction('complete');
     try {
       await bulk.mutateAsync({
         ids,
@@ -86,6 +93,24 @@ export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }
       exit();
     } catch (error) {
       showBulkError(error);
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function setProgress() {
+    if (!canSetProgress || bulk.isPending) return;
+    setPendingAction('progress');
+    try {
+      await bulk.mutateAsync({
+        ids: progressIds,
+        status: progressStatus,
+      });
+      exit();
+    } catch (error) {
+      showBulkError(error);
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -103,18 +128,38 @@ export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }
           <Text variant="bodyMedium">Assign</Text>
         </Pressable>
         <Pressable
+          onPress={() => void setProgress()}
+          disabled={!canSetProgress || bulk.isPending}
+          accessibilityRole="button"
+          accessibilityLabel={
+            markingTodo ? 'Move selected tasks back to to do' : 'Mark selected tasks in progress'
+          }
+          style={[styles.action, styles.progress, (!canSetProgress || bulk.isPending) && styles.disabled]}
+        >
+          {pendingAction === 'progress' ? (
+            <ActivityIndicator color={colors.brandDeep} />
+          ) : (
+            <>
+              <Ionicons name="ellipse" size={12} color={colors.honey} />
+              <Text variant="bodyMedium" numberOfLines={1}>
+                {markingTodo ? 'To do' : 'In progress'}
+              </Text>
+            </>
+          )}
+        </Pressable>
+        <Pressable
           onPress={() => void complete()}
           disabled={!canComplete || bulk.isPending}
           accessibilityRole="button"
           accessibilityLabel="Complete selected tasks"
           style={[styles.action, styles.complete, (!canComplete || bulk.isPending) && styles.disabled]}
         >
-          {bulk.isPending ? (
+          {pendingAction === 'complete' || (bulk.isPending && pendingAction !== 'progress') ? (
             <ActivityIndicator color={colors.onBrand} />
           ) : (
             <>
               <Ionicons name="checkmark" size={18} color={colors.onBrand} />
-              <Text variant="bodyMedium" color={colors.onBrand}>
+              <Text variant="bodyMedium" color={colors.onBrand} numberOfLines={1}>
                 Complete
               </Text>
             </>
@@ -368,6 +413,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   assign: { backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.hairline },
+  progress: { backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.hairline },
   complete: { backgroundColor: colors.brand },
   apply: {
     minHeight: 48,
