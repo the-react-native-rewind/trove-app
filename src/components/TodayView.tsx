@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -34,7 +35,6 @@ import {
   useTomorrowPlan,
   useUpdateTodayRoutine,
 } from '@/data/today';
-import { useMoveTaskStatus } from '@/data/tasks';
 import { useIsWide } from '@/hooks/useIsWide';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
 import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from '@/lib/haptics';
@@ -54,6 +54,7 @@ import {
   shiftDay,
   todayLineTitle,
   weekdayIndex,
+  withLinePatch,
   type TodayLine,
 } from '@/lib/today';
 import { resolveAccent, colors, radii, shadows, spacing, type as typeScale } from '@/theme/tokens';
@@ -69,6 +70,10 @@ function messageOf(error: unknown): string {
     return error.message;
   }
   return 'Something went wrong. Try again.';
+}
+
+function quietError(title: string, error: unknown) {
+  Toast.show({ type: 'error', text1: title, text2: messageOf(error) });
 }
 
 export function TodayView() {
@@ -95,8 +100,9 @@ export function TodayView() {
   const activeDay = planningTomorrow ? tomorrow : today;
   const todayQuery = useTodayList(today);
   const tomorrowQuery = useTomorrowPlan(tomorrow);
-  const [lines, setLines] = useState<TodayLine[]>(() => todayQuery.data ?? []);
   const activeQuery = planningTomorrow ? tomorrowQuery : todayQuery;
+  const lines = activeQuery.data ?? [];
+  const [refreshing, setRefreshing] = useState(false);
   const addText = useAddTodayText(activeDay);
   const addTask = useAddTodayTask(activeDay);
   const check = useCheckTodayItem();
@@ -107,14 +113,9 @@ export function TodayView() {
   const rename = useRenameTodayItem();
   const setRepeat = useSetTodayRepeat();
   const remove = useDeleteTodayItem();
-  const moveStatus = useMoveTaskStatus();
   const taskChoices = useOpenTaskChoices(taskSearch, pickerOpen);
-  const playChime = useMomentumChime();
+  const chime = useMomentumChime();
   const [tickPulse, setTickPulse] = useState(0);
-
-  useEffect(() => {
-    if (activeQuery.data) setLines(activeQuery.data);
-  }, [when, activeQuery.data]);
 
   const takenTaskIds = new Set(lines.flatMap((line) => (line.taskId ? [line.taskId] : [])));
   const choices = (taskChoices.data ?? []).filter((choice) => !takenTaskIds.has(choice.id));
@@ -133,60 +134,56 @@ export function TodayView() {
     setDraft(value);
   }
 
-  async function submitDraft() {
+  function submitDraft() {
     const text = draft.replace(/\s+/g, ' ').trim();
     if (!text) return;
     setDraft('');
-    try {
-      hapticMedium();
-      await addText.mutateAsync(text);
-    } catch (error) {
-      setDraft(text);
-      alertDialog('Couldn’t add that line', messageOf(error));
-    }
+    hapticMedium();
+    addText.mutate(text, {
+      onError: (error) => {
+        setDraft(text);
+        quietError('Couldn’t add that line', error);
+      },
+    });
   }
 
-  async function pickTask(taskId: string) {
-    try {
-      hapticMedium();
-      await addTask.mutateAsync(taskId);
-      setPickerOpen(false);
-      setTaskSearch('');
-    } catch (error) {
-      alertDialog('Couldn’t add that task', messageOf(error));
-    }
+  function pickTask(choice: { id: string; title: string; spaceName: string; spaceColor: string }) {
+    setPickerOpen(false);
+    setTaskSearch('');
+    hapticMedium();
+    addTask.mutate(
+      {
+        taskId: choice.id,
+        title: choice.title,
+        spaceName: choice.spaceName,
+        spaceColor: choice.spaceColor,
+      },
+      { onError: (error) => quietError('Couldn’t add that task', error) },
+    );
   }
 
   function selectDay(next: 'today' | 'tomorrow') {
     if (next === when) return;
     hapticLight();
     setWhen(next);
-    const nextLines = next === 'tomorrow' ? (tomorrowQuery.data ?? []) : (todayQuery.data ?? []);
-    setLines(nextLines);
   }
 
-  function patchChecked(id: string, checkedAt: string | null) {
-    setLines((current) => current.map((item) => (item.id === id ? { ...item, checkedAt } : item)));
-  }
-
-  function commitTick(line: TodayLine) {
-    patchChecked(line.id, new Date().toISOString());
-    setTickPulse((pulse) => pulse + 1);
-    hapticSuccess();
-    playChime();
+  function countAfter(line: TodayLine, checked: boolean): number {
+    const checkedAt = checked ? new Date().toISOString() : null;
+    return momentumCount(withLinePatch(lines, line.id, { checkedAt }), today);
   }
 
   function onToggle(line: TodayLine) {
     if (planningTomorrow) return;
     if (line.checkedAt) {
       hapticLight();
-      patchChecked(line.id, null);
+      chime.setStep(countAfter(line, false));
       check.mutate(
         { id: line.id, checked: false },
         {
           onError: (error) => {
-            patchChecked(line.id, line.checkedAt);
-            alertDialog('Couldn’t update that line', messageOf(error));
+            chime.setStep(momentumCount(lines, today));
+            quietError('Couldn’t update that line', error);
           },
         },
       );
@@ -197,35 +194,38 @@ export function TodayView() {
       setTickLine(line);
       return;
     }
-    commitTick(line);
+    setTickPulse((pulse) => pulse + 1);
+    hapticSuccess();
+    chime.play(countAfter(line, true));
     check.mutate(
       { id: line.id, checked: true },
       {
         onError: (error) => {
-          patchChecked(line.id, null);
-          alertDialog('Couldn’t update that line', messageOf(error));
+          chime.setStep(momentumCount(lines, today));
+          quietError('Couldn’t update that line', error);
         },
       },
     );
   }
 
-  async function chooseTick(mode: 'today' | 'done') {
+  function chooseTick(mode: 'today' | 'done') {
     const line = tickLine;
     const taskId = line?.taskId;
     if (!line || !taskId) return;
     setTickLine(null);
-    commitTick(line);
-    try {
-      await moveStatus.mutateAsync({
-        id: taskId,
-        status: mode === 'done' ? 'done' : 'in_progress',
-        celebrateCompletion: false,
-      });
-      await check.mutateAsync({ id: line.id, checked: true });
-    } catch (error) {
-      patchChecked(line.id, null);
-      alertDialog('Couldn’t update that task', messageOf(error));
-    }
+    const taskStatus = mode === 'done' ? 'done' : 'in_progress';
+    setTickPulse((pulse) => pulse + 1);
+    hapticSuccess();
+    chime.play(countAfter(line, true));
+    check.mutate(
+      { id: line.id, checked: true, taskId, taskStatus },
+      {
+        onError: (error) => {
+          chime.setStep(momentumCount(lines, today));
+          quietError('Couldn’t update that task', error);
+        },
+      },
+    );
   }
 
   function onDragEnd({ data, from, to }: DragEndParams<TodayLine>) {
@@ -234,13 +234,17 @@ export function TodayView() {
     if (!dropped) return;
     const nextRank = rankAfterDrop(data[to - 1]?.rank, data[to + 1]?.rank);
     if (nextRank === dropped.rank) return;
-    setLines(data.map((line) => (line.id === dropped.id ? { ...line, rank: nextRank } : line)));
-    const refetch = () => void activeQuery.refetch();
+    const next = data.map((line) => (line.id === dropped.id ? { ...line, rank: nextRank } : line));
+    const scope = planningTomorrow ? 'tomorrow' : 'today';
+    const onError = (error: unknown) => quietError('Couldn’t reorder that line', error);
     if (dropped.virtual && dropped.routineId) {
-      updateRoutine.mutate({ id: dropped.routineId, rank: nextRank }, { onError: refetch });
+      updateRoutine.mutate(
+        { id: dropped.routineId, rank: nextRank, day: activeDay, scope, lines: next },
+        { onError },
+      );
       return;
     }
-    move.mutate({ id: dropped.id, rank: nextRank }, { onError: refetch });
+    move.mutate({ id: dropped.id, rank: nextRank, day: activeDay, scope, lines: next }, { onError });
   }
 
   function openRepeat(line: TodayLine) {
@@ -265,53 +269,44 @@ export function TodayView() {
     return daysFromWeekdays(customDays);
   }
 
-  async function saveRepeat() {
+  function saveRepeat() {
     if (!repeatLine) return;
     const days = repeatMask();
     if (!isRepeatMask(days)) {
       alertDialog('Pick at least one day');
       return;
     }
-    try {
-      if (repeatLine.virtual && repeatLine.routineId) {
-        await updateRoutine.mutateAsync({ id: repeatLine.routineId, days });
-      } else {
-        await setRepeat.mutateAsync({ id: repeatLine.id, days });
-      }
-      setRepeatLine(null);
-    } catch (error) {
-      alertDialog('Couldn’t save that repeat', messageOf(error));
-    }
+    const line = repeatLine;
+    setRepeatLine(null);
+    const pending =
+      line.virtual && line.routineId
+        ? updateRoutine.mutateAsync({ id: line.routineId, days })
+        : setRepeat.mutateAsync({ id: line.id, days });
+    void pending.catch((error) => quietError('Couldn’t save that repeat', error));
   }
 
-  async function stopRepeat() {
+  function stopRepeat() {
     if (!repeatLine) return;
-    try {
-      if (repeatLine.virtual && repeatLine.routineId) {
-        await updateRoutine.mutateAsync({ id: repeatLine.routineId, active: false });
-      } else {
-        await setRepeat.mutateAsync({ id: repeatLine.id, days: 0 });
-      }
-      setRepeatLine(null);
-    } catch (error) {
-      alertDialog('Couldn’t stop that repeat', messageOf(error));
-    }
+    const line = repeatLine;
+    setRepeatLine(null);
+    const pending =
+      line.virtual && line.routineId
+        ? updateRoutine.mutateAsync({ id: line.routineId, active: false })
+        : setRepeat.mutateAsync({ id: line.id, days: 0 });
+    void pending.catch((error) => quietError('Couldn’t stop that repeat', error));
   }
 
-  async function saveEdit() {
+  function saveEdit() {
     if (!editLine) return;
     const text = editDraft.replace(/\s+/g, ' ').trim();
     if (!text) return;
-    try {
-      if (editLine.virtual && editLine.routineId) {
-        await updateRoutine.mutateAsync({ id: editLine.routineId, text });
-      } else {
-        await rename.mutateAsync({ id: editLine.id, text });
-      }
-      setEditLine(null);
-    } catch (error) {
-      alertDialog('Couldn’t save that line', messageOf(error));
-    }
+    const line = editLine;
+    setEditLine(null);
+    const pending =
+      line.virtual && line.routineId
+        ? updateRoutine.mutateAsync({ id: line.routineId, text })
+        : rename.mutateAsync({ id: line.id, text });
+    void pending.catch((error) => quietError('Couldn’t save that line', error));
   }
 
   async function deleteLine(line: TodayLine) {
@@ -330,15 +325,11 @@ export function TodayView() {
       destructive: true,
     });
     if (!ok) return;
-    try {
-      if (line.virtual && line.routineId) {
-        await updateRoutine.mutateAsync({ id: line.routineId, active: false });
-      } else {
-        await remove.mutateAsync(line.id);
-      }
-    } catch (error) {
-      alertDialog('Couldn’t delete that line', messageOf(error));
-    }
+    const pending =
+      line.virtual && line.routineId
+        ? updateRoutine.mutateAsync({ id: line.routineId, active: false })
+        : remove.mutateAsync(line.id);
+    void pending.catch((error) => quietError('Couldn’t delete that line', error));
   }
 
   function routineAlreadyToday(line: TodayLine): boolean {
@@ -346,18 +337,14 @@ export function TodayView() {
     return (todayQuery.data ?? []).some((item) => item.routineId === line.routineId);
   }
 
-  async function moveLine(line: TodayLine) {
+  function moveLine(line: TodayLine) {
     setMenuLine(null);
-    try {
-      if (planningTomorrow) {
-        if (line.virtual && line.routineId) await placeRoutine.mutateAsync(line.routineId);
-        else await moveDay.mutateAsync({ id: line.id, day: today });
-      } else {
-        await moveDay.mutateAsync({ id: line.id, day: tomorrow });
-      }
-    } catch (error) {
-      alertDialog('Couldn’t move that line', messageOf(error));
-    }
+    const pending = planningTomorrow
+      ? line.virtual && line.routineId
+        ? placeRoutine.mutateAsync(line.routineId)
+        : moveDay.mutateAsync({ id: line.id, day: today })
+      : moveDay.mutateAsync({ id: line.id, day: tomorrow });
+    void pending.catch((error) => quietError('Couldn’t move that line', error));
   }
 
   function renderLine(line: TodayLine, drag?: () => void, isActive?: boolean) {
@@ -458,8 +445,11 @@ export function TodayView() {
 
   const refresh = (
     <RefreshControl
-      refreshing={activeQuery.isRefetching}
-      onRefresh={() => void activeQuery.refetch()}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void activeQuery.refetch().finally(() => setRefreshing(false));
+      }}
       tintColor={colors.brand}
     />
   );
@@ -502,7 +492,7 @@ export function TodayView() {
             </Text>
           </View>
           {planningTomorrow ? null : (
-            <MomentumBadge count={momentumCount(lines, today)} pulse={tickPulse} />
+            <MomentumBadge count={momentumCount(todayQuery.data ?? [], today)} pulse={tickPulse} />
           )}
         </View>
         <View style={[styles.switchRow, isWide && styles.switchWide]}>
@@ -512,7 +502,7 @@ export function TodayView() {
       </CollapsingScreenHeader>
 
       <View style={styles.listFrame}>
-        {activeQuery.isLoading && !activeQuery.data ? (
+        {activeQuery.data === undefined && !activeQuery.isError ? (
           <View style={[styles.center, listPad]}>
             <ActivityIndicator color={colors.brand} />
           </View>
@@ -692,7 +682,6 @@ export function TodayView() {
           placeholder="Search your open tasks"
           placeholderTextColor={colors.inkFaint}
           style={styles.sheetInput}
-          autoFocus
           accessibilityLabel="Search tasks"
         />
         {taskChoices.isLoading ? <ActivityIndicator color={colors.brand} /> : null}
@@ -701,11 +690,15 @@ export function TodayView() {
             Couldn’t load tasks. Try again.
           </Text>
         ) : null}
-        <ScrollView style={styles.choiceList} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          style={styles.choiceList}
+          contentContainerStyle={styles.taskChoices}
+          keyboardShouldPersistTaps="handled"
+        >
           {choices.map((choice) => (
             <Pressable
               key={choice.id}
-              onPress={() => void pickTask(choice.id)}
+              onPress={() => pickTask(choice)}
               accessibilityRole="button"
               accessibilityLabel={`Add ${choice.title}`}
               style={styles.choice}
@@ -970,6 +963,7 @@ const styles = StyleSheet.create({
   choiceOn: { backgroundColor: colors.brandSoft },
   choiceTitle: { flex: 1 },
   choiceList: { flexGrow: 0 },
+  taskChoices: { gap: spacing.sm },
   dayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   dayChip: {
     paddingHorizontal: spacing.md,

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -8,50 +8,64 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { colors } from '@/theme/tokens';
+import { momentumAppearance, momentumScale } from '@/lib/today';
+import { fonts } from '@/theme/tokens';
 import { Text } from './ui/Text';
 
 const SIZE = 30;
+const SLOT = 68;
 
 /**
- * How many lines are ticked today. `pulse` increments on a new tick so the
- * circle scales and a ring ripples. Mounting with an existing count stays still.
+ * How many lines are ticked today, including zero. `pulse` increments on a new
+ * tick so the circle bumps and a ring ripples. The resting size grows with the
+ * count. Mounting with an existing count stays still.
  */
 export function MomentumBadge({ count, pulse }: { count: number; pulse: number }) {
-  const scale = useSharedValue(1);
+  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const appearance = momentumAppearance(count, scheme);
+  const resting = momentumScale(count);
+  const base = useSharedValue(resting);
+  const bump = useSharedValue(1);
   const ring = useSharedValue(1);
   const seen = useRef(pulse);
 
   useEffect(() => {
+    base.value = withTiming(momentumScale(count), {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [base, count]);
+
+  useEffect(() => {
     if (pulse === seen.current) return;
     seen.current = pulse;
-    scale.value = withSequence(
+    bump.value = withSequence(
       withTiming(1.12, { duration: 120, easing: Easing.out(Easing.quad) }),
       withTiming(1, { duration: 240, easing: Easing.out(Easing.cubic) }),
     );
     ring.value = 0;
     ring.value = withTiming(1, { duration: 520, easing: Easing.out(Easing.cubic) });
-  }, [pulse, ring, scale]);
+  }, [bump, pulse, ring]);
 
   const circleStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{ scale: base.value * bump.value }],
   }));
   const ringStyle = useAnimatedStyle(() => ({
     opacity: (1 - ring.value) * 0.35,
-    transform: [{ scale: 1 + ring.value * 0.55 }],
+    transform: [{ scale: base.value * (1 + ring.value * 0.55) }],
   }));
 
-  const label = count === 1 ? '1 line ticked today' : `${count} lines ticked today`;
+  const label =
+    count === 0 ? 'No lines ticked today' : count === 1 ? '1 line ticked today' : `${count} lines ticked today`;
 
   return (
-    <View
-      accessible
-      accessibilityLabel={label}
-      style={styles.slot}
-    >
-      <Animated.View pointerEvents="none" style={[styles.ring, ringStyle]} />
-      <Animated.View style={[styles.circle, circleStyle]}>
-        <Text variant="bodyMedium" color={colors.brandDeep} style={styles.count}>
+    <View accessible accessibilityLabel={label} style={styles.slot}>
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.ring, { borderColor: appearance.ink }, ringStyle]}
+      />
+      <Animated.View style={[styles.circle, { backgroundColor: appearance.fill }, circleStyle]}>
+        <Text variant="bodyMedium" color={appearance.ink} style={styles.count}>
           {count}
         </Text>
       </Animated.View>
@@ -61,8 +75,8 @@ export function MomentumBadge({ count, pulse }: { count: number; pulse: number }
 
 const styles = StyleSheet.create({
   slot: {
-    width: 48,
-    height: 48,
+    width: SLOT,
+    height: SLOT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -71,7 +85,6 @@ const styles = StyleSheet.create({
     height: SIZE,
     paddingHorizontal: 7,
     borderRadius: SIZE / 2,
-    backgroundColor: colors.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -81,10 +94,10 @@ const styles = StyleSheet.create({
     height: SIZE,
     borderRadius: SIZE / 2,
     borderWidth: 1.5,
-    borderColor: colors.brand,
   },
   count: {
-    fontSize: 14,
+    fontFamily: fonts.bodyBold,
+    fontSize: 15,
     lineHeight: 18,
     fontVariant: ['tabular-nums'],
   },
