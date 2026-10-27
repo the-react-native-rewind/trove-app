@@ -236,6 +236,23 @@ export function todayLineTitle(line: Pick<TodayLine, 'text' | 'taskTitle'>): str
   return title || 'Task removed';
 }
 
+/**
+ * Lines ticked on this calendar day. Free-text lines and linked tasks both
+ * count once checked_at is set. Routine previews are not stored ticks.
+ * The number follows the day, so it starts again tomorrow without its own table.
+ */
+export function momentumCount(
+  lines: readonly Pick<TodayLine, 'day' | 'checkedAt' | 'virtual'>[],
+  day: string,
+): number {
+  let count = 0;
+  for (const line of lines) {
+    if (line.virtual || line.day !== day || !line.checkedAt) continue;
+    count += 1;
+  }
+  return count;
+}
+
 export function todayLineRepeats(line: Pick<TodayLine, 'routineId' | 'routineActive'>): boolean {
   return line.routineId !== null && line.routineActive;
 }
