@@ -10,6 +10,7 @@ import {
   dayMatches,
   daysFromWeekdays,
   planTodayMaterialisation,
+  momentumCount,
   previewRoutineIds,
   repeatLabel,
   rolloverRanks,
@@ -151,6 +152,20 @@ test('rolled lines keep their order and land under lines already on the day', ()
   assert.ok(compareRank(placed[0]?.rank ?? '', placed[1]?.rank ?? '') < 0);
   const kept = rolloverRanks(null, [{ id: 'first', rank: 'a2' }]);
   assert.equal(kept[0]?.rank, 'a2');
+});
+
+test('momentum counts lines ticked on that day', () => {
+  const lines = [
+    { day: TUESDAY, checkedAt: '2026-10-27T08:00:00.000Z' },
+    { day: TUESDAY, checkedAt: '2026-10-27T18:00:00.000Z' },
+    { day: TUESDAY, checkedAt: null },
+    { day: TUESDAY, checkedAt: '2026-10-27T09:00:00.000Z', virtual: true },
+    { day: MONDAY, checkedAt: '2026-10-26T09:00:00.000Z' },
+  ];
+  assert.equal(momentumCount(lines, TUESDAY), 2);
+  assert.equal(momentumCount(lines, MONDAY), 1);
+  assert.equal(momentumCount(lines, SATURDAY), 0);
+  assert.equal(momentumCount([], TUESDAY), 0);
 });
 
 test('tomorrow is not prepared, and a routine already on the day is not previewed twice', () => {

@@ -186,7 +186,13 @@ export function useUpdateTask() {
 export function useMoveTaskStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; status: TaskStatus; position?: number }) => {
+    mutationFn: async (input: {
+      id: string;
+      status: TaskStatus;
+      position?: number;
+      /** Board completions celebrate. Today ticks pass false and play their own chime. */
+      celebrateCompletion?: boolean;
+    }) => {
       const { error } = await supabase
         .from('tasks')
         // No explicit position (swipe/status change) appends to the column end.
@@ -196,7 +202,7 @@ export function useMoveTaskStatus() {
     },
     onSuccess: (_d, vars) => {
       invalidateTasks(qc);
-      if (vars.status === 'done') {
+      if (vars.status === 'done' && vars.celebrateCompletion !== false) {
         hapticSuccess();
         celebrate();
       }

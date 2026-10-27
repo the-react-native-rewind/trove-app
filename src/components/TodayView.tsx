@@ -37,7 +37,8 @@ import {
 import { useMoveTaskStatus } from '@/data/tasks';
 import { useIsWide } from '@/hooks/useIsWide';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
-import { hapticLight, hapticMedium, hapticSelection } from '@/lib/haptics';
+import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from '@/lib/haptics';
+import { useMomentumChime } from '@/lib/momentumSound';
 import { rankAfterDrop } from '@/lib/rank';
 import {
   EVERY_DAY,
@@ -48,6 +49,7 @@ import {
   daysFromWeekdays,
   isRepeatMask,
   localToday,
+  momentumCount,
   repeatLabel,
   shiftDay,
   todayLineTitle,
@@ -55,19 +57,11 @@ import {
   type TodayLine,
 } from '@/lib/today';
 import { resolveAccent, colors, radii, shadows, spacing, type as typeScale } from '@/theme/tokens';
+import { CollapsingScreenHeader, useCollapsingHeader } from './CollapsingHeader';
+import { MomentumBadge } from './MomentumBadge';
 import { EmptyState } from './ui/EmptyState';
 import { AccentDot } from './ui/Indicators';
 import { Text } from './ui/Text';
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function friendlyDay(iso: string): string {
-  const index = weekdayIndex(iso);
-  const [, monthText, dayText] = iso.split('-');
-  const month = MONTHS[Number(monthText) - 1] ?? '';
-  const weekday = index === null ? '' : WEEKDAY_SHORT[index];
-  return `${weekday} ${Number(dayText)} ${month}`.trim();
-}
 
 function messageOf(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -82,11 +76,11 @@ export function TodayView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isWide = useIsWide();
+  const collapse = useCollapsingHeader(insets.top, 96);
   const today = localToday();
   const tomorrow = shiftDay(today, 1);
   const [when, setWhen] = useState<'today' | 'tomorrow'>('today');
   const [draft, setDraft] = useState('');
-  const [lines, setLines] = useState<TodayLine[]>([]);
   const [menuLine, setMenuLine] = useState<TodayLine | null>(null);
   const [editLine, setEditLine] = useState<TodayLine | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -101,6 +95,7 @@ export function TodayView() {
   const activeDay = planningTomorrow ? tomorrow : today;
   const todayQuery = useTodayList(today);
   const tomorrowQuery = useTomorrowPlan(tomorrow);
+  const [lines, setLines] = useState<TodayLine[]>(() => todayQuery.data ?? []);
   const activeQuery = planningTomorrow ? tomorrowQuery : todayQuery;
   const addText = useAddTodayText(activeDay);
   const addTask = useAddTodayTask(activeDay);
@@ -114,6 +109,8 @@ export function TodayView() {
   const remove = useDeleteTodayItem();
   const moveStatus = useMoveTaskStatus();
   const taskChoices = useOpenTaskChoices(taskSearch, pickerOpen);
+  const playChime = useMomentumChime();
+  const [tickPulse, setTickPulse] = useState(0);
 
   useEffect(() => {
     if (activeQuery.data) setLines(activeQuery.data);
@@ -168,32 +165,65 @@ export function TodayView() {
     setLines(nextLines);
   }
 
+  function patchChecked(id: string, checkedAt: string | null) {
+    setLines((current) => current.map((item) => (item.id === id ? { ...item, checkedAt } : item)));
+  }
+
+  function commitTick(line: TodayLine) {
+    patchChecked(line.id, new Date().toISOString());
+    setTickPulse((pulse) => pulse + 1);
+    hapticSuccess();
+    playChime();
+  }
+
   function onToggle(line: TodayLine) {
     if (planningTomorrow) return;
-    hapticLight();
     if (line.checkedAt) {
-      check.mutate({ id: line.id, checked: false });
+      hapticLight();
+      patchChecked(line.id, null);
+      check.mutate(
+        { id: line.id, checked: false },
+        {
+          onError: (error) => {
+            patchChecked(line.id, line.checkedAt);
+            alertDialog('Couldn’t update that line', messageOf(error));
+          },
+        },
+      );
       return;
     }
     if (line.taskId) {
+      hapticLight();
       setTickLine(line);
       return;
     }
-    check.mutate({ id: line.id, checked: true });
+    commitTick(line);
+    check.mutate(
+      { id: line.id, checked: true },
+      {
+        onError: (error) => {
+          patchChecked(line.id, null);
+          alertDialog('Couldn’t update that line', messageOf(error));
+        },
+      },
+    );
   }
 
   async function chooseTick(mode: 'today' | 'done') {
     const line = tickLine;
     const taskId = line?.taskId;
     if (!line || !taskId) return;
+    setTickLine(null);
+    commitTick(line);
     try {
       await moveStatus.mutateAsync({
         id: taskId,
         status: mode === 'done' ? 'done' : 'in_progress',
+        celebrateCompletion: false,
       });
       await check.mutateAsync({ id: line.id, checked: true });
-      setTickLine(null);
     } catch (error) {
+      patchChecked(line.id, null);
       alertDialog('Couldn’t update that task', messageOf(error));
     }
   }
@@ -426,12 +456,6 @@ export function TodayView() {
     />
   );
 
-  const listHeader = planningTomorrow ? (
-    <Text variant="meta" color={colors.inkSoft} style={styles.planNote}>
-      A plan. Lines you still finish today stay there until tomorrow arrives.
-    </Text>
-  ) : null;
-
   const refresh = (
     <RefreshControl
       refreshing={activeQuery.isRefetching}
@@ -447,38 +471,49 @@ export function TodayView() {
     isRepeatMask(repeatDays) &&
     !dayMatches(repeatDays, repeatLine.day);
 
+  const listPad = { paddingTop: collapse.contentOffset };
+
   return (
     <KeyboardAvoidingView
-      style={[styles.screen, { paddingTop: insets.top }]}
+      style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={[styles.header, isWide && styles.headerWide]}>
-        {!isWide ? (
-          <Pressable
-            onPress={openDrawer}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Open circles"
-            style={styles.iconButton}
-          >
-            <Ionicons name="menu" size={26} color={colors.ink} />
-          </Pressable>
-        ) : null}
-        <View style={styles.titleBlock}>
-          <Text variant="screenTitle">{planningTomorrow ? 'Tomorrow' : 'Today'}</Text>
-          <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
-            {planningTomorrow ? `A plan · ${friendlyDay(tomorrow)}` : `Just for you · ${friendlyDay(today)}`}
-          </Text>
+      <CollapsingScreenHeader
+        topInset={insets.top}
+        onLayout={collapse.onLayout}
+        animatedStyle={collapse.animatedStyle}
+        pointerEvents={collapse.pointerEvents}
+      >
+        <View style={[styles.header, isWide && styles.headerWide]}>
+          {!isWide ? (
+            <Pressable
+              onPress={openDrawer}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Open circles"
+              style={styles.iconButton}
+            >
+              <Ionicons name="menu" size={26} color={colors.ink} />
+            </Pressable>
+          ) : null}
+          <View style={styles.titleBlock}>
+            <Text variant="screenTitle" numberOfLines={1}>
+              {planningTomorrow ? 'Tomorrow' : 'Today'}
+            </Text>
+          </View>
+          {planningTomorrow ? null : (
+            <MomentumBadge count={momentumCount(lines, today)} pulse={tickPulse} />
+          )}
         </View>
-      </View>
-      <View style={[styles.switchRow, isWide && styles.headerWide]}>
-        <DaySwitch label="Today" selected={!planningTomorrow} onPress={() => selectDay('today')} />
-        <DaySwitch label="Tomorrow" selected={planningTomorrow} onPress={() => selectDay('tomorrow')} />
-      </View>
+        <View style={[styles.switchRow, isWide && styles.switchWide]}>
+          <DaySwitch label="Today" selected={!planningTomorrow} onPress={() => selectDay('today')} />
+          <DaySwitch label="Tomorrow" selected={planningTomorrow} onPress={() => selectDay('tomorrow')} />
+        </View>
+      </CollapsingScreenHeader>
 
       <View style={styles.listFrame}>
         {activeQuery.isLoading && !activeQuery.data ? (
-          <View style={styles.center}>
+          <View style={[styles.center, listPad]}>
             <ActivityIndicator color={colors.brand} />
           </View>
         ) : (
@@ -491,9 +526,12 @@ export function TodayView() {
             activationDistance={8}
             onDragBegin={() => hapticLight()}
             onDragEnd={onDragEnd}
-            ListHeaderComponent={listHeader}
+            onScrollOffsetChange={collapse.onScrollOffsetChange}
             ListEmptyComponent={empty}
-            contentContainerStyle={lines.length === 0 ? styles.emptyList : styles.listContent}
+            contentContainerStyle={[
+              lines.length === 0 ? styles.emptyList : styles.listContent,
+              listPad,
+            ]}
             refreshControl={refresh}
             containerStyle={styles.listFrame}
             keyboardShouldPersistTaps="handled"
@@ -638,8 +676,13 @@ export function TodayView() {
         <Text variant="meta" color={colors.inkSoft}>
           Ticking this also updates the task. Unticking later only clears the line.
         </Text>
-        <SheetAction label="Done for today" detail="Keep the task in progress" onPress={() => void chooseTick('today')} />
-        <SheetAction label="Finished" detail="Mark the task done" onPress={() => void chooseTick('done')} />
+        <SheetAction
+          label="Done for today"
+          detail="Keep the task in progress"
+          quiet
+          onPress={() => void chooseTick('today')}
+        />
+        <SheetAction label="Finished" detail="Mark the task done" quiet onPress={() => void chooseTick('done')} />
       </Sheet>
 
       <Sheet visible={pickerOpen} title="Add a task" wide={isWide} onClose={() => setPickerOpen(false)}>
@@ -756,17 +799,19 @@ function SheetAction({
   label,
   detail,
   destructive,
+  quiet,
   onPress,
 }: {
   label: string;
   detail?: string;
   destructive?: boolean;
+  quiet?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={() => {
-        hapticLight();
+        if (!quiet) hapticLight();
         onPress();
       }}
       accessibilityRole="button"
@@ -823,8 +868,9 @@ const styles = StyleSheet.create({
   },
   headerWide: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
   iconButton: { padding: spacing.xs },
-  titleBlock: { flex: 1, gap: 2 },
+  titleBlock: { flex: 1 },
   switchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  switchWide: { paddingHorizontal: spacing.xl },
   switchItem: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -836,7 +882,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: spacing.lg },
   emptyList: { flexGrow: 1 },
-  planNote: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   row: {
     minHeight: 52,
     flexDirection: 'row',
