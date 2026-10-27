@@ -138,6 +138,42 @@ create trigger tasks_snapshot_today_text
   before delete on public.tasks
   for each row execute function public.tasks_snapshot_today_text();
 
+-- The stored task_id of one of the caller's own rows. Used by the update
+-- policies so keeping a linked task that is no longer visible stays allowed.
+-- A subquery on the same table inside its own policy recurses (42P17), so this
+-- reads the row as security definer instead. Stable, so an update's check sees
+-- the value from before the statement.
+create or replace function public.today_item_task_id(p_item_id uuid)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select task_id
+  from public.today_items
+  where id = p_item_id
+    and user_id = (select auth.uid());
+$$;
+
+create or replace function public.today_routine_task_id(p_routine_id uuid)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select task_id
+  from public.today_routines
+  where id = p_routine_id
+    and user_id = (select auth.uid());
+$$;
+
+revoke all on function public.today_item_task_id(uuid) from public, anon;
+revoke all on function public.today_routine_task_id(uuid) from public, anon;
+grant execute on function public.today_item_task_id(uuid) to authenticated, service_role;
+grant execute on function public.today_routine_task_id(uuid) to authenticated, service_role;
+
 alter table public.today_routines enable row level security;
 alter table public.today_items enable row level security;
 alter table public.today_days enable row level security;
@@ -164,9 +200,7 @@ create policy "update own today routines" on public.today_routines
     and (
       task_id is null
       -- Keeping the current task is allowed even if the circle is no longer visible.
-      or task_id is not distinct from (
-        select routine.task_id from public.today_routines routine where routine.id = today_routines.id
-      )
+      or task_id is not distinct from public.today_routine_task_id(id)
       or exists (select 1 from public.tasks t where t.id = task_id)
     )
   );
@@ -196,9 +230,7 @@ create policy "update own today items" on public.today_items
     user_id = (select auth.uid())
     and (
       task_id is null
-      or task_id is not distinct from (
-        select item.task_id from public.today_items item where item.id = today_items.id
-      )
+      or task_id is not distinct from public.today_item_task_id(id)
       or exists (select 1 from public.tasks t where t.id = task_id)
     )
   );
