@@ -41,7 +41,7 @@ import {
 } from './mcpTools';
 import { inviteUrl } from './links';
 import { compareRank, rankAtBottom } from './rank';
-import { planTodayMaterialisation } from './today';
+import { dayMatches, planTodayMaterialisation, rolloverRanks } from './today';
 
 const ME = 'user-me';
 const SAM = 'user-sam';
@@ -784,26 +784,27 @@ test('update_task replaces tags and does not take a circle id', async () => {
 
 test('list_today moves an unticked line forward once, and add_today_item appends text or a task', async () => {
   const store = memoryStore();
-  const monday = await addTodayItem(store, { day: '2026-10-26', text: '  Buy milk  ' });
+  const asToday = { local_today: '2026-10-27' };
+  const monday = await addTodayItem(store, { day: '2026-10-26', text: '  Buy milk  ', ...asToday });
   assert.equal(monday.ok, true);
   if (!monday.ok) return;
   assert.equal(monday.data.item.text, 'Buy milk');
   assert.equal(monday.data.item.checked_at, null);
 
-  const tuesday = await listToday(store, { day: '2026-10-27' });
+  const tuesday = await listToday(store, { day: '2026-10-27', ...asToday });
   assert.equal(tuesday.ok, true);
   if (!tuesday.ok) return;
   assert.deepEqual(
     tuesday.data.items.map((item) => item.text),
     ['Buy milk'],
   );
-  const again = await listToday(store, { day: '2026-10-27' });
+  const again = await listToday(store, { day: '2026-10-27', ...asToday });
   assert.equal(again.ok, true);
   if (!again.ok) return;
   assert.equal(again.data.items.length, 1);
   assert.equal(again.data.items[0]?.id, tuesday.data.items[0]?.id);
 
-  const mondayAfter = await listToday(store, { day: '2026-10-26' });
+  const mondayAfter = await listToday(store, { day: '2026-10-26', ...asToday });
   assert.equal(mondayAfter.ok, true);
   if (!mondayAfter.ok) return;
   assert.deepEqual(mondayAfter.data.items, []);
@@ -811,23 +812,70 @@ test('list_today moves an unticked line forward once, and add_today_item appends
   const created = await createTask(store, { title: 'Water the herbs' });
   assert.equal(created.ok, true);
   if (!created.ok) return;
-  const linked = await addTodayItem(store, { day: '2026-10-27', task_id: created.data.task.id });
+  const linked = await addTodayItem(store, { day: '2026-10-27', task_id: created.data.task.id, ...asToday });
   assert.equal(linked.ok, true);
   if (!linked.ok) return;
   assert.equal(linked.data.item.task_title, 'Water the herbs');
   assert.equal(linked.data.item.circle_name, 'Personal');
   assert.ok(compareRank(tuesday.data.items[0]?.rank ?? '', linked.data.item.rank) < 0);
 
-  const duplicate = await addTodayItem(store, { day: '2026-10-27', task_id: created.data.task.id });
+  const duplicate = await addTodayItem(store, { day: '2026-10-27', task_id: created.data.task.id, ...asToday });
   assert.deepEqual(duplicate, { ok: false, error: 'That task is already on this day' });
-  const both = await addTodayItem(store, { day: '2026-10-27', text: 'Nope', task_id: created.data.task.id });
+  const both = await addTodayItem(store, { day: '2026-10-27', text: 'Nope', task_id: created.data.task.id, ...asToday });
   assert.deepEqual(both, { ok: false, error: 'Pass text or task_id, not both.' });
-  const neither = await addTodayItem(store, { day: '2026-10-27' });
+  const neither = await addTodayItem(store, { day: '2026-10-27', ...asToday });
   assert.deepEqual(neither, { ok: false, error: 'Pass text or task_id.' });
-  const missing = await addTodayItem(store, { day: '2026-10-27', task_id: 'missing-task' });
+  const missing = await addTodayItem(store, { day: '2026-10-27', task_id: 'missing-task', ...asToday });
   assert.deepEqual(missing, { ok: false, error: 'Task not found' });
-  const badDay = await listToday(store, { day: '27-10-2026' });
+  const badDay = await listToday(store, { day: '27-10-2026', ...asToday });
   assert.equal(badDay.ok, false);
+});
+
+test('planning tomorrow does not prepare it, and the next morning rolls one-offs underneath', async () => {
+  const store = memoryStore();
+  store.addRoutine({ id: 'stretch', text: 'Stretch', taskId: null, days: 127, rank: 'a2' });
+  const monday = await addTodayItem(store, {
+    day: '2026-10-26',
+    local_today: '2026-10-26',
+    text: 'Buy milk',
+  });
+  assert.equal(monday.ok, true);
+  const planned = await addTodayItem(store, {
+    day: '2026-10-27',
+    local_today: '2026-10-26',
+    text: 'Pack bag',
+  });
+  assert.equal(planned.ok, true);
+
+  const stillMonday = await listToday(store, { day: '2026-10-26', local_today: '2026-10-26' });
+  assert.equal(stillMonday.ok, true);
+  if (!stillMonday.ok) return;
+  assert.deepEqual(
+    stillMonday.data.items.map((item) => item.text),
+    ['Stretch', 'Buy milk'],
+  );
+
+  const preview = await listToday(store, { day: '2026-10-27', local_today: '2026-10-26' });
+  assert.equal(preview.ok, true);
+  if (!preview.ok) return;
+  assert.deepEqual(
+    preview.data.items.map((item) => item.text),
+    ['Stretch', 'Pack bag'],
+  );
+  assert.equal(preview.data.items[0]?.id, 'preview:stretch');
+  assert.equal(store.prepared('2026-10-27'), false);
+
+  const morning = await listToday(store, { day: '2026-10-27', local_today: '2026-10-27' });
+  assert.equal(morning.ok, true);
+  if (!morning.ok) return;
+  assert.deepEqual(
+    morning.data.items.map((item) => item.text),
+    ['Stretch', 'Pack bag', 'Buy milk'],
+  );
+  assert.equal(store.prepared('2026-10-27'), true);
+  const milk = morning.data.items.find((item) => item.text === 'Buy milk');
+  const bag = morning.data.items.find((item) => item.text === 'Pack bag');
+  assert.ok(milk && bag && compareRank(bag.rank, milk.rank) < 0);
 });
 
 function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): TroveStore & {
@@ -836,6 +884,8 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
   calls: { counts: number; plain: number };
   setRole: (circleId: string, role: Role) => void;
   membersOf: (circleId: string) => Member[];
+  addRoutine: (routine: { id: string; text: string | null; taskId: string | null; days: number; rank: string }) => void;
+  prepared: (day: string) => boolean;
 } {
   const circles: Circle[] = [
     {
@@ -874,6 +924,14 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
   }
   const tasks: TaskRecord[] = [];
   const attachments: AttachmentRecord[] = [];
+  const routineRows: {
+    id: string;
+    text: string | null;
+    taskId: string | null;
+    days: number;
+    rank: string;
+    active: boolean;
+  }[] = [];
   const todayItems: {
     id: string;
     day: string;
@@ -914,6 +972,8 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     calls: { counts: number; plain: number };
     setRole: (circleId: string, role: Role) => void;
     membersOf: (circleId: string) => Member[];
+    addRoutine: (routine: { id: string; text: string | null; taskId: string | null; days: number; rank: string }) => void;
+    prepared: (day: string) => boolean;
   } = {
     userId: ME,
     tasks,
@@ -1080,6 +1140,12 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
       attachments.push(record);
       return record;
     },
+    addRoutine(routine) {
+      routineRows.push({ ...routine, active: true });
+    },
+    prepared(day) {
+      return preparedDays.has(day);
+    },
     async ensureToday(day) {
       if (preparedDays.has(day)) return;
       const plan = planTodayMaterialisation({
@@ -1091,15 +1157,13 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
           day: item.day,
           routineId: item.routineId,
           checked: item.checkedAt !== null,
+          rank: item.rank,
         })),
-        routines: [],
+        routines: routineRows,
       });
       if (!plan) return;
-      for (const id of plan.moveIds) {
-        const item = todayItems.find((row) => row.id === id);
-        if (item) item.day = day;
-      }
       for (const routine of plan.routines) {
+        if (todayItems.some((item) => item.day === day && item.routineId === routine.routineId)) continue;
         todayCounter += 1;
         todayItems.push({
           id: `today-${todayCounter}`,
@@ -1112,6 +1176,19 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
           createdAt: new Date(Date.UTC(2026, 9, 27, 0, 0, todayCounter)).toISOString(),
         });
       }
+      const lowest = todayItems
+        .filter((item) => item.day === day)
+        .map((item) => item.rank)
+        .sort((a, b) => (a < b ? -1 : 1))[0] ?? null;
+      const moving = plan.moveIds
+        .map((id) => todayItems.find((item) => item.id === id))
+        .filter((item): item is (typeof todayItems)[number] => item !== undefined);
+      for (const next of rolloverRanks(lowest, moving)) {
+        const item = todayItems.find((row) => row.id === next.id);
+        if (!item) continue;
+        item.day = day;
+        item.rank = next.rank;
+      }
       preparedDays.add(day);
     },
     async listToday(day) {
@@ -1120,19 +1197,54 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
         .sort((a, b) => compareRank(a.rank, b.rank) || a.createdAt.localeCompare(b.createdAt))
         .map(todayEntry);
     },
+    async listTodayPlan(day) {
+      const stored = todayItems.filter((item) => item.day === day);
+      const present = new Set(stored.flatMap((item) => (item.routineId ? [item.routineId] : [])));
+      const previews = routineRows
+        .filter((routine) => routine.active && dayMatches(routine.days, day) && !present.has(routine.id))
+        .map((routine) => ({
+          id: `preview:${routine.id}`,
+          day,
+          text: routine.text,
+          task_id: routine.taskId,
+          task_title: null,
+          circle_id: null,
+          circle_name: null,
+          circle_color: null,
+          routine_id: routine.id,
+          repeat_days: routine.days,
+          rank: routine.rank,
+          checked_at: null,
+        }));
+      return [...stored.map(todayEntry), ...previews].sort((a, b) => compareRank(a.rank, b.rank));
+    },
     async addTodayItem(input) {
-      await this.ensureToday(input.day);
+      if (input.asOf == null || input.day <= input.asOf) await this.ensureToday(input.day);
       if (input.taskId) {
         const task = tasks.find((item) => item.id === input.taskId);
         if (!task) throw new TroveError('Task not found');
         if (todayItems.some((item) => item.day === input.day && item.taskId === input.taskId)) {
           throw new TroveError('That task is already on this day');
         }
+        if (
+          routineRows.some(
+            (routine) => routine.active && routine.taskId === input.taskId && dayMatches(routine.days, input.day),
+          )
+        ) {
+          throw new TroveError('That task is already on this day');
+        }
       }
-      const ranks = todayItems
-        .filter((item) => item.day === input.day)
-        .map((item) => item.rank)
-        .sort((a, b) => (a < b ? -1 : 1));
+      const present = new Set(
+        todayItems.flatMap((item) =>
+          item.day === input.day && item.routineId ? [item.routineId] : [],
+        ),
+      );
+      const ranks = [
+        ...todayItems.filter((item) => item.day === input.day).map((item) => item.rank),
+        ...routineRows
+          .filter((routine) => routine.active && dayMatches(routine.days, input.day) && !present.has(routine.id))
+          .map((routine) => routine.rank),
+      ].sort((a, b) => (a < b ? -1 : 1));
       todayCounter += 1;
       const item = {
         id: `today-${todayCounter}`,

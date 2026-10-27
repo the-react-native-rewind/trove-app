@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { qk } from '@/lib/queryClient';
+import { compareRank } from '@/lib/rank';
 import { supabase } from '@/lib/supabase';
-import type { TodayLine } from '@/lib/today';
+import { localToday, previewRoutineIds, type TodayLine } from '@/lib/today';
 import { useAuth } from '@/providers/AuthProvider';
 
 type TaskJoin = {
@@ -86,16 +87,78 @@ export function useTodayList(day: string) {
   });
 }
 
+type RoutineRow = {
+  id: string;
+  text: string | null;
+  task_id: string | null;
+  days: number;
+  rank: string;
+  active: boolean;
+  created_at: string;
+  task: TaskJoin | TaskJoin[] | null;
+};
+
+const ROUTINE_SELECT =
+  'id, text, task_id, days, rank, active, created_at, task:tasks(id, title, status, space:spaces(id, name, color))';
+
+async function fetchActiveRoutines(): Promise<RoutineRow[]> {
+  const { data, error } = await supabase.from('today_routines').select(ROUTINE_SELECT).eq('active', true);
+  if (error) throw error;
+  return (data ?? []) as unknown as RoutineRow[];
+}
+
+function routineLine(day: string, routine: RoutineRow): TodayLine {
+  const task = one(routine.task);
+  const space = one(task?.space);
+  return {
+    id: `preview:${routine.id}`,
+    day,
+    text: routine.text,
+    taskId: routine.task_id,
+    taskTitle: task?.title ?? null,
+    taskStatus: task?.status ?? null,
+    spaceId: space?.id ?? null,
+    spaceName: space?.name ?? null,
+    spaceColor: space?.color ?? null,
+    routineId: routine.id,
+    repeatDays: routine.days,
+    routineActive: routine.active,
+    rank: routine.rank,
+    checkedAt: null,
+    createdAt: routine.created_at,
+    virtual: true,
+  };
+}
+
 /**
- * Yesterday, without preparing it. Preparing a past day would invent lines
- * the person never wrote down.
+ * Tomorrow, without preparing it. Stored plans plus routines due that
+ * weekday. The routines are not written as rows.
  */
-export function useTodayPeek(day: string, enabled: boolean) {
+export function useTomorrowPlan(day: string) {
   const { userId } = useAuth();
   return useQuery({
-    queryKey: qk.todayPeek(userId ?? '', day),
-    enabled: !!userId && !!day && enabled,
-    queryFn: () => fetchTodayLines(day),
+    queryKey: qk.tomorrow(userId ?? '', day),
+    enabled: !!userId && !!day,
+    queryFn: async (): Promise<TodayLine[]> => {
+      const [items, routines] = await Promise.all([fetchTodayLines(day), fetchActiveRoutines()]);
+      const previews = new Set(
+        previewRoutineIds(
+          day,
+          items.flatMap((line) => (line.routineId ? [line.routineId] : [])),
+          routines.map((routine) => ({
+            id: routine.id,
+            text: routine.text,
+            taskId: routine.task_id,
+            days: routine.days,
+            rank: routine.rank,
+            active: routine.active,
+          })),
+        ),
+      );
+      return [...items, ...routines.filter((routine) => previews.has(routine.id)).map((routine) => routineLine(day, routine))].sort(
+        (a, b) => compareRank(a.rank, b.rank) || a.createdAt.localeCompare(b.createdAt),
+      );
+    },
   });
 }
 
@@ -142,18 +205,20 @@ function useInvalidateToday() {
   return () => {
     if (!userId) return;
     void qc.invalidateQueries({ queryKey: ['today', userId] });
-    void qc.invalidateQueries({ queryKey: ['today-peek', userId] });
+    void qc.invalidateQueries({ queryKey: ['tomorrow', userId] });
   };
 }
 
 export function useAddTodayText(day: string) {
   const invalidate = useInvalidateToday();
+  const asOf = localToday();
   return useMutation({
     mutationFn: async (text: string) => {
       const { error } = await supabase.rpc('add_today_item', {
         p_day: day,
         p_text: text,
         p_task_id: null,
+        p_as_of: asOf,
       });
       if (error) throw error;
     },
@@ -163,12 +228,14 @@ export function useAddTodayText(day: string) {
 
 export function useAddTodayTask(day: string) {
   const invalidate = useInvalidateToday();
+  const asOf = localToday();
   return useMutation({
     mutationFn: async (taskId: string) => {
       const { error } = await supabase.rpc('add_today_item', {
         p_day: day,
         p_text: null,
         p_task_id: taskId,
+        p_as_of: asOf,
       });
       if (error) throw error;
     },
@@ -226,6 +293,54 @@ export function useSetTodayRepeat() {
         p_item_id: input.id,
         p_days: input.days,
       });
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+}
+
+export function useMoveTodayItemToDay() {
+  const invalidate = useInvalidateToday();
+  const asOf = localToday();
+  return useMutation({
+    mutationFn: async (input: { id: string; day: string }) => {
+      const { error } = await supabase.rpc('move_today_item_to_day', {
+        p_item_id: input.id,
+        p_day: input.day,
+        p_as_of: asOf,
+      });
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+}
+
+/** Put a routine preview onto today. Tomorrow still shows the schedule. */
+export function usePlaceTodayRoutine() {
+  const invalidate = useInvalidateToday();
+  const asOf = localToday();
+  return useMutation({
+    mutationFn: async (routineId: string) => {
+      const { error } = await supabase.rpc('place_today_routine', {
+        p_routine_id: routineId,
+        p_as_of: asOf,
+      });
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateTodayRoutine() {
+  const invalidate = useInvalidateToday();
+  return useMutation({
+    mutationFn: async (input: { id: string; text?: string; days?: number; active?: boolean; rank?: string }) => {
+      const patch: { text?: string; days?: number; active?: boolean; rank?: string } = {};
+      if (input.text !== undefined) patch.text = input.text;
+      if (input.days !== undefined) patch.days = input.days;
+      if (input.active !== undefined) patch.active = input.active;
+      if (input.rank !== undefined) patch.rank = input.rank;
+      const { error } = await supabase.from('today_routines').update(patch).eq('id', input.id);
       if (error) throw error;
     },
     onSuccess: invalidate,

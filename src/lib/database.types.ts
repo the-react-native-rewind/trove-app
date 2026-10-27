@@ -424,9 +424,14 @@ export type Database = {
       }
       ensure_today: { Args: { p_day: string }; Returns: undefined }
       add_today_item: {
-        Args: { p_day: string; p_text?: string | null; p_task_id?: string | null }
+        Args: { p_day: string; p_text?: string | null; p_task_id?: string | null; p_as_of?: string | null }
         Returns: string
       }
+      move_today_item_to_day: {
+        Args: { p_item_id: string; p_day: string; p_as_of: string }
+        Returns: undefined
+      }
+      place_today_routine: { Args: { p_routine_id: string; p_as_of: string }; Returns: string }
       move_today_item: { Args: { p_item_id: string; p_rank: string }; Returns: undefined }
       rename_today_item: { Args: { p_item_id: string; p_text: string }; Returns: undefined }
       set_today_repeat: {
