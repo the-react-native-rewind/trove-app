@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { compareRank, rankAtBottom } from './rank';
 import {
   EVERY_DAY,
   TODAY_VIEW_ID,
@@ -9,8 +10,11 @@ import {
   dayMatches,
   daysFromWeekdays,
   planTodayMaterialisation,
+  previewRoutineIds,
   repeatLabel,
+  rolloverRanks,
   shiftDay,
+  shouldPrepareDay,
   weekdayBit,
   weekdayIndex,
   weekdaysFromDays,
@@ -57,7 +61,7 @@ const routines: TodayRoutinePlan[] = [
 ];
 
 function item(partial: Partial<TodaySourceItem> & Pick<TodaySourceItem, 'id' | 'day'>): TodaySourceItem {
-  return { routineId: null, checked: false, ...partial };
+  return { routineId: null, checked: false, rank: 'a0', ...partial };
 }
 
 test('a new day moves unticked one-offs and adds routines that are due', () => {
@@ -121,6 +125,42 @@ test('reading an earlier day does not pull lines back off a later one', () => {
   );
 });
 
+test('rolled lines keep their order and land under lines already on the day', () => {
+  const plan = planTodayMaterialisation({
+    day: TUESDAY,
+    alreadyMaterialised: false,
+    laterDayMaterialised: false,
+    earlierItems: [
+      item({ id: 'later', day: MONDAY, rank: 'a0' }),
+      item({ id: 'first', day: MONDAY, rank: 'a2' }),
+      item({ id: 'planned', day: TUESDAY, rank: 'a5' }),
+      item({ id: 'done', day: MONDAY, rank: 'a3', checked: true }),
+    ],
+    routines,
+  });
+  if (!plan) throw new Error('expected a plan');
+  assert.deepEqual(plan.moveIds, ['first', 'later']);
+  const placed = rolloverRanks('a1', [
+    { id: 'first', rank: 'a2' },
+    { id: 'later', rank: 'a0' },
+  ]);
+  assert.deepEqual(placed.map((line) => line.id), ['first', 'later']);
+  assert.equal(placed[0]?.rank, rankAtBottom('a1'));
+  assert.equal(placed[1]?.rank, rankAtBottom(placed[0]?.rank ?? ''));
+  assert.ok(compareRank('a1', placed[0]?.rank ?? '') < 0);
+  assert.ok(compareRank(placed[0]?.rank ?? '', placed[1]?.rank ?? '') < 0);
+  const kept = rolloverRanks(null, [{ id: 'first', rank: 'a2' }]);
+  assert.equal(kept[0]?.rank, 'a2');
+});
+
+test('tomorrow is not prepared, and a routine already on the day is not previewed twice', () => {
+  assert.equal(shouldPrepareDay(TUESDAY, MONDAY), false);
+  assert.equal(shouldPrepareDay(MONDAY, MONDAY), true);
+  assert.equal(shouldPrepareDay('2026-10-25', MONDAY), true);
+  assert.deepEqual(previewRoutineIds(TUESDAY, ['stretch'], routines), ['office']);
+  assert.deepEqual(previewRoutineIds(SATURDAY, [], routines), ['stretch']);
+});
+
 test('the migration keeps Today private and prepares a day in SQL', () => {
   const sql = readFileSync(new URL('../../supabase/migrations/0026_today.sql', import.meta.url), 'utf8');
   for (const pattern of [
@@ -137,4 +177,17 @@ test('the migration keeps Today private and prepares a day in SQL', () => {
   ]) {
     assert.ok(pattern.test(sql), pattern.source);
   }
+
+  const followUp = readFileSync(new URL('../../supabase/migrations/0027_today_tomorrow.sql', import.meta.url), 'utf8');
+  for (const pattern of [
+    /p_day <= v_as_of/,
+    /rank_before\(v_floor\)/,
+    /on conflict \(user_id, day, routine_id\) where routine_id is not null do nothing/,
+    /function public\.move_today_item_to_day/,
+    /function public\.place_today_routine/,
+    /Ticked lines stay on their day/,
+  ]) {
+    assert.ok(pattern.test(followUp), pattern.source);
+  }
+  assert.equal(/create policy/.test(followUp), false);
 });

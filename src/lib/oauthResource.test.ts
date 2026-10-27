@@ -90,7 +90,7 @@ test('server info carries the website and icons', () => {
   const info = mcpImplementation('https://troving.app/');
   assert.equal(info.title, 'Trove');
   assert.equal(info.version, SERVER_VERSION);
-  assert.equal(info.version, '1.2.0');
+  assert.equal(info.version, '1.3.0');
   assert.equal(info.websiteUrl, 'https://troving.app');
   assert.equal(info.icons[0]?.src, 'https://troving.app/apple-touch-icon.png');
   assert.deepEqual(info.icons[0]?.sizes, ['180x180']);

@@ -173,8 +173,8 @@ Send the OAuth access token, or `Authorization: Bearer trove_…`. The public ho
 | `add_task_attachment` | Attach an image or video to a task you can edit. A URL is downloaded by the server. Returns the attachment id. |
 | `list_members` | People in a circle: user id, display name, role, and whether they joined as an agent. No email addresses. |
 | `invite_to_circle` | Invite someone by email. Owners and admins only. **This sends an email** to that address. Limited to 25 invites in 24 hours. Optional `agent` marks the invite as a bot. |
-| `list_today` | The signed-in person's private Today list for one date. The first read prepares that day. |
-| `add_today_item` | Append a private Today line, either text or a task they can see. |
+| `list_today` | The signed-in person's private Today list for one date. Today is prepared on first read. A later day is a plan and is not prepared. |
+| `add_today_item` | Append a private Today line, either text or a task they can see. Tomorrow is stored without preparing the day. |
 
 Each tool has a human title and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` values. Reads are not destructive. Completing a task is not destructive, because it can be undone. Updating, assigning, and moving can remove data, so those are marked destructive. Inviting someone and attaching a file from a URL reach outside Trove, so those are marked open-world. `list_today` prepares a day the first time you ask for it, so it is safe to retry but it is not a pure read.
 
@@ -182,11 +182,15 @@ Each tool has a human title and explicit `readOnlyHint`, `destructiveHint`, `ide
 
 `list_today` and `add_today_item` use the private checklist from the app. It is not a circle, and other people never see it.
 
-`day` is `YYYY-MM-DD`. It defaults to the current UTC date. The app uses the person's device-local date, so pass that when you know it.
+`day` and `local_today` are `YYYY-MM-DD`. Both default to the current UTC date. The app uses the person's device-local date, so pass that as `local_today`, and pass `day` for the date you mean. A day after `local_today` is tomorrow's plan.
 
-The first request for a day prepares it. Unticked one-off lines move forward from the most recent earlier day that has lines. Ticked lines stay where they were ticked. Active routines scheduled for that weekday are added unticked. A routine's `repeat_days` is a bitmask, bit 0 = Sunday through bit 6 = Saturday (127 is every day, 62 is weekdays). Preparing an earlier date after a later one does not pull lines backward.
+Planning tomorrow does not prepare that day. Unticked lines stay on today, and no marker is written, so ticking them off today still counts. Routines due tomorrow are included in `list_today` as previews. Their ids start with `preview:`. They are not stored rows yet.
 
-`add_today_item` takes `text` or `task_id`, not both, and appends the line. The same task cannot be on the day twice.
+The first request for today, or any earlier date, prepares it. Routines are inserted at the ranks they were left in. A routine already stored on that date is kept. Unticked one-off lines then move forward from the most recent earlier day, under every line already there, keeping their own order. Ticked lines stay where they were ticked. Preparing an earlier date after a later one does not pull lines backward.
+
+`add_today_item` takes `text` or `task_id`, not both, and appends the line. The same task cannot be on the day twice, including when a routine already shows it. Pass `local_today` when `day` is tomorrow so the line is saved without preparing the day.
+
+A routine's `repeat_days` is a bitmask, bit 0 = Sunday through bit 6 = Saturday (127 is every day, 62 is weekdays).
 
 Circle arguments are `circle_id`, `circle_name` (case-insensitive, must match one of yours), or `personal: true`. The name **Mine** is not a circle. Ask for `list_my_tasks`, or set `personal: true` for the private circle.
 

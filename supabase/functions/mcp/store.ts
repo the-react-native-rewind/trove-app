@@ -25,6 +25,7 @@ import {
   type TaskWrite,
   type TodayEntry,
   type TroveStore,
+  weekdayOfDate,
   taskMediaPath,
 } from '../_shared/mcpTools.ts';
 import { readEnv, userClient } from './auth.ts';
@@ -82,6 +83,7 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     addTaskAttachment: (input) => addTaskAttachment(db, userId, input),
     ensureToday: (day) => ensureToday(db, day),
     listToday: (day) => listToday(db, userId, day),
+    listTodayPlan: (day) => listTodayPlan(db, userId, day),
     addTodayItem: (input) => addTodayItem(db, input),
   };
 }
@@ -602,14 +604,37 @@ async function listToday(db: SupabaseClient, userId: string, day: string): Promi
   return ((data ?? []) as TodayRow[]).map(mapTodayRow);
 }
 
+async function listTodayPlan(db: SupabaseClient, userId: string, day: string): Promise<TodayEntry[]> {
+  const { data, error } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('user_id', userId)
+    .eq('day', day);
+  throwIf(error);
+  const items = ((data ?? []) as TodayRow[]).map(mapTodayRow);
+  const routines = await db
+    .from('today_routines')
+    .select('id, text, task_id, days, rank, active, task:tasks(id, title, space:spaces(id, name, color))')
+    .eq('user_id', userId)
+    .eq('active', true);
+  throwIf(routines.error);
+  const present = new Set(items.flatMap((item) => (item.routine_id ? [item.routine_id] : [])));
+  const weekday = weekdayOfDate(day);
+  const previews = ((routines.data ?? []) as RoutinePreviewRow[])
+    .filter((routine) => weekday !== null && (routine.days & (1 << weekday)) !== 0 && !present.has(routine.id))
+    .map((routine) => previewEntry(day, routine));
+  return [...items, ...previews].sort((a, b) => rankFirst(a.rank, b.rank));
+}
+
 async function addTodayItem(
   db: SupabaseClient,
-  input: { day: string; text: string | null; taskId: string | null },
+  input: { day: string; text: string | null; taskId: string | null; asOf: string | null },
 ): Promise<TodayEntry> {
   const { data, error } = await db.rpc('add_today_item', {
     p_day: input.day,
     p_text: input.text,
     p_task_id: input.taskId,
+    p_as_of: input.asOf,
   });
   throwIf(error);
   const id = data as string;
@@ -621,6 +646,39 @@ async function addTodayItem(
   throwIf(readError);
   if (!row) throw new TroveError('Line not found');
   return mapTodayRow(row as TodayRow);
+}
+
+type RoutinePreviewRow = {
+  id: string;
+  text: string | null;
+  task_id: string | null;
+  days: number;
+  rank: string;
+  task: TodayTaskJoin | TodayTaskJoin[] | null;
+};
+
+function previewEntry(day: string, routine: RoutinePreviewRow): TodayEntry {
+  const task = one(routine.task);
+  const space = one(task?.space ?? null);
+  return {
+    id: `preview:${routine.id}`,
+    day,
+    text: routine.text,
+    task_id: routine.task_id,
+    task_title: task?.title ?? null,
+    circle_id: space?.id ?? null,
+    circle_name: space?.name ?? null,
+    circle_color: space?.color ?? null,
+    routine_id: routine.id,
+    repeat_days: routine.days,
+    rank: routine.rank,
+    checked_at: null,
+  };
+}
+
+function rankFirst(a: string, b: string): number {
+  if (a === b) return 0;
+  return a > b ? -1 : 1;
 }
 
 function mapTodayRow(row: TodayRow): TodayEntry {

@@ -3,7 +3,6 @@ import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -26,11 +25,14 @@ import {
   useCheckTodayItem,
   useDeleteTodayItem,
   useMoveTodayItem,
+  useMoveTodayItemToDay,
   useOpenTaskChoices,
+  usePlaceTodayRoutine,
   useRenameTodayItem,
   useSetTodayRepeat,
   useTodayList,
-  useTodayPeek,
+  useTomorrowPlan,
+  useUpdateTodayRoutine,
 } from '@/data/today';
 import { useMoveTaskStatus } from '@/data/tasks';
 import { useIsWide } from '@/hooks/useIsWide';
@@ -81,8 +83,8 @@ export function TodayView() {
   const insets = useSafeAreaInsets();
   const isWide = useIsWide();
   const today = localToday();
-  const yesterday = shiftDay(today, -1);
-  const [peeking, setPeeking] = useState(false);
+  const tomorrow = shiftDay(today, 1);
+  const [when, setWhen] = useState<'today' | 'tomorrow'>('today');
   const [draft, setDraft] = useState('');
   const [lines, setLines] = useState<TodayLine[]>([]);
   const [menuLine, setMenuLine] = useState<TodayLine | null>(null);
@@ -95,12 +97,18 @@ export function TodayView() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [taskSearch, setTaskSearch] = useState('');
 
+  const planningTomorrow = when === 'tomorrow';
+  const activeDay = planningTomorrow ? tomorrow : today;
   const todayQuery = useTodayList(today);
-  const peekQuery = useTodayPeek(yesterday, peeking);
-  const addText = useAddTodayText(today);
-  const addTask = useAddTodayTask(today);
+  const tomorrowQuery = useTomorrowPlan(tomorrow);
+  const activeQuery = planningTomorrow ? tomorrowQuery : todayQuery;
+  const addText = useAddTodayText(activeDay);
+  const addTask = useAddTodayTask(activeDay);
   const check = useCheckTodayItem();
   const move = useMoveTodayItem();
+  const moveDay = useMoveTodayItemToDay();
+  const placeRoutine = usePlaceTodayRoutine();
+  const updateRoutine = useUpdateTodayRoutine();
   const rename = useRenameTodayItem();
   const setRepeat = useSetTodayRepeat();
   const remove = useDeleteTodayItem();
@@ -108,11 +116,9 @@ export function TodayView() {
   const taskChoices = useOpenTaskChoices(taskSearch, pickerOpen);
 
   useEffect(() => {
-    if (todayQuery.data) setLines(todayQuery.data);
-  }, [todayQuery.data]);
+    if (activeQuery.data) setLines(activeQuery.data);
+  }, [when, activeQuery.data]);
 
-  const activeQuery = peeking ? peekQuery : todayQuery;
-  const visibleLines = peeking ? (peekQuery.data ?? []) : lines;
   const takenTaskIds = new Set(lines.flatMap((line) => (line.taskId ? [line.taskId] : [])));
   const choices = (taskChoices.data ?? []).filter((choice) => !takenTaskIds.has(choice.id));
 
@@ -154,8 +160,16 @@ export function TodayView() {
     }
   }
 
+  function selectDay(next: 'today' | 'tomorrow') {
+    if (next === when) return;
+    hapticLight();
+    setWhen(next);
+    const nextLines = next === 'tomorrow' ? (tomorrowQuery.data ?? []) : (todayQuery.data ?? []);
+    setLines(nextLines);
+  }
+
   function onToggle(line: TodayLine) {
-    if (peeking) return;
+    if (planningTomorrow) return;
     hapticLight();
     if (line.checkedAt) {
       check.mutate({ id: line.id, checked: false });
@@ -191,10 +205,12 @@ export function TodayView() {
     const nextRank = rankAfterDrop(data[to - 1]?.rank, data[to + 1]?.rank);
     if (nextRank === dropped.rank) return;
     setLines(data.map((line) => (line.id === dropped.id ? { ...line, rank: nextRank } : line)));
-    move.mutate(
-      { id: dropped.id, rank: nextRank },
-      { onError: () => void todayQuery.refetch() },
-    );
+    const refetch = () => void activeQuery.refetch();
+    if (dropped.virtual && dropped.routineId) {
+      updateRoutine.mutate({ id: dropped.routineId, rank: nextRank }, { onError: refetch });
+      return;
+    }
+    move.mutate({ id: dropped.id, rank: nextRank }, { onError: refetch });
   }
 
   function openRepeat(line: TodayLine) {
@@ -227,7 +243,11 @@ export function TodayView() {
       return;
     }
     try {
-      await setRepeat.mutateAsync({ id: repeatLine.id, days });
+      if (repeatLine.virtual && repeatLine.routineId) {
+        await updateRoutine.mutateAsync({ id: repeatLine.routineId, days });
+      } else {
+        await setRepeat.mutateAsync({ id: repeatLine.id, days });
+      }
       setRepeatLine(null);
     } catch (error) {
       alertDialog('Couldn’t save that repeat', messageOf(error));
@@ -237,7 +257,11 @@ export function TodayView() {
   async function stopRepeat() {
     if (!repeatLine) return;
     try {
-      await setRepeat.mutateAsync({ id: repeatLine.id, days: 0 });
+      if (repeatLine.virtual && repeatLine.routineId) {
+        await updateRoutine.mutateAsync({ id: repeatLine.routineId, active: false });
+      } else {
+        await setRepeat.mutateAsync({ id: repeatLine.id, days: 0 });
+      }
       setRepeatLine(null);
     } catch (error) {
       alertDialog('Couldn’t stop that repeat', messageOf(error));
@@ -249,7 +273,11 @@ export function TodayView() {
     const text = editDraft.replace(/\s+/g, ' ').trim();
     if (!text) return;
     try {
-      await rename.mutateAsync({ id: editLine.id, text });
+      if (editLine.virtual && editLine.routineId) {
+        await updateRoutine.mutateAsync({ id: editLine.routineId, text });
+      } else {
+        await rename.mutateAsync({ id: editLine.id, text });
+      }
       setEditLine(null);
     } catch (error) {
       alertDialog('Couldn’t save that line', messageOf(error));
@@ -261,15 +289,44 @@ export function TodayView() {
     const repeating = line.routineId !== null && line.routineActive;
     const ok = await confirmDialog({
       title: repeating ? 'Delete this repeating line?' : 'Delete this line?',
-      message: repeating ? 'It leaves today, and it won’t come back on later days.' : undefined,
+      message: repeating
+        ? line.virtual
+          ? 'It won’t come back on later days.'
+          : planningTomorrow
+            ? 'It leaves tomorrow, and it won’t come back on later days.'
+            : 'It leaves today, and it won’t come back on later days.'
+        : undefined,
       confirmLabel: 'Delete',
       destructive: true,
     });
     if (!ok) return;
     try {
-      await remove.mutateAsync(line.id);
+      if (line.virtual && line.routineId) {
+        await updateRoutine.mutateAsync({ id: line.routineId, active: false });
+      } else {
+        await remove.mutateAsync(line.id);
+      }
     } catch (error) {
       alertDialog('Couldn’t delete that line', messageOf(error));
+    }
+  }
+
+  function routineAlreadyToday(line: TodayLine): boolean {
+    if (!line.routineId) return false;
+    return (todayQuery.data ?? []).some((item) => item.routineId === line.routineId);
+  }
+
+  async function moveLine(line: TodayLine) {
+    setMenuLine(null);
+    try {
+      if (planningTomorrow) {
+        if (line.virtual && line.routineId) await placeRoutine.mutateAsync(line.routineId);
+        else await moveDay.mutateAsync({ id: line.id, day: today });
+      } else {
+        await moveDay.mutateAsync({ id: line.id, day: tomorrow });
+      }
+    } catch (error) {
+      alertDialog('Couldn’t move that line', messageOf(error));
     }
   }
 
@@ -280,9 +337,9 @@ export function TodayView() {
       <View style={[styles.row, isActive && styles.rowActive]}>
         <Pressable
           onPress={() => onToggle(line)}
-          disabled={peeking}
+          disabled={planningTomorrow}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked, disabled: peeking }}
+          accessibilityState={{ checked, disabled: planningTomorrow }}
           accessibilityLabel={checked ? `Untick ${title}` : `Tick ${title}`}
           hitSlop={6}
           style={styles.checkbox}
@@ -299,7 +356,6 @@ export function TodayView() {
             if (line.taskId) router.push(`/task/${line.taskId}` as never);
           }}
           onLongPress={() => {
-            if (peeking) return;
             hapticLight();
             setMenuLine(line);
           }}
@@ -331,7 +387,7 @@ export function TodayView() {
             </View>
           ) : null}
         </Pressable>
-        {drag && !peeking ? (
+        {drag ? (
           <Pressable
             onPressIn={drag}
             accessibilityRole="button"
@@ -353,24 +409,26 @@ export function TodayView() {
       icon={activeQuery.isError ? 'cloud-offline-outline' : 'sunny-outline'}
       title={
         activeQuery.isError
-          ? 'Couldn’t load today'
-          : peeking
-            ? 'Nothing written down'
+          ? planningTomorrow
+            ? 'Couldn’t load tomorrow'
+            : 'Couldn’t load today'
+          : planningTomorrow
+            ? 'Nothing planned'
             : 'A clear day'
       }
       body={
         activeQuery.isError
           ? 'Pull to refresh and try again.'
-          : peeking
-            ? 'Yesterday has no ticked lines or routines left on it.'
+          : planningTomorrow
+            ? 'Write a line for tomorrow. Routines that fall on that day show here too.'
             : 'Write a line at the bottom. Type @ to pull in a task.'
       }
     />
   );
 
-  const listHeader = peeking ? (
-    <Text variant="meta" color={colors.inkSoft} style={styles.peekNote}>
-      A look back. Unticked one-off lines have already moved on.
+  const listHeader = planningTomorrow ? (
+    <Text variant="meta" color={colors.inkSoft} style={styles.planNote}>
+      A plan. Lines you still finish today stay there until tomorrow arrives.
     </Text>
   ) : null;
 
@@ -407,42 +465,22 @@ export function TodayView() {
           </Pressable>
         ) : null}
         <View style={styles.titleBlock}>
-          <Text variant="screenTitle">{peeking ? 'Yesterday' : 'Today'}</Text>
+          <Text variant="screenTitle">{planningTomorrow ? 'Tomorrow' : 'Today'}</Text>
           <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
-            {peeking ? friendlyDay(yesterday) : `Just for you · ${friendlyDay(today)}`}
+            {planningTomorrow ? `A plan · ${friendlyDay(tomorrow)}` : `Just for you · ${friendlyDay(today)}`}
           </Text>
         </View>
-        <Pressable
-          onPress={() => {
-            hapticLight();
-            setPeeking((value) => !value);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={peeking ? 'Back to today' : 'Peek at yesterday'}
-          style={styles.peekButton}
-        >
-          <Text variant="meta" color={colors.brandDeep}>
-            {peeking ? 'Today' : 'Yesterday'}
-          </Text>
-        </Pressable>
+      </View>
+      <View style={[styles.switchRow, isWide && styles.headerWide]}>
+        <DaySwitch label="Today" selected={!planningTomorrow} onPress={() => selectDay('today')} />
+        <DaySwitch label="Tomorrow" selected={planningTomorrow} onPress={() => selectDay('tomorrow')} />
       </View>
 
       <View style={styles.listFrame}>
-        {activeQuery.isLoading ? (
+        {activeQuery.isLoading && !activeQuery.data ? (
           <View style={styles.center}>
             <ActivityIndicator color={colors.brand} />
           </View>
-        ) : peeking ? (
-          <FlatList
-            data={visibleLines}
-            keyExtractor={(line) => line.id}
-            renderItem={({ item }) => renderLine(item)}
-            ListHeaderComponent={listHeader}
-            ListEmptyComponent={empty}
-            contentContainerStyle={visibleLines.length === 0 ? styles.emptyList : styles.listContent}
-            refreshControl={refresh}
-            keyboardShouldPersistTaps="handled"
-          />
         ) : (
           <DraggableFlatList
             data={lines}
@@ -463,13 +501,12 @@ export function TodayView() {
         )}
       </View>
 
-      {peeking ? null : (
-        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
           <TextInput
             value={draft}
             onChangeText={onDraftChange}
             onSubmitEditing={() => void submitDraft()}
-            placeholder="Add a line, or @ a task"
+            placeholder={planningTomorrow ? 'Add a line for tomorrow' : 'Add a line, or @ a task'}
             placeholderTextColor={colors.inkFaint}
             returnKeyType="done"
             blurOnSubmit={false}
@@ -491,7 +528,6 @@ export function TodayView() {
             </Text>
           </Pressable>
         </View>
-      )}
 
       <Sheet
         visible={menuLine !== null}
@@ -519,6 +555,12 @@ export function TodayView() {
             if (menuLine) openRepeat(menuLine);
           }}
         />
+        {!planningTomorrow && menuLine && !menuLine.checkedAt ? (
+          <SheetAction label="Move to tomorrow" onPress={() => menuLine && void moveLine(menuLine)} />
+        ) : null}
+        {planningTomorrow && menuLine && !(menuLine.virtual && routineAlreadyToday(menuLine)) ? (
+          <SheetAction label="Move to today" onPress={() => menuLine && void moveLine(menuLine)} />
+        ) : null}
         <SheetAction label="Delete" destructive onPress={() => menuLine && void deleteLine(menuLine)} />
       </Sheet>
 
@@ -647,6 +689,29 @@ export function TodayView() {
   );
 }
 
+function DaySwitch({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      style={[styles.switchItem, selected && styles.switchOn]}
+    >
+      <Text variant="bodyMedium" color={selected ? colors.brandDeep : colors.inkSoft}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 function Sheet({
   visible,
   title,
@@ -759,12 +824,19 @@ const styles = StyleSheet.create({
   headerWide: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
   iconButton: { padding: spacing.xs },
   titleBlock: { flex: 1, gap: 2 },
-  peekButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  switchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  switchItem: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+  },
+  switchOn: { backgroundColor: colors.brandSoft },
   listFrame: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: spacing.lg },
   emptyList: { flexGrow: 1 },
-  peekNote: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  planNote: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   row: {
     minHeight: 52,
     flexDirection: 'row',

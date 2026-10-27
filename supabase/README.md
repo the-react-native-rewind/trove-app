@@ -34,7 +34,7 @@ On the hosted project, migrations 0001–0011 are already applied. Apply `0012_a
 
 `0019_task_rank_admin.sql` lets only an owner or admin change `tasks.rank`. Members can still edit the other columns. A new task and a move between circles still receive a rank from the database.
 
-Migrations `0020` through `0026` follow in filename order. `0026_today.sql` adds the private Today list (`today_routines`, `today_items`, `today_days`) and `ensure_today`. Apply it before deploying the MCP function so `list_today` and `add_today_item` can prepare a day:
+Migrations `0020` through `0027` follow in filename order. `0026_today.sql` adds the private Today list (`today_routines`, `today_items`, `today_days`) and `ensure_today`. `0027_today_tomorrow.sql` lets a future day be planned without preparing it, and places rolled-over lines under routines and plans when that day arrives. Apply `0027` before deploying the MCP function so `list_today` and `add_today_item` follow those rules:
 
 ```bash
 supabase functions deploy mcp --no-verify-jwt

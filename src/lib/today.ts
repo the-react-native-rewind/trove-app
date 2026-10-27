@@ -1,5 +1,8 @@
+import { compareRank, rankAtBottom } from './rank';
+
 /**
  * Today is a private, per-user checklist. Each local date has its own list.
+ * Tomorrow can be planned the evening before without preparing that day.
  * The database function ensure_today is the source of truth for materialising
  * a day; planTodayMaterialisation mirrors that decision so tests can lock it.
  *
@@ -99,7 +102,46 @@ export type TodaySourceItem = {
   day: string;
   routineId: string | null;
   checked: boolean;
+  /** Higher keys sort first. Used to keep rolled lines in their old order. */
+  rank: string;
 };
+
+/** A day after the person's local today is a plan, and must not be prepared. */
+export function shouldPrepareDay(day: string, asOf: string): boolean {
+  return day <= asOf;
+}
+
+/**
+ * Ranks for unticked one-offs that move onto a day which already has lines.
+ * `movedHighestFirst` is the previous top-to-bottom order. Each new key sits
+ * under `existingLowest`, so the rolled lines follow routines and plans.
+ * An empty destination keeps the old ranks.
+ */
+export function rolloverRanks(
+  existingLowest: string | null,
+  movedHighestFirst: readonly { id: string; rank: string }[],
+): { id: string; rank: string }[] {
+  if (!existingLowest) {
+    return movedHighestFirst.map((line) => ({ id: line.id, rank: line.rank }));
+  }
+  let floor = existingLowest;
+  return movedHighestFirst.map((line) => {
+    floor = rankAtBottom(floor);
+    return { id: line.id, rank: floor };
+  });
+}
+
+/** Active routines due on this weekday that are not already stored as rows. */
+export function previewRoutineIds(
+  day: string,
+  presentRoutineIds: readonly string[],
+  routines: readonly TodayRoutinePlan[],
+): string[] {
+  const present = new Set(presentRoutineIds);
+  return routines
+    .filter((routine) => routine.active && dayMatches(routine.days, day) && !present.has(routine.id))
+    .map((routine) => routine.id);
+}
 
 export type TodayRoutinePlan = {
   id: string;
@@ -132,8 +174,10 @@ export type PlannedToday = {
  * Returns null when that day was already prepared.
  *
  * One-offs move (they do not stay behind as a second copy) from the most
- * recent earlier day that already has rows. A later prepared day blocks that
- * move. Active routines scheduled for this weekday are added fresh and unticked.
+ * recent earlier day that already has rows. moveIds are that group's previous
+ * top-to-bottom order; they are placed under lines already on the day.
+ * A later prepared day blocks that move. Active routines scheduled for this
+ * weekday are added at their saved ranks. A routine already stored is skipped.
  */
 export function planTodayMaterialisation(input: {
   day: string;
@@ -153,6 +197,7 @@ export function planTodayMaterialisation(input: {
       ? []
       : input.earlierItems
           .filter((item) => item.day === sourceDay && item.routineId === null && !item.checked)
+          .sort((a, b) => compareRank(a.rank, b.rank) || a.id.localeCompare(b.id))
           .map((item) => item.id);
   const routines = input.routines
     .filter((routine) => routine.active && dayMatches(routine.days, input.day))
@@ -182,6 +227,8 @@ export type TodayLine = {
   rank: string;
   checkedAt: string | null;
   createdAt: string;
+  /** Drawn from the routine schedule. Not a stored row, so it is not ticked. */
+  virtual?: boolean;
 };
 
 export function todayLineTitle(line: Pick<TodayLine, 'text' | 'taskTitle'>): string {

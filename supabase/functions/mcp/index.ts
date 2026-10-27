@@ -389,7 +389,11 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
         day: z
           .string()
           .optional()
-          .describe('Local date as YYYY-MM-DD. Defaults to today in UTC. Pass the person\'s local date to match the app.'),
+          .describe('Date as YYYY-MM-DD. Defaults to today in UTC. Pass the person\'s local date to match the app.'),
+        local_today: z
+          .string()
+          .optional()
+          .describe('The person\'s local today as YYYY-MM-DD. A day after this is a plan and is not prepared. Defaults to the UTC date.'),
       }),
     },
     async (args) => asTool(await listToday(store, args)),
@@ -403,7 +407,11 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
         day: z
           .string()
           .optional()
-          .describe('Local date as YYYY-MM-DD. Defaults to today in UTC. Pass the person\'s local date to match the app.'),
+          .describe('Date as YYYY-MM-DD. Defaults to today in UTC. The day after local_today is tomorrow and is not prepared.'),
+        local_today: z
+          .string()
+          .optional()
+          .describe('The person\'s local today as YYYY-MM-DD. Defaults to the UTC date. Pass it when day is tomorrow.'),
         text: z.string().nullable().optional().describe('Free-text line. Pass text or task_id, not both.'),
         task_id: z.string().uuid().nullable().optional().describe('A task the person can see. Pass text or task_id, not both.'),
       }),
