@@ -1,15 +1,17 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 
-/** Which board view is showing: all tasks, My Week, or a specific space. */
+import { TODAY_VIEW_ID } from '@/lib/today';
+
+/** Which board view is showing: Today, Mine, My Week, or a specific space. */
 type SpaceContextValue = {
-  selectedSpaceId: string; // 'all' | 'my-week' | space uuid
+  selectedSpaceId: string; // 'today' | 'all' | 'my-week' | space uuid
   setSelectedSpaceId: (id: string) => void;
 };
 
 const SpaceContext = createContext<SpaceContextValue | undefined>(undefined);
 
 export function SpaceProvider({ children }: { children: React.ReactNode }) {
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string>('all');
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string>(TODAY_VIEW_ID);
   const value = useMemo(() => ({ selectedSpaceId, setSelectedSpaceId }), [selectedSpaceId]);
   return <SpaceContext.Provider value={value}>{children}</SpaceContext.Provider>;
 }

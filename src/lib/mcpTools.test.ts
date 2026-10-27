@@ -26,9 +26,11 @@ import {
   createTasksBulk,
   getCircle,
   inviteToCircle,
+  addTodayItem,
   listCircles,
   listCircleTasks,
   listMyTasks,
+  listToday,
   moveTask,
   TASK_STATUSES,
   toolDescriptions,
@@ -38,6 +40,8 @@ import {
   weekdayOfDate,
 } from './mcpTools';
 import { inviteUrl } from './links';
+import { compareRank, rankAtBottom } from './rank';
+import { planTodayMaterialisation } from './today';
 
 const ME = 'user-me';
 const SAM = 'user-sam';
@@ -60,6 +64,8 @@ test('the tool catalog matches the handlers we ship', () => {
     'add_task_attachment',
     'list_members',
     'invite_to_circle',
+    'list_today',
+    'add_today_item',
   ]);
   assert.deepEqual(TASK_STATUSES, ['todo', 'in_progress', 'done']);
   for (const name of ['create_task', 'update_task', 'list_my_tasks', 'list_circle_tasks'] as const) {
@@ -776,6 +782,54 @@ test('update_task replaces tags and does not take a circle id', async () => {
   assert.equal(updated.data.task.circle_id, HOUSE);
 });
 
+test('list_today moves an unticked line forward once, and add_today_item appends text or a task', async () => {
+  const store = memoryStore();
+  const monday = await addTodayItem(store, { day: '2026-10-26', text: '  Buy milk  ' });
+  assert.equal(monday.ok, true);
+  if (!monday.ok) return;
+  assert.equal(monday.data.item.text, 'Buy milk');
+  assert.equal(monday.data.item.checked_at, null);
+
+  const tuesday = await listToday(store, { day: '2026-10-27' });
+  assert.equal(tuesday.ok, true);
+  if (!tuesday.ok) return;
+  assert.deepEqual(
+    tuesday.data.items.map((item) => item.text),
+    ['Buy milk'],
+  );
+  const again = await listToday(store, { day: '2026-10-27' });
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.equal(again.data.items.length, 1);
+  assert.equal(again.data.items[0]?.id, tuesday.data.items[0]?.id);
+
+  const mondayAfter = await listToday(store, { day: '2026-10-26' });
+  assert.equal(mondayAfter.ok, true);
+  if (!mondayAfter.ok) return;
+  assert.deepEqual(mondayAfter.data.items, []);
+
+  const created = await createTask(store, { title: 'Water the herbs' });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const linked = await addTodayItem(store, { day: '2026-10-27', task_id: created.data.task.id });
+  assert.equal(linked.ok, true);
+  if (!linked.ok) return;
+  assert.equal(linked.data.item.task_title, 'Water the herbs');
+  assert.equal(linked.data.item.circle_name, 'Personal');
+  assert.ok(compareRank(tuesday.data.items[0]?.rank ?? '', linked.data.item.rank) < 0);
+
+  const duplicate = await addTodayItem(store, { day: '2026-10-27', task_id: created.data.task.id });
+  assert.deepEqual(duplicate, { ok: false, error: 'That task is already on this day' });
+  const both = await addTodayItem(store, { day: '2026-10-27', text: 'Nope', task_id: created.data.task.id });
+  assert.deepEqual(both, { ok: false, error: 'Pass text or task_id, not both.' });
+  const neither = await addTodayItem(store, { day: '2026-10-27' });
+  assert.deepEqual(neither, { ok: false, error: 'Pass text or task_id.' });
+  const missing = await addTodayItem(store, { day: '2026-10-27', task_id: 'missing-task' });
+  assert.deepEqual(missing, { ok: false, error: 'Task not found' });
+  const badDay = await listToday(store, { day: '27-10-2026' });
+  assert.equal(badDay.ok, false);
+});
+
 function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): TroveStore & {
   tasks: TaskRecord[];
   attachments: AttachmentRecord[];
@@ -820,6 +874,37 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
   }
   const tasks: TaskRecord[] = [];
   const attachments: AttachmentRecord[] = [];
+  const todayItems: {
+    id: string;
+    day: string;
+    text: string | null;
+    taskId: string | null;
+    routineId: string | null;
+    rank: string;
+    checkedAt: string | null;
+    createdAt: string;
+  }[] = [];
+  const preparedDays = new Set<string>();
+  let todayCounter = 0;
+
+  function todayEntry(item: (typeof todayItems)[number]) {
+    const task = tasks.find((row) => row.id === item.taskId);
+    const circle = circles.find((row) => row.id === task?.circle_id);
+    return {
+      id: item.id,
+      day: item.day,
+      text: item.text,
+      task_id: item.taskId,
+      task_title: task?.title ?? null,
+      circle_id: task?.circle_id ?? null,
+      circle_name: task?.circle_name ?? null,
+      circle_color: circle?.color ?? null,
+      routine_id: item.routineId,
+      repeat_days: null,
+      rank: item.rank,
+      checked_at: item.checkedAt,
+    };
+  }
   const calls = { counts: 0, plain: 0 };
   let counter = 0;
 
@@ -994,6 +1079,73 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
       };
       attachments.push(record);
       return record;
+    },
+    async ensureToday(day) {
+      if (preparedDays.has(day)) return;
+      const plan = planTodayMaterialisation({
+        day,
+        alreadyMaterialised: false,
+        laterDayMaterialised: [...preparedDays].some((prepared) => prepared > day),
+        earlierItems: todayItems.map((item) => ({
+          id: item.id,
+          day: item.day,
+          routineId: item.routineId,
+          checked: item.checkedAt !== null,
+        })),
+        routines: [],
+      });
+      if (!plan) return;
+      for (const id of plan.moveIds) {
+        const item = todayItems.find((row) => row.id === id);
+        if (item) item.day = day;
+      }
+      for (const routine of plan.routines) {
+        todayCounter += 1;
+        todayItems.push({
+          id: `today-${todayCounter}`,
+          day,
+          text: routine.text,
+          taskId: routine.taskId,
+          routineId: routine.routineId,
+          rank: routine.rank,
+          checkedAt: null,
+          createdAt: new Date(Date.UTC(2026, 9, 27, 0, 0, todayCounter)).toISOString(),
+        });
+      }
+      preparedDays.add(day);
+    },
+    async listToday(day) {
+      return todayItems
+        .filter((item) => item.day === day)
+        .sort((a, b) => compareRank(a.rank, b.rank) || a.createdAt.localeCompare(b.createdAt))
+        .map(todayEntry);
+    },
+    async addTodayItem(input) {
+      await this.ensureToday(input.day);
+      if (input.taskId) {
+        const task = tasks.find((item) => item.id === input.taskId);
+        if (!task) throw new TroveError('Task not found');
+        if (todayItems.some((item) => item.day === input.day && item.taskId === input.taskId)) {
+          throw new TroveError('That task is already on this day');
+        }
+      }
+      const ranks = todayItems
+        .filter((item) => item.day === input.day)
+        .map((item) => item.rank)
+        .sort((a, b) => (a < b ? -1 : 1));
+      todayCounter += 1;
+      const item = {
+        id: `today-${todayCounter}`,
+        day: input.day,
+        text: input.text,
+        taskId: input.taskId,
+        routineId: null,
+        rank: rankAtBottom(ranks[0]),
+        checkedAt: null,
+        createdAt: new Date(Date.UTC(2026, 9, 27, 0, 0, todayCounter)).toISOString(),
+      };
+      todayItems.push(item);
+      return todayEntry(item);
     },
   };
 

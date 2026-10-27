@@ -39,7 +39,9 @@ import {
   listCircleTasks,
   listCircles,
   listMembers,
+  addTodayItem,
   listMyTasks,
+  listToday,
   moveTask,
   TASK_STATUSES,
   toolDescriptions,
@@ -377,6 +379,36 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
       inputSchema: z.object(circleTarget),
     },
     async (args) => asTool(await listMembers(store, args)),
+  );
+
+  server.registerTool(
+    'list_today',
+    {
+      ...described('list_today'),
+      inputSchema: z.object({
+        day: z
+          .string()
+          .optional()
+          .describe('Local date as YYYY-MM-DD. Defaults to today in UTC. Pass the person\'s local date to match the app.'),
+      }),
+    },
+    async (args) => asTool(await listToday(store, args)),
+  );
+
+  server.registerTool(
+    'add_today_item',
+    {
+      ...described('add_today_item'),
+      inputSchema: z.object({
+        day: z
+          .string()
+          .optional()
+          .describe('Local date as YYYY-MM-DD. Defaults to today in UTC. Pass the person\'s local date to match the app.'),
+        text: z.string().nullable().optional().describe('Free-text line. Pass text or task_id, not both.'),
+        task_id: z.string().uuid().nullable().optional().describe('A task the person can see. Pass text or task_id, not both.'),
+      }),
+    },
+    async (args) => asTool(await addTodayItem(store, args)),
   );
 
   server.registerTool(

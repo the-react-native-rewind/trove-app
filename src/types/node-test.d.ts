@@ -3,6 +3,10 @@ declare module 'node:test' {
   export function test(name: string, fn: () => void | Promise<void>): void;
 }
 
+declare module 'node:fs' {
+  export function readFileSync(path: string | URL, encoding: 'utf8'): string;
+}
+
 declare module 'node:crypto' {
   export function createHash(algorithm: string): {
     update(data: string): { digest(encoding: 'hex'): string };

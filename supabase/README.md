@@ -34,6 +34,12 @@ On the hosted project, migrations 0001–0011 are already applied. Apply `0012_a
 
 `0019_task_rank_admin.sql` lets only an owner or admin change `tasks.rank`. Members can still edit the other columns. A new task and a move between circles still receive a rank from the database.
 
+Migrations `0020` through `0026` follow in filename order. `0026_today.sql` adds the private Today list (`today_routines`, `today_items`, `today_days`) and `ensure_today`. Apply it before deploying the MCP function so `list_today` and `add_today_item` can prepare a day:
+
+```bash
+supabase functions deploy mcp --no-verify-jwt
+```
+
 `0014_task_recurrence.sql` adds repeating tasks. It is applied on the hosted project. Completing a repeating task inserts the next occurrence in the database, including when it is completed through the MCP server. `create_task`, `create_tasks_bulk`, and `update_task` accept `repeat_unit`, `repeat_interval`, and `repeat_weekday`. Task results include those fields and `recurrence_series_id`. `recurrence_source_id` stays server-only.
 
 `supabase/seed.sql` loads demo people with a known password. Use it only on a local database. Do not run it on the production project.

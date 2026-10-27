@@ -23,6 +23,7 @@ import {
   type TaskPatch,
   type TaskRecord,
   type TaskWrite,
+  type TodayEntry,
   type TroveStore,
   taskMediaPath,
 } from '../_shared/mcpTools.ts';
@@ -79,6 +80,9 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     countRecentInvites: () => countRecentInvites(db),
     createCircle: (input) => createCircle(db, userId, input),
     addTaskAttachment: (input) => addTaskAttachment(db, userId, input),
+    ensureToday: (day) => ensureToday(db, day),
+    listToday: (day) => listToday(db, userId, day),
+    addTodayItem: (input) => addTodayItem(db, input),
   };
 }
 
@@ -557,6 +561,86 @@ function rankForPriority(priority: Priority | null, groupRanks: string[]): strin
   const upper = ranks[mid];
   if (lower === upper) return generateKeyBetween(null, upper);
   return generateKeyBetween(lower, upper);
+}
+
+const TODAY_SELECT =
+  'id, day, text, task_id, routine_id, rank, checked_at, task:tasks(id, title, space:spaces(id, name, color)), routine:today_routines(days, active)';
+
+type TodayTaskJoin = {
+  id: string;
+  title: string;
+  space: { id: string; name: string; color: string } | { id: string; name: string; color: string }[] | null;
+};
+
+type TodayRow = {
+  id: string;
+  day: string;
+  text: string | null;
+  task_id: string | null;
+  routine_id: string | null;
+  rank: string;
+  checked_at: string | null;
+  task: TodayTaskJoin | TodayTaskJoin[] | null;
+  routine: { days: number; active: boolean } | { days: number; active: boolean }[] | null;
+};
+
+async function ensureToday(db: SupabaseClient, day: string): Promise<void> {
+  const { error } = await db.rpc('ensure_today', { p_day: day });
+  throwIf(error);
+}
+
+async function listToday(db: SupabaseClient, userId: string, day: string): Promise<TodayEntry[]> {
+  await ensureToday(db, day);
+  const { data, error } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('user_id', userId)
+    .eq('day', day)
+    .order('rank', { ascending: false })
+    .order('created_at', { ascending: true });
+  throwIf(error);
+  return ((data ?? []) as TodayRow[]).map(mapTodayRow);
+}
+
+async function addTodayItem(
+  db: SupabaseClient,
+  input: { day: string; text: string | null; taskId: string | null },
+): Promise<TodayEntry> {
+  const { data, error } = await db.rpc('add_today_item', {
+    p_day: input.day,
+    p_text: input.text,
+    p_task_id: input.taskId,
+  });
+  throwIf(error);
+  const id = data as string;
+  const { data: row, error: readError } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+  throwIf(readError);
+  if (!row) throw new TroveError('Line not found');
+  return mapTodayRow(row as TodayRow);
+}
+
+function mapTodayRow(row: TodayRow): TodayEntry {
+  const task = one(row.task);
+  const space = one(task?.space ?? null);
+  const routine = one(row.routine);
+  return {
+    id: row.id,
+    day: row.day,
+    text: row.text,
+    task_id: row.task_id,
+    task_title: task?.title ?? null,
+    circle_id: space?.id ?? null,
+    circle_name: space?.name ?? null,
+    circle_color: space?.color ?? null,
+    routine_id: row.routine_id,
+    repeat_days: routine?.active ? routine.days : null,
+    rank: row.rank,
+    checked_at: row.checked_at,
+  };
 }
 
 function isRepeatUnit(value: string | null | undefined): value is RepeatUnit {
