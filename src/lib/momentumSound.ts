@@ -44,21 +44,30 @@ void ensureChimeMode();
 
 /**
  * Pitch follows the rate. Correction would keep the original note and only
- * change speed, so it stays off. Web also clears preservesPitch.
+ * change speed, so it stays off.
+ *
+ * Native `playbackRate` is a getter. Assigning it throws in this module's
+ * strict scope, and that throw used to abort the tick before `play()`.
+ * `setPlaybackRate` is what stores the rate `play()` actually uses. With
+ * correction off, iOS selects varispeed and web clears `preservesPitch`.
  */
 function applyMomentumRate(player: AudioPlayer, rate: number) {
   player.shouldCorrectPitch = false;
-  if (Platform.OS === 'web') {
-    player.setPlaybackRate(rate);
-    return;
-  }
-  player.playbackRate = rate;
+  player.setPlaybackRate(rate);
 }
 
 export function playMomentumDing(player: AudioPlayer, rate = 1): void {
+  const arm = () => {
+    try {
+      applyMomentumRate(player, rate);
+    } catch {
+      // The item can ignore a rate before it is attached. Playback still starts.
+    }
+  };
+
   try {
     player.loop = false;
-    applyMomentumRate(player, rate);
+    arm();
     if (Platform.OS === 'web') {
       // seekTo sets currentTime before it yields, so play() stays in the gesture turn.
       void player.seekTo(0);
@@ -68,6 +77,8 @@ export function playMomentumDing(player: AudioPlayer, rate = 1): void {
     void ensureChimeMode()
       .then(() => player.seekTo(0, 0, 0))
       .then(() => {
+        // Seek resolves once the item is ready, so the rate lands on it.
+        arm();
         player.play();
       })
       .catch(() => {

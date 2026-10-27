@@ -13,12 +13,14 @@ import { fonts } from '@/theme/tokens';
 import { Text } from './ui/Text';
 
 const SIZE = 30;
-const SLOT = 68;
 
 /**
  * How many lines are ticked today, including zero. `pulse` increments on a new
  * tick so the circle bumps and a ring ripples. The resting size grows with the
  * count. Mounting with an existing count stays still.
+ *
+ * The box stays the resting circle, so the header's right inset does not grow
+ * with the count. Scale is a transform from the right edge.
  */
 export function MomentumBadge({ count, pulse }: { count: number; pulse: number }) {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
@@ -48,10 +50,12 @@ export function MomentumBadge({ count, pulse }: { count: number; pulse: number }
   }, [bump, pulse, ring]);
 
   const circleStyle = useAnimatedStyle(() => ({
+    transformOrigin: 'right center',
     transform: [{ scale: base.value * bump.value }],
   }));
   const ringStyle = useAnimatedStyle(() => ({
     opacity: (1 - ring.value) * 0.35,
+    transformOrigin: 'right center',
     transform: [{ scale: base.value * (1 + ring.value * 0.55) }],
   }));
 
@@ -75,21 +79,21 @@ export function MomentumBadge({ count, pulse }: { count: number; pulse: number }
 
 const styles = StyleSheet.create({
   slot: {
-    width: SLOT,
-    height: SLOT,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: SIZE,
+    height: SIZE,
+    overflow: 'visible',
   },
   circle: {
-    minWidth: SIZE,
+    width: SIZE,
     height: SIZE,
-    paddingHorizontal: 7,
     borderRadius: SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   ring: {
     position: 'absolute',
+    top: 0,
+    right: 0,
     width: SIZE,
     height: SIZE,
     borderRadius: SIZE / 2,
