@@ -198,6 +198,30 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_log_entries: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: string
+          task_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          task_id: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          task_id?: string
+        }
+        Relationships: []
+      }
       task_assignees: {
         Row: {
           created_at: string
@@ -216,6 +240,39 @@ export type Database = {
           position?: number
           task_id?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      task_handoffs: {
+        Row: {
+          created_at: string
+          from_user_id: string | null
+          id: string
+          note: string | null
+          note_edited_at: string | null
+          status: string
+          task_id: string
+          to_user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          from_user_id?: string | null
+          id?: string
+          note?: string | null
+          note_edited_at?: string | null
+          status: string
+          task_id: string
+          to_user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          from_user_id?: string | null
+          id?: string
+          note?: string | null
+          note_edited_at?: string | null
+          status?: string
+          task_id?: string
+          to_user_id?: string | null
         }
         Relationships: []
       }
@@ -391,9 +448,44 @@ export type Database = {
         Relationships: []
       }
     }
-    Views: { [_ in never]: never }
+    Views: {
+      task_latest_handoff: {
+        Row: {
+          created_at: string
+          from_user_id: string | null
+          id: string
+          note: string | null
+          note_edited_at: string | null
+          status: string
+          task_id: string
+          to_user_id: string | null
+        }
+        Relationships: []
+      }
+    }
     Functions: {
       accept_invite: { Args: { p_token: string }; Returns: string }
+      add_agent_log_entry: {
+        Args: { p_task_id: string; p_body: string }
+        Returns: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: string
+          task_id: string
+        }
+      }
+      edit_handoff_note: { Args: { p_handoff_id: string; p_note: string }; Returns: undefined }
+      handoff_task: {
+        Args: {
+          p_task_id: string
+          p_to_user_id: string
+          p_status?: string | null
+          p_note?: string | null
+        }
+        Returns: Json
+      }
+      is_space_agent: { Args: { p_space_id: string }; Returns: boolean }
       attachment_path_in_use: {
         Args: { p_except_id: string; p_path: string }
         Returns: boolean

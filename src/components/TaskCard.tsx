@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { Attachment } from '@/data/attachments';
+import { visibleHandoffNote } from '@/lib/handoff';
 import { plainTextFromMarkdown } from '@/lib/markdown';
 import type { TaskWithRefs } from '@/lib/types';
 import { formatDueDate, isOverdue } from '@/lib/format';
 import { describeRepeat, repeatRuleFromTask } from '@/lib/recurrence';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
+import { HandoffNoteLine } from './TaskHandoff';
 import { fullBleedMediaCorners, TaskMediaStrip } from './TaskMediaStrip';
 import { AvatarStack } from './ui/Avatar';
 import { InProgressTag, SpaceTag } from './ui/Indicators';
@@ -48,6 +50,8 @@ export function TaskCard({
   const showTag = Boolean(showSpaceTag && task.space);
   const repeats = describeRepeat(repeatRuleFromTask(task));
   const notes = plainTextFromMarkdown(task.description ?? '');
+  const handoffNote = visibleHandoffNote(task);
+  const handoffName = task.latest_handoff?.from_name ?? 'Former member';
   const selecting = selection.active;
   const selected = selecting && selection.isSelected(task.id);
 
@@ -80,6 +84,7 @@ export function TaskCard({
     inProgress ? 'In progress' : null,
     assigneeNames ? `Assigned to ${assigneeNames}` : null,
     repeats,
+    handoffNote ? `${handoffName}: ${handoffNote}` : null,
   ]
     .filter(Boolean)
     .join('. ');
@@ -132,9 +137,17 @@ export function TaskCard({
         </View>
 
         {notes ? (
-          <Text variant="meta" color={colors.inkSoft} numberOfLines={2}>
+          <Text variant="meta" color={colors.inkSoft} numberOfLines={handoffNote ? 1 : 2}>
             {notes}
           </Text>
+        ) : null}
+        {handoffNote ? (
+          <HandoffNoteLine
+            name={handoffName}
+            avatarUrl={task.latest_handoff?.from_avatar_url}
+            note={handoffNote}
+            accent={task.space?.color}
+          />
         ) : null}
 
         {(due || task.assignees.length > 0 || heat || repeats) && (

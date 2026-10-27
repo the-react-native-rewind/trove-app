@@ -16,6 +16,7 @@ import {
   type TaskRecord,
   type TaskWrite,
   type TroveStore,
+  addAgentLogEntry,
   addTaskAttachment,
   assignTask,
   bytesMatchContentType,
@@ -25,7 +26,10 @@ import {
   createTask,
   createTasksBulk,
   getCircle,
+  getTask,
+  handoffTask,
   inviteToCircle,
+  listAgentLog,
   addTodayItem,
   listCircles,
   listCircleTasks,
@@ -60,6 +64,10 @@ test('the tool catalog matches the handlers we ship', () => {
     'update_task',
     'complete_task',
     'assign_task',
+    'handoff_task',
+    'add_agent_log_entry',
+    'list_agent_log',
+    'get_task',
     'move_task',
     'add_task_attachment',
     'list_members',
@@ -68,9 +76,99 @@ test('the tool catalog matches the handlers we ship', () => {
     'add_today_item',
   ]);
   assert.deepEqual(TASK_STATUSES, ['todo', 'in_progress', 'done']);
+  assert.equal(/use handoff_task/.test(toolDescriptions.assign_task), true);
+  assert.equal(/use handoff_task/.test(toolDescriptions.update_task), true);
+  assert.equal(/assign yourself and set in_progress/.test(toolDescriptions.create_task), true);
   for (const name of ['create_task', 'update_task', 'list_my_tasks', 'list_circle_tasks'] as const) {
     assert.equal(toolDescriptions[name].includes('in_progress'), true, name);
   }
+});
+
+test('handoff_task replaces the caller, keeps rank, and records the note', async () => {
+  const store = memoryStore();
+  store.addMember(HOUSE, { user_id: 'user-priya', display_name: 'Priya', role: 'member', is_agent: false });
+  const created = await createTask(store, {
+    title: 'Fix the gate',
+    circle_id: HOUSE,
+    assignees: ['me', 'Sam'],
+    status: 'todo',
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const handed = await handoffTask(store, {
+    task_id: created.data.task.id,
+    to: 'Priya',
+    status: 'in_progress',
+    note: '  Half done  ',
+  });
+  assert.equal(handed.ok, true);
+  if (!handed.ok) return;
+  assert.deepEqual(
+    handed.data.task.assignees.map((person) => person.display_name),
+    ['Priya', 'Sam'],
+  );
+  assert.equal(handed.data.task.status, 'in_progress');
+  assert.equal(handed.data.task.rank, created.data.task.rank);
+  assert.equal(handed.data.task.latest_handoff?.note, 'Half done');
+  assert.equal(handed.data.task.latest_handoff?.from_name, 'Luke');
+  assert.equal(handed.data.task.latest_handoff?.to_name, 'Priya');
+  assert.equal(handed.data.task.agent_log_count, 0);
+
+  const again = await handoffTask(store, { task_id: created.data.task.id, to: 'Sam' });
+  assert.equal(again.ok, false);
+  if (again.ok) return;
+  assert.equal(/isn't yours to hand off/.test(again.error), true);
+
+  const mine = await createTask(store, { title: 'Mine only', circle_id: HOUSE });
+  assert.equal(mine.ok, true);
+  if (!mine.ok) return;
+  const self = await handoffTask(store, { task_id: mine.data.task.id, to: 'me' });
+  assert.equal(self.ok, false);
+  if (self.ok) return;
+  assert.equal(self.error, 'You already have this task');
+  const done = await handoffTask(store, { task_id: mine.data.task.id, to: 'Sam', status: 'done' });
+  assert.equal(done.ok, false);
+  if (done.ok) return;
+  assert.equal(/complete it instead/.test(done.error), true);
+});
+
+test('agent log tools reject humans and return the newest entries', async () => {
+  const store = memoryStore();
+  const created = await createTask(store, { title: 'Draft the reply', circle_id: HOUSE, status: 'in_progress' });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const blocked = await addAgentLogEntry(store, { task_id: created.data.task.id, body: 'Hello' });
+  assert.equal(blocked.ok, false);
+  if (blocked.ok) return;
+  assert.equal(blocked.error, 'Only agents write to the agent log');
+
+  store.markAgent(HOUSE, ME);
+  const first = await addAgentLogEntry(store, { task_id: created.data.task.id, body: '  Drafted the reply email  ' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.equal(first.data.entry.body, 'Drafted the reply email');
+  const second = await addAgentLogEntry(store, { task_id: created.data.task.id, body: 'Sent it' });
+  assert.equal(second.ok, true);
+
+  const listed = await listAgentLog(store, { task_id: created.data.task.id, limit: 20 });
+  assert.equal(listed.ok, true);
+  if (!listed.ok) return;
+  assert.deepEqual(
+    listed.data.entries.map((entry) => entry.body),
+    ['Sent it', 'Drafted the reply email'],
+  );
+
+  const detail = await getTask(store, { task_id: created.data.task.id });
+  assert.equal(detail.ok, true);
+  if (!detail.ok) return;
+  assert.equal(detail.data.task.agent_log_count, 2);
+  assert.equal(detail.data.task.agent_log.length, 2);
+  assert.equal(detail.data.task.latest_handoff, null);
+
+  const blank = await addAgentLogEntry(store, { task_id: created.data.task.id, body: '   ' });
+  assert.equal(blank.ok, false);
+  if (blank.ok) return;
+  assert.equal(/needs text/.test(blank.error), true);
 });
 
 test('planMove keeps a member assignee and clears anyone outside the destination', () => {
@@ -886,6 +984,8 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
   membersOf: (circleId: string) => Member[];
   addRoutine: (routine: { id: string; text: string | null; taskId: string | null; days: number; rank: string }) => void;
   prepared: (day: string) => boolean;
+  markAgent: (circleId: string, userId: string) => void;
+  addMember: (circleId: string, member: Member) => void;
 } {
   const circles: Circle[] = [
     {
@@ -923,6 +1023,14 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     task.assignee_name = task.assignees[0]?.display_name ?? null;
   }
   const tasks: TaskRecord[] = [];
+  const agentLogs: {
+    id: string;
+    task_id: string;
+    author_id: string;
+    author_name: string | null;
+    body: string;
+    created_at: string;
+  }[] = [];
   const attachments: AttachmentRecord[] = [];
   const routineRows: {
     id: string;
@@ -974,6 +1082,8 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     membersOf: (circleId: string) => Member[];
     addRoutine: (routine: { id: string; text: string | null; taskId: string | null; days: number; rank: string }) => void;
     prepared: (day: string) => boolean;
+    markAgent: (circleId: string, userId: string) => void;
+    addMember: (circleId: string, member: Member) => void;
   } = {
     userId: ME,
     tasks,
@@ -1012,6 +1122,76 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     async getTask(id) {
       return tasks.find((task) => task.id === id) ?? null;
     },
+    markAgent(circleId, userId) {
+      const member = members[circleId]?.find((item) => item.user_id === userId);
+      if (member) member.is_agent = true;
+    },
+    addMember(circleId, member) {
+      members[circleId] = [...(members[circleId] ?? []), member];
+    },
+    async handoffTask(input) {
+      const task = tasks.find((item) => item.id === input.taskId);
+      if (!task) throw new TroveError('Task not found');
+      const roster = members[task.circle_id] ?? [];
+      const caller = roster.find((member) => member.user_id === ME);
+      if (!caller || caller.role === 'viewer') throw new TroveError("You can't edit this task");
+      if (!task.assignees.some((person) => person.user_id === ME)) {
+        throw new TroveError("This task isn't yours to hand off. Use assign_task.");
+      }
+      if (input.toUserId === ME) throw new TroveError('You already have this task');
+      const recipient = roster.find((member) => member.user_id === input.toUserId);
+      if (!recipient) throw new TroveError('That person is not in this circle');
+      const status = input.status ?? (task.status === 'in_progress' ? 'in_progress' : 'todo');
+      const index = task.assignees.findIndex((person) => person.user_id === ME);
+      const without = task.assignees.filter((person) => person.user_id !== ME);
+      if (!without.some((person) => person.user_id === input.toUserId)) {
+        without.splice(Math.max(0, index), 0, {
+          user_id: input.toUserId,
+          display_name: recipient.display_name,
+        });
+      }
+      applyAssignees(
+        task,
+        without.map((person) => person.user_id),
+      );
+      task.status = status;
+      task.latest_handoff = {
+        id: `handoff-${task.id}-${agentLogs.length}`,
+        from_user_id: ME,
+        from_name: caller.display_name,
+        to_user_id: input.toUserId,
+        to_name: recipient.display_name,
+        status,
+        note: input.note,
+        created_at: '2026-10-27T12:00:00.000Z',
+      };
+      return task;
+    },
+    async addAgentLogEntry(taskId, body) {
+      const task = tasks.find((item) => item.id === taskId);
+      if (!task) throw new TroveError('Task not found');
+      const existing = agentLogs.filter((entry) => entry.task_id === taskId);
+      if (existing.length >= 500) throw new TroveError('This task already has 500 agent log entries');
+      const roster = Object.values(members).flat();
+      const author = roster.find((member) => member.user_id === ME);
+      const entry = {
+        id: `log-${agentLogs.length + 1}`,
+        task_id: taskId,
+        author_id: ME,
+        author_name: author?.display_name ?? null,
+        body,
+        created_at: new Date(Date.UTC(2026, 9, 1, 0, 0, agentLogs.length)).toISOString(),
+      };
+      agentLogs.push(entry);
+      task.agent_log_count = existing.length + 1;
+      return entry;
+    },
+    async listAgentLog(taskId, limit) {
+      return agentLogs
+        .filter((entry) => entry.task_id === taskId)
+        .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+        .slice(0, limit);
+    },
     async findByExternalId(externalId) {
       return tasks.find((task) => task.external_id === externalId) ?? null;
     },
@@ -1037,6 +1217,8 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
         repeat_interval: input.repeatInterval,
         repeat_weekday: input.repeatWeekday,
         recurrence_series_id: input.repeatUnit ? `task-${counter}` : null,
+        latest_handoff: null,
+        agent_log_count: 0,
         created_at: '2026-10-01T00:00:00.000Z',
         updated_at: '2026-10-01T00:00:00.000Z',
       };

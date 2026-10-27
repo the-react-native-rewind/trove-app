@@ -4,6 +4,13 @@ import { normalizeAssignees, type AssigneeLink } from '@/lib/assignees';
 import { type BulkAssignee, type BulkPatch, patchCachedTasks } from '@/lib/bulk';
 import { celebrate } from '@/lib/celebrate';
 import { hapticSuccess } from '@/lib/haptics';
+import {
+  applyHandoffToCache,
+  normalizeLatestHandoff,
+  normalizeLogCount,
+  type HandoffCacheInput,
+  type TaskHandoff,
+} from '@/lib/handoff';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { positionBetween } from '@/lib/position';
 import { qk } from '@/lib/queryClient';
@@ -18,17 +25,28 @@ import {
   type TaskWithRefs,
 } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
+import Toast from 'react-native-toast-message';
 
 export { positionBetween };
 
 export const TASK_SELECT =
-  '*, space:spaces(id,name,color), assignees:task_assignees(position, profile:profiles(id,display_name,avatar_url))';
+  '*, space:spaces(id,name,color), assignees:task_assignees(position, profile:profiles(id,display_name,avatar_url)), latest_handoff:task_handoffs(id,from_user_id,to_user_id,status,note,note_edited_at,created_at,from_profile:profiles!task_handoffs_from_user_id_fkey(id,display_name,avatar_url),to_profile:profiles!task_handoffs_to_user_id_fkey(id,display_name,avatar_url)), agent_log_entries(count)';
+
+const HANDOFF_SELECT =
+  'id, from_user_id, to_user_id, status, note, note_edited_at, created_at, from_profile:profiles!task_handoffs_from_user_id_fkey(id,display_name,avatar_url), to_profile:profiles!task_handoffs_to_user_id_fkey(id,display_name,avatar_url)';
 
 export function mapTaskRow(row: unknown): TaskWithRefs {
-  const record = row as Omit<TaskWithRefs, 'assignees'> & { assignees?: AssigneeLink[] | null };
+  const record = row as Omit<TaskWithRefs, 'assignees' | 'latest_handoff' | 'agent_log_count'> & {
+    assignees?: AssigneeLink[] | null;
+    latest_handoff?: unknown;
+    agent_log_entries?: unknown;
+  };
+  const { latest_handoff: rawHandoff, agent_log_entries: rawLog, ...rest } = record;
   return {
-    ...record,
+    ...rest,
     assignees: normalizeAssignees(record.assignees),
+    latest_handoff: normalizeLatestHandoff(rawHandoff),
+    agent_log_count: normalizeLogCount(rawLog),
   };
 }
 
@@ -56,6 +74,8 @@ export function useTasks(spaceId: string) {
         query = query.eq('space_id', spaceId);
       }
       const { data, error } = await query
+        .order('created_at', { referencedTable: 'task_handoffs', ascending: false })
+        .limit(1, { referencedTable: 'task_handoffs' })
         .order('position', { ascending: true })
         .order('created_at', { ascending: true });
       if (error) throw error;
@@ -73,6 +93,8 @@ export function useTask(taskId: string) {
         .from('tasks')
         .select(TASK_SELECT)
         .eq('id', taskId)
+        .order('created_at', { referencedTable: 'task_handoffs', ascending: false })
+        .limit(1, { referencedTable: 'task_handoffs' })
         .maybeSingle();
       if (error) throw error;
       return data ? mapTaskRow(data) : null;
@@ -396,6 +418,144 @@ async function assertCallerCanReorder(taskId: string, userId: string | null) {
   if (!canManage(membership?.role as SpaceRole | undefined)) {
     throw new Error('Only an owner or admin can reorder tasks');
   }
+}
+
+export type AgentLogRow = {
+  id: string;
+  task_id: string;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+  author: { id: string; display_name: string | null; avatar_url: string | null } | null;
+};
+
+export function useTaskHandoffs(taskId: string) {
+  return useQuery({
+    queryKey: qk.handoffs(taskId),
+    enabled: !!taskId,
+    queryFn: async (): Promise<TaskHandoff[]> => {
+      const { data, error } = await supabase
+        .from('task_handoffs')
+        .select(HANDOFF_SELECT)
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? [])
+        .map((row) => normalizeLatestHandoff(row))
+        .filter((row): row is TaskHandoff => row != null);
+    },
+  });
+}
+
+export function useHandoffTask() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: HandoffCacheInput) => {
+      if (!userId) throw new Error('Not authenticated');
+      const { error } = await supabase.rpc('handoff_task', {
+        p_task_id: input.taskId,
+        p_to_user_id: input.toUserId,
+        p_status: input.status,
+        p_note: input.note,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['tasks'] });
+      await qc.cancelQueries({ queryKey: ['week-tasks'] });
+      await qc.cancelQueries({ queryKey: ['task'] });
+      const previous = [
+        ...qc.getQueriesData({ queryKey: ['tasks'] }),
+        ...qc.getQueriesData({ queryKey: ['week-tasks'] }),
+        ...qc.getQueriesData({ queryKey: ['task'] }),
+      ];
+      for (const [key, data] of qc.getQueriesData({ queryKey: ['tasks'] })) {
+        const mine = Array.isArray(key) && key[1] === MINE_VIEW_ID;
+        qc.setQueryData(key, applyHandoffToCache(data, input, mine));
+      }
+      for (const [key, data] of qc.getQueriesData({ queryKey: ['week-tasks'] })) {
+        qc.setQueryData(key, applyHandoffToCache(data, input, false));
+      }
+      for (const [key, data] of qc.getQueriesData({ queryKey: ['task'] })) {
+        qc.setQueryData(key, applyHandoffToCache(data, input, false));
+      }
+      return { previous };
+    },
+    onError: (error, _input, context) => {
+      for (const [key, data] of context?.previous ?? []) qc.setQueryData(key, data);
+      const message = error instanceof Error ? error.message : 'Please try again.';
+      Toast.show({ type: 'error', text1: 'Could not hand off', text2: message });
+    },
+    onSuccess: (_data, input) => {
+      Toast.show({ type: 'success', text1: `Handed to ${input.toName}` });
+    },
+    onSettled: (_data, _error, input) => {
+      invalidateTasks(qc);
+      qc.invalidateQueries({ queryKey: qk.task(input.taskId) });
+      qc.invalidateQueries({ queryKey: qk.handoffs(input.taskId) });
+    },
+  });
+}
+
+export function useEditHandoffNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { taskId: string; handoffId: string; note: string }) => {
+      const { error } = await supabase.rpc('edit_handoff_note', {
+        p_handoff_id: input.handoffId,
+        p_note: input.note,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: (_data, input) => {
+      qc.invalidateQueries({ queryKey: qk.task(input.taskId) });
+      qc.invalidateQueries({ queryKey: qk.handoffs(input.taskId) });
+      invalidateTasks(qc);
+    },
+  });
+}
+
+export function useAgentLog(taskId: string) {
+  return useQuery({
+    queryKey: qk.agentLog(taskId),
+    enabled: !!taskId,
+    queryFn: async (): Promise<AgentLogRow[]> => {
+      const { data, error } = await supabase
+        .from('agent_log_entries')
+        .select('id, task_id, author_id, body, created_at, author:profiles!agent_log_entries_author_id_fkey(id,display_name,avatar_url)')
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((row) => {
+        const record = row as unknown as {
+          id: string;
+          task_id: string;
+          author_id: string | null;
+          body: string;
+          created_at: string;
+          author: AgentLogRow['author'] | AgentLogRow['author'][] | null;
+        };
+        const author = Array.isArray(record.author) ? (record.author[0] ?? null) : record.author;
+        return { ...record, author: author ?? null };
+      });
+    },
+  });
+}
+
+export function useDeleteAgentLogEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { taskId: string; entryId: string }) => {
+      const { error } = await supabase.from('agent_log_entries').delete().eq('id', input.entryId);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: (_data, input) => {
+      qc.invalidateQueries({ queryKey: qk.agentLog(input.taskId) });
+      qc.invalidateQueries({ queryKey: qk.task(input.taskId) });
+      invalidateTasks(qc);
+    },
+  });
 }
 
 function invalidateTasks(qc: ReturnType<typeof useQueryClient>) {

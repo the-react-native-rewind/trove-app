@@ -82,6 +82,10 @@ export const MCP_TOOL_NAMES = [
   'update_task',
   'complete_task',
   'assign_task',
+  'handoff_task',
+  'add_agent_log_entry',
+  'list_agent_log',
+  'get_task',
   'move_task',
   'add_task_attachment',
   'list_members',
@@ -104,15 +108,23 @@ export const toolDescriptions: Record<McpToolName, string> = {
   list_circle_tasks:
     'List every task in one circle, not only tasks assigned to the caller. Viewers can read. Optional filters: status (todo, in_progress, or done) and due date. A status filter is exact: todo does not include in_progress. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned.',
   create_task:
-    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is one member id, display name, "me", or null. assignees is a list of those same values and replaces the whole set. Pass assignee or assignees, not both. Omitting both assigns the caller. priority is low, medium, high, or null and chooses a starting rank in the overall order of that circle: high above the current top, medium in the middle, low or null at the bottom. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat. status is todo, in_progress, or done.',
+    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is one member id, display name, "me", or null. assignees is a list of those same values and replaces the whole set. Pass assignee or assignees, not both. Omitting both assigns the caller. priority is low, medium, high, or null and chooses a starting rank in the overall order of that circle: high above the current top, medium in the middle, low or null at the bottom. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat. status is todo, in_progress, or done. Agents: assign yourself and set in_progress when you start.',
   create_tasks_bulk:
     'Create up to 100 tasks in one call, for importing a list. Each item has the same fields as create_task, including the optional repeat fields. A circle set on the call is the default; an item can override it. external_id makes the import safe to retry: a task the caller already created with that id is returned as existing and is not changed. Items that fail are reported; earlier items in the batch are kept.',
   update_task:
-    'Change a task\'s title, notes, status, priority, due date, assignees, tags, or repeat rule. status is todo, in_progress, or done. priority is low, medium, high, or null. For an owner or admin it also sets rank in the circle\'s overall order: high above the current top, medium in the middle, low or null at the bottom. A member can set the priority label but cannot change rank. Changing the due date leaves rank unchanged. assignee or assignees replaces the whole set of people. Pass one of those fields, not both. An empty assignees list, or assignee null, clears everyone. Tags replace the current set. repeat_unit null or never clears the repeat rule. repeat_interval is 1 to 99. repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only used for week. This does not move the task to another circle; use move_task for that. Only someone who can edit the circle (owner, admin, or member) can update. Viewers cannot. Setting status to done on a repeating task leaves this row done; the database inserts the next occurrence at the bottom of its due-date group.',
+    'Change a task\'s title, notes, status, priority, due date, assignees, tags, or repeat rule. status is todo, in_progress, or done. priority is low, medium, high, or null. For an owner or admin it also sets rank in the circle\'s overall order: high above the current top, medium in the middle, low or null at the bottom. A member can set the priority label but cannot change rank. Changing the due date leaves rank unchanged. assignee or assignees replaces the whole set of people. Pass one of those fields, not both. An empty assignees list, or assignee null, clears everyone. Tags replace the current set. repeat_unit null or never clears the repeat rule. repeat_interval is 1 to 99. repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only used for week. This does not move the task to another circle; use move_task for that. Only someone who can edit the circle (owner, admin, or member) can update. Viewers cannot. Setting status to done on a repeating task leaves this row done; the database inserts the next occurrence at the bottom of its due-date group. This is a plain assign with no note. To pass work you own to someone else, use handoff_task.',
   complete_task:
     'Mark a task done. Same permission as update_task. If the task repeats, the database inserts the next To do occurrence with the same rule. This result is the completed row, including its repeat fields and recurrence_series_id. recurrence_source_id is not returned.',
   assign_task:
-    'Replace the people assigned to a task. assignee is one member id, display name, "me", or null. assignees is a list of those values. Pass one of them, not both. An empty list or null clears everyone. Each person must already be a member of the task\'s circle.',
+    'Replace the people assigned to a task. assignee is one member id, display name, "me", or null. assignees is a list of those values. Pass one of them, not both. An empty list or null clears everyone. Each person must already be a member of the task\'s circle. This is a plain assign with no note. To pass work you own to someone else, use handoff_task.',
+  handoff_task:
+    'Pass a task you are assigned to someone else in the same circle. You are removed and they take your place. Other assignees stay. Rank stays. to is a member id or display name, not "me". status is todo or in_progress. Omit it to keep the current status. A done task reopens to todo unless you pass in_progress. Passing done fails. note is optional, up to 2000 characters.',
+  add_agent_log_entry:
+    'Append a short status update to a task\'s agent log. Only an agent member of that circle can write. body is required, up to 4000 characters. A task holds at most 500 entries. Do not put this in the task notes.',
+  list_agent_log:
+    'Read a task\'s agent log, newest first. Anyone who can see the task can read it. limit defaults to 20 and cannot exceed 100.',
+  get_task:
+    'Get one task by id, including latest_handoff, agent_log_count, and the last 5 agent log entries, newest first.',
   move_task:
     'Move a task from one circle to another, including from the personal circle into a shared circle. The caller must be able to edit the task where it is now, and must be a member of the destination (a viewer of the destination may still receive it). People who are not members of the destination are unassigned. People who are stay assigned. Tags from the old circle are removed. Photos and videos stay in the original circle and are not moved. Pass circle_id, circle_name, or personal: true.',
   add_task_attachment:
@@ -169,6 +181,28 @@ export type TaskPerson = {
 
 export type TaskTag = { name: string; circle_id: string };
 
+/** Newest handoff on a task. Null when the task has never been handed off. */
+export type HandoffRecord = {
+  id: string;
+  from_user_id: string | null;
+  from_name: string | null;
+  to_user_id: string | null;
+  to_name: string | null;
+  status: 'todo' | 'in_progress';
+  note: string | null;
+  created_at: string;
+};
+
+/** One agent log row, newest first when listed. */
+export type AgentLogEntry = {
+  id: string;
+  task_id: string;
+  author_id: string | null;
+  author_name: string | null;
+  body: string;
+  created_at: string;
+};
+
 export type TaskRecord = {
   id: string;
   title: string;
@@ -190,6 +224,10 @@ export type TaskRecord = {
   repeat_interval: number;
   repeat_weekday: number | null;
   recurrence_series_id: string | null;
+  /** Newest handoff, or null. Present on every task this server returns. */
+  latest_handoff: HandoffRecord | null;
+  /** How many agent log entries the task has. The entries themselves come from get_task or list_agent_log. */
+  agent_log_count: number;
   created_at: string;
   updated_at: string;
 };
@@ -308,6 +346,19 @@ export interface TroveStore {
   listMembers(circleId: string): Promise<Member[]>;
   listTasks(filter: TaskFilter): Promise<TaskRecord[]>;
   getTask(id: string): Promise<TaskRecord | null>;
+  /**
+   * Hand the caller's assignment to someone else. The database checks
+   * membership, keeps rank, and writes the handoff row.
+   */
+  handoffTask(input: {
+    taskId: string;
+    toUserId: string;
+    status: 'todo' | 'in_progress' | null;
+    note: string | null;
+  }): Promise<TaskRecord>;
+  addAgentLogEntry(taskId: string, body: string): Promise<AgentLogEntry>;
+  /** Newest first. */
+  listAgentLog(taskId: string, limit: number): Promise<AgentLogEntry[]>;
   findByExternalId(externalId: string): Promise<TaskRecord | null>;
   insertTask(input: TaskWrite): Promise<TaskRecord>;
   updateTask(id: string, patch: TaskPatch): Promise<TaskRecord | null>;
@@ -726,6 +777,121 @@ export async function assignTask(
     assignee: input.assignee,
     assignees: input.assignees,
   });
+}
+
+export async function handoffTask(
+  store: TroveStore,
+  input: { task_id: string; to: string; status?: string | null; note?: string | null },
+): Promise<ToolResult<{ task: TaskRecord }>> {
+  try {
+    const task = await store.getTask(input.task_id);
+    if (!task) return { ok: false, error: 'Task not found' };
+    const circles = await store.listCircles();
+    const circle = circles.find((item) => item.id === task.circle_id);
+    if (!circle) return { ok: false, error: 'Task not found' };
+    if (!canWrite(circle.role)) return { ok: false, error: "You can't edit this task" };
+    if (!task.assignees.some((person) => person.user_id === store.userId)) {
+      return { ok: false, error: "This task isn't yours to hand off. Use assign_task." };
+    }
+    const needle = input.to?.trim() ?? '';
+    if (!needle || needle.toLowerCase() === 'me') {
+      return { ok: false, error: 'You already have this task' };
+    }
+    const members = await store.listMembers(task.circle_id);
+    const resolved = await resolveAssignee(store.userId, members, needle, false);
+    if ('error' in resolved) {
+      if (resolved.error === 'That person is not a member of this circle.') {
+        return { ok: false, error: 'That person is not in this circle' };
+      }
+      return { ok: false, error: resolved.error };
+    }
+    if (!resolved.id || resolved.id === store.userId) {
+      return { ok: false, error: 'You already have this task' };
+    }
+    let status: 'todo' | 'in_progress' | null = null;
+    if (input.status != null && input.status !== '') {
+      if (input.status === 'done') {
+        return { ok: false, error: 'To finish a task, complete it instead' };
+      }
+      if (input.status !== 'todo' && input.status !== 'in_progress') {
+        return { ok: false, error: 'Status must be todo or in_progress' };
+      }
+      status = input.status;
+    }
+    let note: string | null = null;
+    if (input.note != null) {
+      note = input.note.trim();
+      if (!note) note = null;
+      if (note && note.length > 2000) {
+        return { ok: false, error: 'A handoff note can be 2000 characters or fewer' };
+      }
+    }
+    const updated = await store.handoffTask({
+      taskId: task.id,
+      toUserId: resolved.id,
+      status,
+      note,
+    });
+    return { ok: true, data: { task: updated } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addAgentLogEntry(
+  store: TroveStore,
+  input: { task_id: string; body: string },
+): Promise<ToolResult<{ entry: AgentLogEntry }>> {
+  try {
+    const task = await store.getTask(input.task_id);
+    if (!task) return { ok: false, error: 'Task not found' };
+    const circles = await store.listCircles();
+    const circle = circles.find((item) => item.id === task.circle_id);
+    if (!circle) return { ok: false, error: 'Task not found' };
+    if (!canWrite(circle.role)) return { ok: false, error: "You can't edit this task" };
+    const members = await store.listMembers(task.circle_id);
+    const caller = members.find((member) => member.user_id === store.userId);
+    if (!caller?.is_agent) return { ok: false, error: 'Only agents write to the agent log' };
+    const body = input.body?.trim() ?? '';
+    if (!body) return { ok: false, error: 'An agent log entry needs text' };
+    if (body.length > 4000) {
+      return { ok: false, error: 'An agent log entry can be 4000 characters or fewer' };
+    }
+    const entry = await store.addAgentLogEntry(task.id, body);
+    return { ok: true, data: { entry } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function listAgentLog(
+  store: TroveStore,
+  input: { task_id: string; limit?: number },
+): Promise<ToolResult<{ entries: AgentLogEntry[] }>> {
+  try {
+    const task = await store.getTask(input.task_id);
+    if (!task) return { ok: false, error: 'Task not found' };
+    const requested = input.limit ?? 20;
+    const limit = Math.min(100, Math.max(1, requested));
+    const entries = await store.listAgentLog(task.id, limit);
+    return { ok: true, data: { entries } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function getTask(
+  store: TroveStore,
+  input: { task_id: string },
+): Promise<ToolResult<{ task: TaskRecord & { agent_log: AgentLogEntry[] } }>> {
+  try {
+    const task = await store.getTask(input.task_id);
+    if (!task) return { ok: false, error: 'Task not found' };
+    const agent_log = await store.listAgentLog(task.id, 5);
+    return { ok: true, data: { task: { ...task, agent_log } } };
+  } catch (error) {
+    return fail(error);
+  }
 }
 
 export async function moveTask(

@@ -21,6 +21,8 @@ import {
   type Status,
   type TaskFilter,
   type TaskPatch,
+  type AgentLogEntry,
+  type HandoffRecord,
   type TaskRecord,
   type TaskWrite,
   type TodayEntry,
@@ -33,7 +35,10 @@ import { INVITE_LIMIT_PER_DAY } from '../_shared/inviteLimit.ts';
 import { DEFAULT_SITE_URL, inviteUrl } from '../_shared/site.ts';
 
 const TASK_SELECT =
-  'id, title, description, status, priority, rank, due_date, space_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignees:task_assignees(position, profile:profiles(id,display_name)), task_labels(label:labels(name))';
+  'id, title, description, status, priority, rank, due_date, space_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignees:task_assignees(position, profile:profiles(id,display_name)), task_labels(label:labels(name)), latest_handoff:task_handoffs(id,from_user_id,to_user_id,status,note,created_at,from:profiles!task_handoffs_from_user_id_fkey(id,display_name),to:profiles!task_handoffs_to_user_id_fkey(id,display_name)), agent_log_entries(count)';
+
+const AGENT_LOG_SELECT =
+  'id, task_id, author_id, body, created_at, author:profiles!agent_log_entries_author_id_fkey(id,display_name)';
 
 type TaskRow = {
   id: string;
@@ -62,6 +67,21 @@ type TaskRow = {
       }[]
     | null;
   task_labels: { label: { name: string } | { name: string }[] | null }[] | null;
+  latest_handoff: HandoffJoin | HandoffJoin[] | null;
+  agent_log_entries: { count: number }[] | { count: number } | null;
+};
+
+type ProfileJoin = { id: string; display_name: string | null };
+
+type HandoffJoin = {
+  id: string;
+  from_user_id: string | null;
+  to_user_id: string | null;
+  status: string;
+  note: string | null;
+  created_at: string;
+  from: ProfileJoin | ProfileJoin[] | null;
+  to: ProfileJoin | ProfileJoin[] | null;
 };
 
 export async function supabaseStore(userId: string, accessToken: string): Promise<TroveStore> {
@@ -73,6 +93,9 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     listMembers: (circleId) => listMembers(db, circleId),
     listTasks: (filter) => listTasks(db, filter),
     getTask: (id) => getTask(db, id),
+    handoffTask: (input) => handoffTask(db, input),
+    addAgentLogEntry: (taskId, body) => addAgentLogEntry(db, taskId, body),
+    listAgentLog: (taskId, limit) => listAgentLog(db, taskId, limit),
     findByExternalId: (externalId) => findByExternalId(db, userId, externalId),
     insertTask: (input) => insertTask(db, userId, input),
     updateTask: (id, patch) => updateTask(db, userId, id, patch),
@@ -162,7 +185,7 @@ async function listTasks(db: SupabaseClient, filter: TaskFilter): Promise<TaskRe
     if (assignedIds.length === 0) return [];
   }
 
-  let query = db.from('tasks').select(TASK_SELECT);
+  let query = taskSelect(db);
   if (assignedIds) query = query.in('id', assignedIds);
   if (filter.circleId) query = query.eq('space_id', filter.circleId);
   if (filter.status) query = query.eq('status', filter.status);
@@ -180,9 +203,95 @@ async function listTasks(db: SupabaseClient, filter: TaskFilter): Promise<TaskRe
 }
 
 async function getTask(db: SupabaseClient, id: string): Promise<TaskRecord | null> {
-  const { data, error } = await db.from('tasks').select(TASK_SELECT).eq('id', id).maybeSingle();
+  const { data, error } = await taskSelect(db).eq('id', id).maybeSingle();
   throwIf(error);
   return data ? toTask(data as unknown as TaskRow) : null;
+}
+
+function taskSelect(db: SupabaseClient) {
+  return db
+    .from('tasks')
+    .select(TASK_SELECT)
+    .order('created_at', { referencedTable: 'task_handoffs', ascending: false })
+    .limit(1, { referencedTable: 'task_handoffs' });
+}
+
+async function handoffTask(
+  db: SupabaseClient,
+  input: {
+    taskId: string;
+    toUserId: string;
+    status: 'todo' | 'in_progress' | null;
+    note: string | null;
+  },
+): Promise<TaskRecord> {
+  const { error } = await db.rpc('handoff_task', {
+    p_task_id: input.taskId,
+    p_to_user_id: input.toUserId,
+    p_status: input.status,
+    p_note: input.note,
+  });
+  throwIf(error);
+  const task = await getTask(db, input.taskId);
+  if (!task) throw new TroveError('Task not found');
+  return task;
+}
+
+async function addAgentLogEntry(db: SupabaseClient, taskId: string, body: string): Promise<AgentLogEntry> {
+  const { data, error } = await db.rpc('add_agent_log_entry', {
+    p_task_id: taskId,
+    p_body: body,
+  });
+  throwIf(error);
+  const id = (data as { id?: string } | null)?.id;
+  if (!id) throw new TroveError('Could not write the agent log');
+  const entries = await listAgentLog(db, taskId, 20);
+  const entry = entries.find((row) => row.id === id);
+  if (entry) return entry;
+  const row = data as {
+    id: string;
+    task_id: string;
+    author_id: string | null;
+    body: string;
+    created_at: string;
+  };
+  return {
+    id: row.id,
+    task_id: row.task_id,
+    author_id: row.author_id,
+    author_name: null,
+    body: row.body,
+    created_at: row.created_at,
+  };
+}
+
+async function listAgentLog(db: SupabaseClient, taskId: string, limit: number): Promise<AgentLogEntry[]> {
+  const { data, error } = await db
+    .from('agent_log_entries')
+    .select(AGENT_LOG_SELECT)
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  throwIf(error);
+  return (data ?? []).map((row) => {
+    const record = row as {
+      id: string;
+      task_id: string;
+      author_id: string | null;
+      body: string;
+      created_at: string;
+      author: ProfileJoin | ProfileJoin[] | null;
+    };
+    const author = one(record.author);
+    return {
+      id: record.id,
+      task_id: record.task_id,
+      author_id: record.author_id,
+      author_name: author?.display_name ?? null,
+      body: record.body,
+      created_at: record.created_at,
+    };
+  });
 }
 
 async function findByExternalId(
@@ -195,6 +304,8 @@ async function findByExternalId(
     .select(TASK_SELECT)
     .eq('created_by', userId)
     .eq('external_id', externalId)
+    .order('created_at', { referencedTable: 'task_handoffs', ascending: false })
+    .limit(1, { referencedTable: 'task_handoffs' })
     .maybeSingle();
   throwIf(error);
   return data ? toTask(data as unknown as TaskRow) : null;
@@ -522,8 +633,33 @@ function toTask(row: TaskRow): TaskRecord {
       typeof row.repeat_interval === 'number' && Number.isInteger(row.repeat_interval) ? row.repeat_interval : 1,
     repeat_weekday: typeof row.repeat_weekday === 'number' ? row.repeat_weekday : null,
     recurrence_series_id: row.recurrence_series_id ?? null,
+    latest_handoff: readLatestHandoff(row.latest_handoff),
+    agent_log_count: readLogCount(row.agent_log_entries),
     created_at: row.created_at,
     updated_at: row.updated_at,
+  };
+}
+
+function readLogCount(raw: TaskRow['agent_log_entries']): number {
+  const row = Array.isArray(raw) ? raw[0] : raw;
+  return typeof row?.count === 'number' ? row.count : 0;
+}
+
+function readLatestHandoff(raw: TaskRow['latest_handoff']): HandoffRecord | null {
+  const rows = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const row = [...rows].sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))[0];
+  if (!row) return null;
+  const from = one(row.from);
+  const to = one(row.to);
+  return {
+    id: row.id,
+    from_user_id: row.from_user_id,
+    from_name: from?.display_name ?? null,
+    to_user_id: row.to_user_id,
+    to_name: to?.display_name ?? null,
+    status: row.status === 'in_progress' ? 'in_progress' : 'todo',
+    note: row.note,
+    created_at: row.created_at,
   };
 }
 

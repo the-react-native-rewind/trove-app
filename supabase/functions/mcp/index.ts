@@ -17,6 +17,7 @@ import { loadSupabaseJwks, verifySupabaseAccessJwt } from '../_shared/accessJwt.
 import { bearerTokenPresented, readMcpAuthorization } from '../_shared/apiToken.ts';
 import { jsonRpcErrorBody, mcpTransportError, readJsonRpcId, rewriteInternalErrorBody } from '../_shared/jsonRpc.ts';
 import { SERVER_VERSION, mcpImplementation, toolMetadata, type ToolMetadata } from '../_shared/mcpMeta.ts';
+import { TROVE_SKILL } from '../_shared/troveSkill.ts';
 import {
   authorizationServerIssuer,
   canonicalMcpResourceUrl,
@@ -28,6 +29,7 @@ import {
 import { oauthSessionIsActive } from '../_shared/oauthSession.ts';
 import { DEFAULT_SITE_URL } from '../_shared/site.ts';
 import {
+  addAgentLogEntry,
   addTaskAttachment,
   assignTask,
   completeTask,
@@ -35,6 +37,9 @@ import {
   createTask,
   createTasksBulk,
   getCircle,
+  getTask,
+  handoffTask,
+  listAgentLog,
   inviteToCircle,
   listCircleTasks,
   listCircles,
@@ -221,7 +226,34 @@ if (import.meta.main) {
 }
 
 function buildServer(store: TroveStore, siteUrl: string): McpServer {
-  const server = new McpServer(mcpImplementation(siteUrl, SERVER_VERSION));
+  // SDK 2.2.0 copies options.instructions onto the initialize result.
+  const server = new McpServer(mcpImplementation(siteUrl, SERVER_VERSION), {
+    instructions: TROVE_SKILL,
+  });
+
+  server.registerPrompt(
+    'trove_skill',
+    {
+      title: 'How to work with Trove',
+      description: 'The Trove skill: circles, handoffs, and the agent log.',
+    },
+    async () => ({
+      messages: [{ role: 'user', content: { type: 'text', text: TROVE_SKILL } }],
+    }),
+  );
+
+  server.registerResource(
+    'trove_skill',
+    'trove://skill',
+    {
+      title: 'How to work with Trove',
+      description: 'The Trove skill: circles, handoffs, and the agent log.',
+      mimeType: 'text/markdown',
+    },
+    async (uri) => ({
+      contents: [{ uri: uri.href, mimeType: 'text/markdown', text: TROVE_SKILL }],
+    }),
+  );
 
   server.registerTool(
     'list_circles',
@@ -298,7 +330,11 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
       inputSchema: z.object({
         task_id: z.string().uuid(),
         title: z.string().optional(),
-        notes: z.string().nullable().optional(),
+        notes: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("Don't write status updates into notes. Use add_agent_log_entry."),
         status: statusField,
         priority: z
           .enum(['low', 'medium', 'high'])
@@ -334,6 +370,66 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
       }),
     },
     async (args) => asTool(await assignTask(store, args)),
+  );
+
+  server.registerTool(
+    'handoff_task',
+    {
+      ...described('handoff_task'),
+      inputSchema: z.object({
+        task_id: z.string().uuid(),
+        to: z.string().describe('Member id or display name. "me" is rejected; you already have the task.'),
+        status: z
+          .enum(['todo', 'in_progress'])
+          .optional()
+          .describe('todo or in_progress. Omit to keep the current status. A done task reopens to todo.'),
+        note: z
+          .string()
+          .nullable()
+          .optional()
+          .describe('Optional note, up to 2000 characters. Blank becomes no note.'),
+      }),
+    },
+    async (args) => asTool(await handoffTask(store, args)),
+  );
+
+  server.registerTool(
+    'add_agent_log_entry',
+    {
+      ...described('add_agent_log_entry'),
+      inputSchema: z.object({
+        task_id: z.string().uuid(),
+        body: z.string().describe('What changed. One or two sentences, up to 4000 characters.'),
+      }),
+    },
+    async (args) => asTool(await addAgentLogEntry(store, args)),
+  );
+
+  server.registerTool(
+    'list_agent_log',
+    {
+      ...described('list_agent_log'),
+      inputSchema: z.object({
+        task_id: z.string().uuid(),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('How many entries to return, newest first. Default 20, maximum 100.'),
+      }),
+    },
+    async (args) => asTool(await listAgentLog(store, args)),
+  );
+
+  server.registerTool(
+    'get_task',
+    {
+      ...described('get_task'),
+      inputSchema: z.object({ task_id: z.string().uuid() }),
+    },
+    async (args) => asTool(await getTask(store, args)),
   );
 
   server.registerTool(
