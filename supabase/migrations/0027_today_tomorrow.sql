@@ -53,7 +53,7 @@ set search_path = public
 as $$
 declare
   v_uid uuid := (select auth.uid());
-  v_source date;
+  v_since date;
   v_later boolean;
   v_floor text;
   v_row record;
@@ -94,42 +94,46 @@ begin
   on conflict (user_id, day, routine_id) where routine_id is not null do nothing;
 
   if not v_later then
-    select max(item.day)
-    into v_source
+    -- Leftovers come from the last prepared day before this one and from any
+    -- planned days after it that were never opened. Without the planned days,
+    -- skipping a planned day would strand the earlier day's unticked lines.
+    select max(marker.day)
+    into v_since
+    from public.today_days marker
+    where marker.user_id = v_uid
+      and marker.day < p_day;
+
+    select min(item.rank)
+    into v_floor
     from public.today_items item
     where item.user_id = v_uid
-      and item.day < p_day;
+      and item.day = p_day;
 
-    if v_source is not null then
-      select min(item.rank)
-      into v_floor
+    -- Newest day first and highest rank first, so the previous top of the
+    -- rolled group sits just under the lines already here and the rest follow.
+    for v_row in
+      select item.id
       from public.today_items item
       where item.user_id = v_uid
-        and item.day = p_day;
-
-      -- Highest rank first, so the previous top of the rolled group sits
-      -- just under the planned block and the rest follow in order.
-      for v_row in
-        select item.id
-        from public.today_items item
-        where item.user_id = v_uid
-          and item.day = v_source
-          and item.routine_id is null
-          and item.checked_at is null
-        order by item.rank collate "C" desc, item.created_at asc, item.id asc
-      loop
-        if v_floor is null then
-          update public.today_items
-          set day = p_day
-          where id = v_row.id;
-        else
-          v_floor := public.rank_before(v_floor);
-          update public.today_items
-          set day = p_day, rank = v_floor
-          where id = v_row.id;
-        end if;
-      end loop;
-    end if;
+        and item.day < p_day
+        and (v_since is null or item.day >= v_since)
+        and item.routine_id is null
+        and item.checked_at is null
+      order by item.day desc, item.rank collate "C" desc, item.created_at asc, item.id asc
+    loop
+      if v_floor is null then
+        -- Nothing here yet: keep this line's rank and build under it.
+        update public.today_items
+        set day = p_day
+        where id = v_row.id
+        returning rank into v_floor;
+      else
+        v_floor := public.rank_before(v_floor);
+        update public.today_items
+        set day = p_day, rank = v_floor
+        where id = v_row.id;
+      end if;
+    end loop;
   end if;
 
   insert into public.today_days (user_id, day)
@@ -289,6 +293,20 @@ begin
       and item.id <> v_item.id
   ) then
     raise exception 'That line is already on that day';
+  end if;
+
+  -- An unprepared day shows routines as previews. Do not plan a task that a
+  -- routine will add there anyway.
+  if p_day > p_as_of and v_item.task_id is not null and exists (
+    select 1
+    from public.today_routines routine
+    where routine.user_id = v_uid
+      and routine.active
+      and routine.task_id = v_item.task_id
+      and routine.id is distinct from v_item.routine_id
+      and (routine.days::integer & (1 << extract(dow from p_day)::integer)) <> 0
+  ) then
+    raise exception 'That task is already on that day';
   end if;
 
   v_rank := public.today_rank_at_bottom(p_day);
