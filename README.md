@@ -18,6 +18,7 @@ Get it out of the chat, and onto a list you can actually see.
 ## What you get
 
 - **A circle for every part of life.** Home, garden, choir, crew, team. Each with its own accent colour, members, and roles (owner, admin, member, viewer).
+- **Today, just for you.** A private checklist for the day, above Mine. Write a line, or pull in a task. Work from the top. It is never shared with a circle.
 - **Mine, across every circle.** The Mine view is every task assigned to you, from every circle you have joined. A circle's own board stays the full shared list.
 - **A board that fits the screen.** On a wide window, To do, In progress, and Done sit in columns. Drag a card between them on the web. On a phone, open work stays one list: an in-progress task keeps its place, with a small tag on the card, and a swipe changes it. Same code, same data.
 - **Invites that just work.** Invite by email, share a link, they land in the right circle with the right role. Free, no per-person cost.

@@ -200,7 +200,7 @@ Deno.test('initialize returns the server card', async () => {
   const { json } = await readBody(response);
   const result = json.result as { serverInfo?: Record<string, unknown> };
   assertEquals(result.serverInfo?.title, 'Trove');
-  assertEquals(result.serverInfo?.version, '1.1.1');
+  assertEquals(result.serverInfo?.version, '1.2.0');
   assertEquals(result.serverInfo?.websiteUrl, 'https://troving.app');
   const icons = result.serverInfo?.icons as Array<{ src?: string }> | undefined;
   assert(icons && icons.length >= 2, JSON.stringify(result.serverInfo));

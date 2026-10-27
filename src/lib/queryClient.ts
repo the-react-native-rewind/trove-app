@@ -23,6 +23,9 @@ export const qk = {
   // spaceId 'all' => Mine, tasks assigned to the current user across groups
   tasks: (spaceId: string) => ['tasks', spaceId] as const,
   task: (taskId: string) => ['task', taskId] as const,
+  today: (userId: string, day: string) => ['today', userId, day] as const,
+  todayPeek: (userId: string, day: string) => ['today-peek', userId, day] as const,
+  todayTaskChoices: (search: string) => ['today-task-choices', search] as const,
   weekTasks: (userId: string, weekStart: string) => ['week-tasks', userId, weekStart] as const,
   taskWeekPlan: (userId: string, taskId: string) => ['task-week-plan', userId, taskId] as const,
 };

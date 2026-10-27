@@ -288,6 +288,81 @@ export type Database = {
         }
         Relationships: []
       }
+      today_days: {
+        Row: { created_at: string; day: string; user_id: string }
+        Insert: { created_at?: string; day: string; user_id: string }
+        Update: { created_at?: string; day?: string; user_id?: string }
+        Relationships: []
+      }
+      today_items: {
+        Row: {
+          checked_at: string | null
+          created_at: string
+          day: string
+          id: string
+          rank: string
+          routine_id: string | null
+          task_id: string | null
+          text: string | null
+          user_id: string
+        }
+        Insert: {
+          checked_at?: string | null
+          created_at?: string
+          day: string
+          id?: string
+          rank: string
+          routine_id?: string | null
+          task_id?: string | null
+          text?: string | null
+          user_id: string
+        }
+        Update: {
+          checked_at?: string | null
+          created_at?: string
+          day?: string
+          id?: string
+          rank?: string
+          routine_id?: string | null
+          task_id?: string | null
+          text?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      today_routines: {
+        Row: {
+          active: boolean
+          created_at: string
+          days: number
+          id: string
+          rank: string
+          task_id: string | null
+          text: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          days?: number
+          id?: string
+          rank: string
+          task_id?: string | null
+          text?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          days?: number
+          id?: string
+          rank?: string
+          task_id?: string | null
+          text?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_task_week_plans: {
         Row: {
           created_at: string
@@ -347,6 +422,19 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: { space_id: string; open_count: number }[]
       }
+      ensure_today: { Args: { p_day: string }; Returns: undefined }
+      add_today_item: {
+        Args: { p_day: string; p_text?: string | null; p_task_id?: string | null }
+        Returns: string
+      }
+      move_today_item: { Args: { p_item_id: string; p_rank: string }; Returns: undefined }
+      rename_today_item: { Args: { p_item_id: string; p_text: string }; Returns: undefined }
+      set_today_repeat: {
+        Args: { p_item_id: string; p_days: number }
+        Returns: string | null
+      }
+      delete_today_item: { Args: { p_item_id: string }; Returns: undefined }
+      today_rank_at_bottom: { Args: { p_day: string }; Returns: string }
     }
     Enums: { [_ in never]: never }
     CompositeTypes: { [_ in never]: never }

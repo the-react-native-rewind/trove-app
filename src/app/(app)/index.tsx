@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { MyWeekView } from '@/components/MyWeekView';
+import { TodayView } from '@/components/TodayView';
 import { SelectionActionBar, SelectionHeader } from '@/components/SelectionChrome';
 import { StatusSegmented } from '@/components/StatusSegmented';
 import { TaskReorderList } from '@/components/TaskReorderList';
@@ -25,6 +26,7 @@ import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
 import { listBucket, sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
+import { TODAY_VIEW_ID } from '@/lib/today';
 import { canManage, canWrite, type ListStatus, type TaskWithRefs } from '@/lib/types';
 import { MY_WEEK_VIEW_ID } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
@@ -48,6 +50,8 @@ export default function Board() {
 
   const viewId =
     !myWeekEnabled && selectedSpaceId === MY_WEEK_VIEW_ID ? MINE_VIEW_ID : selectedSpaceId;
+
+  if (viewId === TODAY_VIEW_ID) return <TodayView />;
 
   return (
     <SelectionProvider key={viewId}>

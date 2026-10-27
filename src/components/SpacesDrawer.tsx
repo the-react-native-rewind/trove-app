@@ -15,10 +15,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMyWeekEnabled } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
 import { useTasks } from '@/data/tasks';
+import { useTodayList } from '@/data/today';
 import { useWeekTasks } from '@/data/weekPlans';
 import { useIsWide } from '@/hooks/useIsWide';
 import { normalizeStatus } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
+import { localToday, TODAY_VIEW_ID } from '@/lib/today';
 import { getCurrentWeekStart, MY_WEEK_VIEW_ID } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
@@ -39,6 +41,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   const myWeekEnabled = useMyWeekEnabled();
   const { data: spaces = [] } = useSpaces();
   const { data: mineTasks = [] } = useTasks('all');
+  const { data: todayLines = [] } = useTodayList(localToday());
   const { data: weekTasks = [] } = useWeekTasks(getCurrentWeekStart(), myWeekEnabled);
 
   const [collapsed, setCollapsed] = useState(false);
@@ -64,6 +67,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
     left: interpolate(progress.value, [0, 1], [(RAIL_WIDTH - 28) / 2, FULL_WIDTH - 40]),
   }));
 
+  const todayOpen = todayLines.filter((line) => line.checkedAt === null).length;
   const mineOpen = mineTasks.filter((task) => normalizeStatus(task.status) !== 'done').length;
   const weekOpen = weekTasks.filter((task) => task.status !== 'done').length;
 
@@ -110,6 +114,14 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <Row
+          active={selectedSpaceId === TODAY_VIEW_ID}
+          onPress={() => select(TODAY_VIEW_ID)}
+          leading={<Ionicons name="sunny-outline" size={20} color={colors.brandDeep} />}
+          label="Today"
+          count={todayOpen}
+          fade={fade}
+        />
         <Row
           active={selectedSpaceId === 'all'}
           onPress={() => select('all')}

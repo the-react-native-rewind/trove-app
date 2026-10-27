@@ -86,6 +86,8 @@ export const MCP_TOOL_NAMES = [
   'add_task_attachment',
   'list_members',
   'invite_to_circle',
+  'list_today',
+  'add_today_item',
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
@@ -119,6 +121,10 @@ export const toolDescriptions: Record<McpToolName, string> = {
     'List the people in a circle: user id, display name, role (owner, admin, member, viewer), and whether the membership was created from an agent invite. Email addresses are not included.',
   invite_to_circle:
     'Invite someone to a circle by email. Only an owner or admin can invite. This sends an email to that address as soon as the invite is created (database trigger invites_send_email). You can create 25 invites in 24 hours; over that, the invite is not created and no email is sent. role is admin, member, or viewer (default member). agent true marks the invite as a bot; the flag is copied onto the membership when they join. It defaults to false, a human invite. Returns the invite token and an https link. The link opens Trove, or offers the download if they do not have the app yet. The invite expires in 14 days. One pending invite per email per circle.',
+  list_today:
+    'List the signed-in person\'s private Today checklist for one date. Today is not a circle and is never shared. day is YYYY-MM-DD and defaults to the current UTC date; pass the person\'s local date to match the app. The first read of a day prepares it: active routines scheduled for that weekday are added unticked, and unticked one-off lines move forward from the most recent earlier day that has lines. Ticked lines stay on the day they were ticked. Repeating lines do not move. Reading an earlier day after a later one was prepared does not pull lines backward. Later reads of the same day return the same list. Lines are ordered by rank (higher first). repeat_days is a Sunday-based bitmask (bit 0 = Sunday) when the line will come back; otherwise null. checked_at is null when the line is unticked.',
+  add_today_item:
+    'Append a line to the signed-in person\'s private Today list. Pass text or task_id, not both. task_id must be a task they can see, and the same task cannot be added twice on the same day. The line goes at the bottom. day defaults to the current UTC date; pass the person\'s local date to match the app. The day is prepared first, with the same rules as list_today.',
 };
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
@@ -275,6 +281,22 @@ export type AttachmentRecord = {
   created_at: string;
 };
 
+/** One private Today line. repeat_days is set only while the routine is active. */
+export type TodayEntry = {
+  id: string;
+  day: string;
+  text: string | null;
+  task_id: string | null;
+  task_title: string | null;
+  circle_id: string | null;
+  circle_name: string | null;
+  circle_color: string | null;
+  routine_id: string | null;
+  repeat_days: number | null;
+  rank: string;
+  checked_at: string | null;
+};
+
 export interface TroveStore {
   userId: string;
   /**
@@ -313,6 +335,11 @@ export interface TroveStore {
    * must use the caller's credentials, not the service role.
    */
   addTaskAttachment(input: AttachmentWrite): Promise<AttachmentRecord>;
+  /** Prepare the caller's Today list for this date. Idempotent. */
+  ensureToday(day: string): Promise<void>;
+  listToday(day: string): Promise<TodayEntry[]>;
+  /** Append a text line or a linked task. The day is prepared first. */
+  addTodayItem(input: { day: string; text: string | null; taskId: string | null }): Promise<TodayEntry>;
 }
 
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -1290,6 +1317,53 @@ function readStatus(value: string | undefined): Status | undefined | { error: st
 
 function isPriority(value: string): value is Priority {
   return value === 'low' || value === 'medium' || value === 'high';
+}
+
+const TODAY_TEXT_MAX = 4000;
+
+export async function listToday(
+  store: TroveStore,
+  input: { day?: string },
+): Promise<ToolResult<{ day: string; items: TodayEntry[] }>> {
+  const day = resolveTodayDay(input.day);
+  if (typeof day !== 'string') return { ok: false, error: day.error };
+  try {
+    await store.ensureToday(day);
+    return { ok: true, data: { day, items: await store.listToday(day) } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addTodayItem(
+  store: TroveStore,
+  input: { day?: string; text?: string | null; task_id?: string | null },
+): Promise<ToolResult<{ day: string; item: TodayEntry }>> {
+  const day = resolveTodayDay(input.day);
+  if (typeof day !== 'string') return { ok: false, error: day.error };
+  const text = input.text?.trim() ?? '';
+  const taskId = input.task_id ?? null;
+  if (text && taskId) return { ok: false, error: 'Pass text or task_id, not both.' };
+  if (!text && !taskId) return { ok: false, error: 'Pass text or task_id.' };
+  if ([...text].some((char) => char.charCodeAt(0) < 32)) {
+    return { ok: false, error: 'A line cannot include line breaks or control characters.' };
+  }
+  if (text.length > TODAY_TEXT_MAX) {
+    return { ok: false, error: `A line can be ${TODAY_TEXT_MAX} characters or fewer.` };
+  }
+  try {
+    const item = await store.addTodayItem({ day, text: text || null, taskId });
+    return { ok: true, data: { day, item } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+function resolveTodayDay(value: string | undefined): string | { error: string } {
+  if (value === undefined || value.trim() === '') return utcDateString();
+  const day = parseDueDate(value.trim());
+  if (!day) return { error: 'day must be a real date as YYYY-MM-DD.' };
+  return day;
 }
 
 function fail(error: unknown): ToolResult<never> {
