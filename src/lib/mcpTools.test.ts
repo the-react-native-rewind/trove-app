@@ -30,6 +30,8 @@ import {
   listCircleTasks,
   listMyTasks,
   moveTask,
+  TASK_STATUSES,
+  toolDescriptions,
   planMove,
   resolveRepeat,
   updateTask,
@@ -59,6 +61,10 @@ test('the tool catalog matches the handlers we ship', () => {
     'list_members',
     'invite_to_circle',
   ]);
+  assert.deepEqual(TASK_STATUSES, ['todo', 'in_progress', 'done']);
+  for (const name of ['create_task', 'update_task', 'list_my_tasks', 'list_circle_tasks'] as const) {
+    assert.equal(toolDescriptions[name].includes('in_progress'), true, name);
+  }
 });
 
 test('planMove keeps a member assignee and clears anyone outside the destination', () => {
@@ -455,10 +461,28 @@ test('assign_task resolves a display name and complete_task marks done', async (
   assert.deepEqual(clash, { ok: false, error: 'Pass assignee or assignees, not both.' });
 
   const doing = await updateTask(store, { task_id: created.data.task.id, status: 'in_progress' });
-  assert.deepEqual(doing, {
-    ok: false,
-    error: 'Doing is no longer a status. Leave the task as todo, or mark it done.',
-  });
+  assert.equal(doing.ok, true);
+  if (!doing.ok) return;
+  assert.equal(doing.data.task.status, 'in_progress');
+
+  const inProgress = await listMyTasks(store, { status: 'in_progress' });
+  assert.equal(inProgress.ok, true);
+  if (!inProgress.ok) return;
+  assert.deepEqual(
+    inProgress.data.tasks.map((task) => task.title),
+    ['Choir music'],
+  );
+  const stillTodo = await listMyTasks(store, { status: 'todo' });
+  assert.equal(stillTodo.ok, true);
+  if (!stillTodo.ok) return;
+  assert.equal(
+    stillTodo.data.tasks.some((task) => task.id === created.data.task.id),
+    false,
+  );
+
+  const unknown = await updateTask(store, { task_id: created.data.task.id, status: 'doing' });
+  assert.deepEqual(unknown, { ok: false, error: 'Unknown status.' });
+  assert.equal(store.tasks.find((task) => task.id === created.data.task.id)?.status, 'in_progress');
 
   const missing = await assignTask(store, { task_id: created.data.task.id, assignee: 'Priya' });
   assert.equal(missing.ok, false);

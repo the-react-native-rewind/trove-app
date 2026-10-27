@@ -12,7 +12,14 @@ import { TaskCard } from './TaskCard';
 import { Text } from './ui/Text';
 
 const NEXT_ACTIONS: Record<TaskStatus, { label: string; status: TaskStatus; done?: boolean }[]> = {
-  todo: [{ label: 'Done', status: 'done', done: true }],
+  todo: [
+    { label: 'In progress', status: 'in_progress' },
+    { label: 'Done', status: 'done', done: true },
+  ],
+  in_progress: [
+    { label: 'To do', status: 'todo' },
+    { label: 'Done', status: 'done', done: true },
+  ],
   done: [{ label: 'Reopen', status: 'todo' }],
 };
 
@@ -24,6 +31,7 @@ export function TaskRow({
   onOpen,
   onMove,
   media,
+  showProgressTag = true,
 }: {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
@@ -32,10 +40,11 @@ export function TaskRow({
   onOpen: () => void;
   onMove: (status: TaskStatus) => void;
   media?: Attachment[];
+  showProgressTag?: boolean;
 }) {
   const ref = useRef<SwipeableMethods>(null);
   const selection = useSelection();
-  const actions = NEXT_ACTIONS[task.status as TaskStatus];
+  const actions = NEXT_ACTIONS[task.status as TaskStatus] ?? NEXT_ACTIONS.todo;
 
   function renderRightActions() {
     return (
@@ -75,6 +84,7 @@ export function TaskRow({
           showSpaceTag={showSpaceTag}
           heat={heat}
           selectable={canWrite}
+          showProgressTag={showProgressTag}
           onPress={onOpen}
           media={media}
         />
@@ -88,7 +98,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.sm },
   action: {
     height: '100%',
-    minWidth: 64,
+    minWidth: 96,
     paddingHorizontal: spacing.md,
     borderRadius: radii.card,
     alignItems: 'center',

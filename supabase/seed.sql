@@ -215,7 +215,7 @@ values
     'a4444444-4444-4444-8444-444444444444',
     'Turn the compost',
     'Back bed, after the rain.',
-    'todo', 2,
+    'in_progress', 2,
     'medium', current_date + 2,
     'a1111111-1111-4111-8111-111111111111'
   ),

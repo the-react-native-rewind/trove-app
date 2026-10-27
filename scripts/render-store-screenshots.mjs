@@ -33,9 +33,9 @@ const dusk = '#5B6E7A';
 const terracotta = '#C16E43';
 
 const mineTasks = [
-  { title: 'Print event flyers', space: 'Community', color: dusk, meta: 'Doing · Fri', overdue: false },
+  { title: 'Print event flyers', space: 'Community', color: dusk, meta: 'In progress · Fri', overdue: false },
   { title: 'Water the greenhouse', space: 'Garden crew', color: moss, meta: 'To do · Tomorrow', overdue: false },
-  { title: 'Label the seedlings', space: 'Garden crew', color: moss, meta: 'Doing · in 3 days', overdue: false },
+  { title: 'Label the seedlings', space: 'Garden crew', color: moss, meta: 'In progress · in 3 days', overdue: false },
   { title: 'Book the boiler service', space: 'Household', color: terracotta, meta: 'To do · Overdue', overdue: true },
   { title: 'Sketch the spring menu', space: 'Personal', color: brand, meta: 'To do', overdue: false },
 ];
@@ -44,12 +44,12 @@ const gardenTasks = [
   { title: 'Water the greenhouse', who: 'Alex Rivera', meta: 'To do · Tomorrow', overdue: false, done: false },
   { title: 'Turn the compost', who: 'Sam Okonkwo', meta: 'To do · in 2 days', overdue: false, done: false },
   { title: 'Order seed potatoes', who: 'Unassigned', meta: 'To do · in 10 days', overdue: false, done: false },
-  { title: 'Label the seedlings', who: 'Alex Rivera', meta: 'Doing · in 3 days', overdue: false, done: false },
+  { title: 'Label the seedlings', who: 'Alex Rivera', meta: 'In progress · in 3 days', overdue: false, done: false },
   { title: 'Fix the gate', who: 'Priya Shah', meta: 'Done', overdue: false, done: true },
 ];
 
 const communityTasks = [
-  { title: 'Print event flyers', who: 'Alex Rivera', space: 'Community', color: dusk, meta: 'Doing · Fri', overdue: false, done: false },
+  { title: 'Print event flyers', who: 'Alex Rivera', space: 'Community', color: dusk, meta: 'In progress · Fri', overdue: false, done: false },
   { title: 'Book the community hall', who: 'Sam Okonkwo', space: 'Community', color: dusk, meta: 'To do · in 4 days', overdue: false, done: false },
 ];
 
@@ -109,7 +109,7 @@ function wide(width, height, mode) {
   const sidebar = 420;
   const columns = [
     { label: 'To do', items: gardenTasks.filter((task) => task.meta.startsWith('To do') && !task.done) },
-    { label: 'Doing', items: gardenTasks.filter((task) => task.meta.startsWith('Doing')) },
+    { label: 'In progress', items: gardenTasks.filter((task) => task.meta.startsWith('In progress')) },
     { label: 'Done', items: gardenTasks.filter((task) => task.done) },
   ];
   if (mode === 'mine') {
@@ -117,11 +117,11 @@ function wide(width, height, mode) {
       ...task,
       who: task.space,
     }));
-    columns[1].items = mineTasks.filter((task) => task.meta.startsWith('Doing')).map((task) => ({ ...task, who: task.space }));
+    columns[1].items = mineTasks.filter((task) => task.meta.startsWith('In progress')).map((task) => ({ ...task, who: task.space }));
     columns[2].items = [];
   } else if (mode === 'community') {
     columns[0].items = communityTasks.filter((task) => task.meta.startsWith('To do'));
-    columns[1].items = communityTasks.filter((task) => task.meta.startsWith('Doing'));
+    columns[1].items = communityTasks.filter((task) => task.meta.startsWith('In progress'));
     columns[2].items = [];
   }
   const heading = mode === 'mine' ? 'Mine' : mode === 'community' ? 'Community' : 'Garden crew';

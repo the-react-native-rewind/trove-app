@@ -25,16 +25,25 @@ export function sortTasksByUrgency(tasks: TaskWithRefs[]): TaskWithRefs[] {
   });
 }
 
-/** Map stored status onto the open list or Done. Legacy values such as backlog and in_progress stay open. */
+/** Map a stored status onto todo, in progress, or done. Unknown values stay open. */
 export function normalizeStatus(status: string): TaskStatus {
-  if (status === 'done') return 'done';
+  if (status === 'done' || status === 'in_progress') return status;
   return 'todo';
+}
+
+/**
+ * Narrow lists have no In progress section. Those tasks stay in To do,
+ * in the same order as the other open work.
+ */
+export function listBucket(status: string): 'todo' | 'done' {
+  return normalizeStatus(status) === 'done' ? 'done' : 'todo';
 }
 
 /** Bucket tasks into the status columns, ordered by urgency. */
 export function groupByStatus(tasks: TaskWithRefs[]): Record<TaskStatus, TaskWithRefs[]> {
   const groups: Record<TaskStatus, TaskWithRefs[]> = {
     todo: [],
+    in_progress: [],
     done: [],
   };
   for (const t of tasks) {

@@ -9,11 +9,19 @@ export type Task = Tables['tasks']['Row'];
 export type Label = Tables['labels']['Row'];
 export type Invite = Tables['invites']['Row'];
 
-export type TaskStatus = 'todo' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'done';
+/** Phone and other narrow lists. In progress stays inside To do. */
+export type ListStatus = 'todo' | 'done';
 export type SpaceRole = 'owner' | 'admin' | 'member' | 'viewer';
 export type Priority = 'low' | 'medium' | 'high';
 
 export const STATUSES: { key: TaskStatus; label: string }[] = [
+  { key: 'todo', label: 'To do' },
+  { key: 'in_progress', label: 'In progress' },
+  { key: 'done', label: 'Done' },
+];
+
+export const LIST_STATUSES: { key: ListStatus; label: string }[] = [
   { key: 'todo', label: 'To do' },
   { key: 'done', label: 'Done' },
 ];

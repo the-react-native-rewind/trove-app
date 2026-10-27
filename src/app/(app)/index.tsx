@@ -22,16 +22,16 @@ import { useMoveTaskStatus, useTasks, useUpdateTaskRank } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
-import { normalizeStatus, sortTasksByUrgency } from '@/lib/board';
+import { listBucket, sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
-import { canManage, canWrite, type TaskStatus, type TaskWithRefs } from '@/lib/types';
+import { canManage, canWrite, type ListStatus, type TaskWithRefs } from '@/lib/types';
 import { MY_WEEK_VIEW_ID } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { SelectionProvider, useSelection } from '@/providers/SelectionProvider';
 import { colors, heatColor, radii, shadows, spacing } from '@/theme/tokens';
 
-const EMPTY_COPY: Record<TaskStatus, { title: string; body: string }> = {
+const EMPTY_COPY: Record<ListStatus, { title: string; body: string }> = {
   todo: { title: 'All clear', body: 'Nothing to do right now. Tap the plus to add the next thing.' },
   done: { title: 'Nothing done yet', body: 'Finished tasks land here. A good place to see what got carried.' },
 };
@@ -56,7 +56,7 @@ export default function Board() {
   );
 }
 
-const MINE_EMPTY: Record<TaskStatus, { title: string; body: string }> = {
+const MINE_EMPTY: Record<ListStatus, { title: string; body: string }> = {
   todo: {
     title: 'Nothing assigned to you',
     body: 'Tasks handed to you, in any circle, show up here.',
@@ -94,7 +94,7 @@ function SpaceBoard() {
   const moveStatus = useMoveTaskStatus();
   const updateRank = useUpdateTaskRank();
 
-  const [status, setStatus] = useState<TaskStatus>('todo');
+  const [status, setStatus] = useState<ListStatus>('todo');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set());
   const [showFilter, setShowFilter] = useState(false);
@@ -120,10 +120,10 @@ function SpaceBoard() {
   const mediaTaskIds = useMemo(() => visibleTasks.map((task) => task.id), [visibleTasks]);
   const { data: mediaByTask } = useTaskMediaForTasks(mediaTaskIds);
 
-  const counts: Record<TaskStatus, number> = { todo: 0, done: 0 };
-  for (const t of visibleTasks) counts[normalizeStatus(t.status)]++;
+  const counts: Record<ListStatus, number> = { todo: 0, done: 0 };
+  for (const t of visibleTasks) counts[listBucket(t.status)]++;
 
-  const items = visibleTasks.filter((t) => normalizeStatus(t.status) === status);
+  const items = visibleTasks.filter((t) => listBucket(t.status) === status);
   const selectableIds = (isWide ? visibleTasks : items)
     .filter((task) => canWriteTask(task.space_id))
     .map((task) => task.id);

@@ -8,8 +8,9 @@ import { TaskRow } from './TaskRow';
 import { Text } from './ui/Text';
 
 /**
- * Native board: To do and Done, side by side. Cross-column moves use the card's
- * swipe actions (the web build gets true drag-and-drop via KanbanBoard.web).
+ * Native board (iPad and Mac): To do, In progress, and Done, side by side.
+ * Cross-column moves use the card's swipe actions. The web build drags
+ * cards between columns.
  */
 export function KanbanBoard({
   tasks,
@@ -53,6 +54,7 @@ export function KanbanBoard({
                   canWrite={canWriteTask(task.space_id)}
                   onOpen={() => onOpen(task.id)}
                   onMove={(status) => onMove(task.id, status)}
+                  showProgressTag={false}
                   media={mediaByTaskId?.[task.id]}
                 />
               ))}
