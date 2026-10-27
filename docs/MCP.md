@@ -168,7 +168,11 @@ Send the OAuth access token, or `Authorization: Bearer trove_…`. The public ho
 | `create_tasks_bulk` | Create up to 100 tasks. Safe to retry when each item has an `external_id`. Each item can repeat. |
 | `update_task` | Change title, notes, status, priority, due date, assignees, tags, or the repeat rule. An owner or admin's priority also sets the task's rank. A member can set priority but cannot change rank. Can clear notes, tags, or assignees. Does not change the circle. |
 | `complete_task` | Mark a task done. You can set it back to to do. A repeating task stays done, and the database adds the next occurrence. |
-| `assign_task` | Replace the people assigned to a task. Passing null or an empty list clears everyone. Each person must already be in that circle. |
+| `assign_task` | Replace the people assigned to a task. Passing null or an empty list clears everyone. Each person must already be in that circle. This does not record a note. |
+| `handoff_task` | Pass a task you are assigned to someone else. You are removed, they take your place, rank stays, and an optional note is saved. |
+| `add_agent_log_entry` | Append a short agent-only status update. Humans cannot write here. |
+| `list_agent_log` | Read a task's agent log, newest first. |
+| `get_task` | One task, including the latest handoff and the last 5 agent log entries. |
 | `move_task` | Move a task to another circle. Tags from the old circle are removed, and people who are not in the new circle are unassigned. |
 | `add_task_attachment` | Attach an image or video to a task you can edit. A URL is downloaded by the server. Returns the attachment id. |
 | `list_members` | People in a circle: user id, display name, role, and whether they joined as an agent. No email addresses. |
@@ -197,6 +201,16 @@ Circle arguments are `circle_id`, `circle_name` (case-insensitive, must match on
 Statuses are `todo`, `in_progress`, and `done`. A status filter is exact: `todo` does not include `in_progress`. Priority is `low`, `medium`, or `high`. For an owner or admin it chooses a rank in that circle's overall order: `high` places the task above the current top, `medium` between the two central tasks, and `low` or `null` at the bottom. A member can set the label but cannot move an existing task. New tasks with no priority start at the bottom. Lists return `rank`, a fractional index string. A larger rank sorts first. Order is rank (higher first), then due date (earliest first, no date last), then position and creation time. Due filters are `due_on`, `due_before`, and `due_after` as `YYYY-MM-DD`. Lists return 50 tasks unless you set `limit` (maximum 200).
 
 A task can have several assignees. `assignee` is one member id, a display name (unique in that circle, case-insensitive), `"me"`, or `null`. `assignees` is a list of those same values. Either field replaces the whole set. Pass one of them, not both. An empty `assignees` list, or `assignee: null`, clears everyone. Omitting both on create assigns you. Omitting both on update leaves the current people. Results include `assignees` in position order, and `assignee_id` / `assignee_name` for the first person so older clients still see one assignee. Mine includes a task when you are any assignee.
+
+## Handoffs and the agent log
+
+`assign_task` and the assignee fields on `update_task` are a plain assign. They do not record a note. To pass work you are assigned to someone else, call `handoff_task`. That removes you, gives them your place in the assignee list, leaves everyone else, and keeps the task's rank. `status` is `todo` or `in_progress`. Omit it to keep the current status. A done task reopens to `todo` unless you pass `in_progress`. Passing `done` fails: finish the task with `complete_task`. `to` is a member id or display name, not `"me"`. `note` is optional and at most 2000 characters.
+
+Every task result includes `latest_handoff` (or `null`) and `agent_log_count`. `get_task` also returns the last 5 agent log entries, newest first. `list_agent_log` returns more of them. Anyone who can see the task can read both.
+
+`add_agent_log_entry` is for agents. A human member gets an error. Write one or two sentences about a milestone, with links, and do not put that progress in the task notes. A task holds at most 500 entries. The server instructions, the `trove_skill` prompt, and the `trove://skill` resource are the same short skill.
+
+Statuses stay `todo`, `in_progress`, and `done`. There is no separate handed-off status.
 
 Tags are labels that belong to one circle. Naming a tag creates it if needed. On `update_task`, `tags` replaces the whole set. An empty array clears them.
 
@@ -289,7 +303,21 @@ This is for the person who operates the Supabase project. It is not part of conn
 
 ### Database
 
-Migration `0012_api_token_limits.sql` caps active personal tokens at 10. Migration `0024_invite_rate_limit.sql` caps invites at 25 per person per 24 hours and adds `recent_invite_count()` for the MCP tool. Apply 0024 in the SQL editor or with `supabase db push`. Do not run the seed or `supabase/tests/bootstrap.sql` on the hosted project.
+Migration `0012_api_token_limits.sql` caps active personal tokens at 10. Migration `0024_invite_rate_limit.sql` caps invites at 25 per person per 24 hours and adds `recent_invite_count()` for the MCP tool. Migration `0028_handoffs_agent_log.sql` adds handoffs, the agent log, and `handoff_task`. Apply 0028 in the SQL editor or with `supabase db push`. Do not run the seed or `supabase/tests/bootstrap.sql` on the hosted project.
+
+Before applying 0028, this dry run should return no rows on the current project. The migration then copies any "Bot update" section it does find into the agent log and removes it from the notes:
+
+```sql
+select id, title
+from public.tasks
+where description ~* '(^|\n)#{1,6}[[:space:]]+bot[[:space:]]+update\M';
+```
+
+Deploy the function after the migration. The gateway must not verify the JWT:
+
+```bash
+supabase functions deploy mcp --no-verify-jwt
+```
 
 ### Function secrets
 
@@ -306,6 +334,8 @@ Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVI
 supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256","x":"…","y":"…","d":"…"}'
 supabase functions deploy mcp --no-verify-jwt
 ```
+
+`server.json` and the initialize response both advertise version `1.4.0`.
 
 `--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. The gateway must let the unauthenticated discovery request through. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
 

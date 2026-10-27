@@ -40,6 +40,9 @@ function stubStore(): TroveStore {
     listMembers: unused,
     listTasks: unused,
     getTask: unused,
+    handoffTask: unused,
+    addAgentLogEntry: unused,
+    listAgentLog: unused,
     findByExternalId: unused,
     insertTask: unused,
     updateTask: unused,
@@ -48,7 +51,11 @@ function stubStore(): TroveStore {
     countRecentInvites: async () => 0,
     createCircle: unused,
     addTaskAttachment: unused,
-  } as TroveStore;
+    ensureToday: unused,
+    listToday: unused,
+    listTodayPlan: unused,
+    addTodayItem: unused,
+  };
 }
 
 function rpc(method: string, token?: string, id: number = 1): Request {
@@ -129,7 +136,19 @@ Deno.test('tools/list advertises a title and hints, and a personal token still a
   const { json } = await readBody(response);
   const result = json.result as { tools?: Array<Record<string, unknown>> };
   const tools = result.tools ?? [];
-  assertEquals(tools.length, 14);
+  assertEquals(tools.length, 20);
+  for (const name of ['handoff_task', 'add_agent_log_entry', 'list_agent_log', 'get_task']) {
+    assert(tools.some((tool) => tool.name === name), `${name} missing`);
+  }
+  const handoff = tools.find((tool) => tool.name === 'handoff_task');
+  const handoffAnnotations = handoff?.annotations as Record<string, unknown>;
+  assertEquals(handoffAnnotations.readOnlyHint, false);
+  assertEquals(handoffAnnotations.destructiveHint, false);
+  assertEquals(handoffAnnotations.idempotentHint, false);
+  const logRead = tools.find((tool) => tool.name === 'list_agent_log');
+  const logReadAnnotations = logRead?.annotations as Record<string, unknown>;
+  assertEquals(logReadAnnotations.readOnlyHint, true);
+  assertEquals(logReadAnnotations.idempotentHint, true);
   const invite = tools.find((tool) => tool.name === 'invite_to_circle');
   assert(invite, 'invite_to_circle missing');
   assertEquals(invite.title, 'Invite to a circle');
@@ -198,9 +217,10 @@ Deno.test('initialize returns the server card', async () => {
   );
   assertEquals(response.status, 200);
   const { json } = await readBody(response);
-  const result = json.result as { serverInfo?: Record<string, unknown> };
+  const result = json.result as { serverInfo?: Record<string, unknown>; instructions?: string };
   assertEquals(result.serverInfo?.title, 'Trove');
-  assertEquals(result.serverInfo?.version, '1.3.0');
+  assertEquals(result.serverInfo?.version, '1.4.0');
+  assert(String(result.instructions).includes('How to work with Trove'), String(result.instructions).slice(0, 80));
   assertEquals(result.serverInfo?.websiteUrl, 'https://troving.app');
   const icons = result.serverInfo?.icons as Array<{ src?: string }> | undefined;
   assert(icons && icons.length >= 2, JSON.stringify(result.serverInfo));
@@ -224,3 +244,33 @@ Deno.test('a missing signing key is an actionable JSON-RPC error', async () => {
   assertEquals(error.data?.reason, 'server_misconfigured');
   assert(!String(error.message).includes('Internal error'));
 });
+
+Deno.test('prompts/list and resources/read expose the Trove skill', async () => {
+  const listed = await handleMcpRequest(rpcParams('prompts/list', {}, PERSONAL), deps());
+  assertEquals(listed.status, 200);
+  const listedBody = await readBody(listed);
+  const prompts = (listedBody.json.result as { prompts?: Array<{ name?: string }> }).prompts ?? [];
+  assert(prompts.some((prompt) => prompt.name === 'trove_skill'), JSON.stringify(prompts));
+
+  const read = await handleMcpRequest(
+    rpcParams('resources/read', { uri: 'trove://skill' }, PERSONAL),
+    deps(),
+  );
+  assertEquals(read.status, 200);
+  const readBodyResult = await readBody(read);
+  const contents = (readBodyResult.json.result as { contents?: Array<{ mimeType?: string; text?: string }> }).contents ?? [];
+  assertEquals(contents[0]?.mimeType, 'text/markdown');
+  assert(String(contents[0]?.text).includes('How to work with Trove'), String(contents[0]?.text).slice(0, 80));
+});
+
+function rpcParams(method: string, params: unknown, token: string): Request {
+  return new Request(`${RESOURCE}/`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 4, method, params }),
+  });
+}

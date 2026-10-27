@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { useRoster } from '@/data/members';
+import { assigneeTap } from '@/lib/handoff';
 import { formatDueDate } from '@/lib/format';
 import {
   defaultWeekday,
@@ -253,14 +254,26 @@ export function AssigneePicker({
   spaceId,
   value,
   onChange,
+  handoff,
 }: {
   spaceId: string | null;
   value: readonly string[];
   onChange: (userIds: string[]) => void;
+  /**
+   * Set on the edit screen. When the task is yours, tapping someone else
+   * asks whether to hand it off or add them too.
+   */
+  handoff?: {
+    callerId: string | null;
+    taskStatus: string;
+    onHandoff: (userId: string, name: string, avatarUrl: string | null) => void;
+  };
 }) {
   const { data: roster = [] } = useRoster(spaceId ?? 'all');
+  const [prompt, setPrompt] = useState<{ id: string; name: string; avatarUrl: string | null } | null>(null);
   const selectedIds = new Set(value);
   const unassigned = value.length === 0;
+  const callerIsAssignee = Boolean(handoff?.callerId && value.includes(handoff.callerId));
   return (
     <View style={styles.field}>
       <FieldLabel>Assignees</FieldLabel>
@@ -279,29 +292,75 @@ export function AssigneePicker({
           </Text>
         </Pressable>
         {roster.map((m) => {
-          if (!m.profile) return null;
+          const profile = m.profile;
+          if (!profile) return null;
           const selected = selectedIds.has(m.user_id);
           return (
             <Pressable
               key={m.id}
               onPress={() => {
                 hapticLight();
+                const name = profile.display_name ?? 'Member';
+                const decision = handoff
+                  ? assigneeTap({
+                      callerIsAssignee,
+                      taskDone: handoff.taskStatus === 'done',
+                      tappedId: m.user_id,
+                      callerId: handoff.callerId,
+                      alreadySelected: selected,
+                    })
+                  : selected
+                    ? 'remove'
+                    : 'add';
+                if (decision === 'prompt' && handoff) {
+                  setPrompt({ id: m.user_id, name, avatarUrl: profile.avatar_url });
+                  return;
+                }
+                setPrompt(null);
                 onChange(
-                  selected ? value.filter((id) => id !== m.user_id) : [...value, m.user_id],
+                  decision === 'remove' ? value.filter((id) => id !== m.user_id) : [...value, m.user_id],
                 );
               }}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
             >
-              <Avatar name={m.profile.display_name} uri={m.profile.avatar_url} size={20} />
+              <Avatar name={profile.display_name} uri={profile.avatar_url} size={20} />
               <Text variant="bodyMedium" color={selected ? colors.onBrand : colors.inkSoft}>
-                {m.profile.display_name ?? 'Member'}
+                {profile.display_name ?? 'Member'}
               </Text>
             </Pressable>
           );
         })}
       </View>
+      {prompt && handoff ? (
+        <View style={styles.chipRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              handoff.onHandoff(prompt.id, prompt.name, prompt.avatarUrl);
+              setPrompt(null);
+            }}
+            style={[styles.chip, styles.chipSelected]}
+          >
+            <Text variant="bodyMedium" color={colors.onBrand}>
+              Hand off to {prompt.name}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              onChange(value.includes(prompt.id) ? [...value] : [...value, prompt.id]);
+              setPrompt(null);
+            }}
+            style={[styles.chip, styles.chipIdle]}
+          >
+            <Text variant="bodyMedium" color={colors.inkSoft}>
+              Add {prompt.name} too
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -39,7 +39,9 @@ export function useWeekTasks(weekStart: string, enabled = true) {
         .in(
           'id',
           plans.map((plan) => plan.task_id),
-        );
+        )
+        .order('created_at', { referencedTable: 'task_handoffs', ascending: false })
+        .limit(1, { referencedTable: 'task_handoffs' });
       if (taskError) throw taskError;
 
       const tasksById = new Map((tasks ?? []).map((task) => [task.id, mapTaskRow(task)]));

@@ -4,16 +4,19 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 
 import { AssigneePicker, DueDatePicker, OptionChips, RepeatPicker } from '@/components/form';
+import { HandoffSheet } from '@/components/TaskHandoff';
 import { TaskMedia } from '@/components/TaskMedia';
 import { Button } from '@/components/ui/Button';
 import { SpaceTag } from '@/components/ui/Indicators';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
+import { useRoster } from '@/data/members';
 import { useSpaces } from '@/data/spaces';
-import { useDeleteTask, useTask, useUpdateTask } from '@/data/tasks';
+import { useDeleteTask, useHandoffTask, useTask, useUpdateTask } from '@/data/tasks';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
 import { canWrite, STATUSES, type TaskStatus } from '@/lib/types';
+import { useAuth } from '@/providers/AuthProvider';
 import { colors, spacing } from '@/theme/tokens';
 
 /** Debounce for title/notes autosave — long enough to avoid a write per keystroke. */
@@ -24,8 +27,12 @@ export default function TaskEdit() {
   const router = useRouter();
   const { data: task, isLoading } = useTask(id);
   const { data: spaces = [] } = useSpaces();
+  const { userId } = useAuth();
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
+  const handoffTask = useHandoffTask();
+  const { data: roster = [] } = useRoster(task?.space_id ?? 'all');
+  const [handoffTo, setHandoffTo] = useState<{ id: string; name: string; avatarUrl: string | null } | null>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -197,7 +204,35 @@ export default function TaskEdit() {
         spaceId={task.space_id}
         value={task.assignees.map((person) => person.id)}
         onChange={(assignee_ids) => patch({ id: task.id, assignee_ids })}
+        handoff={{
+          callerId: userId,
+          taskStatus: task.status,
+          onHandoff: (id, name, avatarUrl) => setHandoffTo({ id, name, avatarUrl }),
+        }}
       />
+      {handoffTo ? (
+        <HandoffSheet
+          members={[handoffTo]}
+          currentStatus={task.status}
+          busy={handoffTask.isPending}
+          onClose={() => setHandoffTo(null)}
+          onSubmit={async (input) => {
+            const me = roster.find((member) => member.user_id === userId)?.profile;
+            await handoffTask.mutateAsync({
+              taskId: task.id,
+              callerId: userId ?? '',
+              toUserId: input.toUserId,
+              toName: input.toName,
+              toAvatarUrl: input.toAvatarUrl,
+              fromName: me?.display_name ?? null,
+              fromAvatarUrl: me?.avatar_url ?? null,
+              status: input.status,
+              note: input.note,
+            });
+            setHandoffTo(null);
+          }}
+        />
+      ) : null}
       <DueDatePicker
         value={task.due_date}
         onChange={(due_date) => patch({ id: task.id, due_date })}

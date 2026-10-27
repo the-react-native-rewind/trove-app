@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 
 import { CirclePicker } from '@/components/form';
+import { AgentLogSection, HandoffSheet, TaskHandoffBlock } from '@/components/TaskHandoff';
 import { MarkdownNotes } from '@/components/MarkdownNotes';
 import { TaskMedia } from '@/components/TaskMedia';
 import { fullBleedMediaCorners, TaskMediaStrip } from '@/components/TaskMediaStrip';
@@ -14,10 +15,12 @@ import { SpaceTag } from '@/components/ui/Indicators';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { useTaskAttachments } from '@/data/attachments';
+import { useRoster } from '@/data/members';
 import { useMyWeekEnabled } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
-import { useMoveTask, useTask, useUpdateTask } from '@/data/tasks';
+import { useHandoffTask, useMoveTask, useTask, useUpdateTask } from '@/data/tasks';
 import { confirmDialog } from '@/lib/dialog';
+import { canHandOff } from '@/lib/handoff';
 import {
   useRemoveTaskWeekPlan,
   useSetTaskWeekPlan,
@@ -29,14 +32,19 @@ import {
   repeatRuleFromTask,
   repeatScheduleCopy,
 } from '@/lib/recurrence';
-import { canWrite, STATUSES, type TaskStatus } from '@/lib/types';
+import { canManage, canWrite, STATUSES, type TaskStatus } from '@/lib/types';
+import { useAuth } from '@/providers/AuthProvider';
 import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
 import { colors, radii, spacing } from '@/theme/tokens';
 
 export default function TaskView() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { userId } = useAuth();
   const { data: task, isLoading } = useTask(id);
+  const { data: roster = [] } = useRoster(task?.space_id ?? 'all');
+  const handoffTask = useHandoffTask();
+  const [handingOff, setHandingOff] = useState(false);
   const { data: spaces = [] } = useSpaces();
   const myWeekEnabled = useMyWeekEnabled();
   const { data: weekPlan, isLoading: isWeekPlanLoading } = useTaskWeekPlan(id, myWeekEnabled);
@@ -66,7 +74,16 @@ export default function TaskView() {
     );
   }
 
-  const writable = canWrite(spaces.find((s) => s.id === task.space_id)?.role);
+  const role = spaces.find((s) => s.id === task.space_id)?.role;
+  const writable = canWrite(role);
+  const others = roster.filter((member) => member.user_id !== userId && member.profile);
+  const offerHandoff = canHandOff({
+    callerId: userId,
+    writable,
+    status: task.status,
+    assigneeIds: task.assignees.map((person) => person.id),
+    otherMemberCount: others.length,
+  });
   const destinations = spaces.filter((space) => space.id !== task.space_id);
   const statusLabel = STATUSES.find((s) => s.key === (task.status as TaskStatus))?.label ?? task.status;
   const due = formatDueDate(task.due_date);
@@ -137,6 +154,8 @@ export default function TaskView() {
         ))}
       </View>
 
+      <TaskHandoffBlock taskId={task.id} userId={userId} fallback={task.latest_handoff} />
+
       {writable && task.status !== 'done' ? (
         <Button
           label={task.status === 'in_progress' ? 'Back to to do' : 'Mark in progress'}
@@ -160,6 +179,42 @@ export default function TaskView() {
         />
       ) : null}
 
+      {offerHandoff ? (
+        <Button
+          label="Hand off"
+          variant="secondary"
+          size="md"
+          onPress={() => setHandingOff(true)}
+        />
+      ) : null}
+      {handingOff ? (
+        <HandoffSheet
+          members={others.flatMap((member) =>
+            member.profile
+              ? [{ id: member.user_id, name: member.profile.display_name ?? 'Member', avatarUrl: member.profile.avatar_url }]
+              : [],
+          )}
+          currentStatus={task.status}
+          busy={handoffTask.isPending}
+          onClose={() => setHandingOff(false)}
+          onSubmit={async (input) => {
+            const me = roster.find((member) => member.user_id === userId)?.profile;
+            await handoffTask.mutateAsync({
+              taskId: task.id,
+              callerId: userId ?? '',
+              toUserId: input.toUserId,
+              toName: input.toName,
+              toAvatarUrl: input.toAvatarUrl,
+              fromName: me?.display_name ?? null,
+              fromAvatarUrl: me?.avatar_url ?? null,
+              status: input.status,
+              note: input.note,
+            });
+            setHandingOff(false);
+          }}
+        />
+      ) : null}
+
       {writable && destinations.length > 0 ? (
         <MoveToCircle taskId={task.id} destinations={destinations} />
       ) : null}
@@ -171,6 +226,8 @@ export default function TaskView() {
           No notes yet.
         </Text>
       )}
+
+      <AgentLogSection taskId={task.id} userId={userId} canModerate={canManage(role)} />
 
       {myWeekEnabled ? (
       <View style={styles.weekPlan}>

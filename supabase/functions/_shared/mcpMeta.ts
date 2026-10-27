@@ -16,7 +16,7 @@ export type ToolMetadata = {
   openWorldHint: boolean;
 };
 
-export const SERVER_VERSION = '1.3.0';
+export const SERVER_VERSION = '1.4.0';
 
 export const toolMetadata: Record<McpToolName, ToolMetadata> = {
   list_circles: {
@@ -86,6 +86,34 @@ export const toolMetadata: Record<McpToolName, ToolMetadata> = {
     title: 'Assign a task',
     readOnlyHint: false,
     destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  handoff_task: {
+    title: 'Hand off a task',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  add_agent_log_entry: {
+    title: 'Add an agent log entry',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  list_agent_log: {
+    title: 'List the agent log',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  get_task: {
+    title: 'Get a task',
+    readOnlyHint: true,
+    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: false,
   },

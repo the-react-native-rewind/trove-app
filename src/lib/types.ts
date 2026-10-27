@@ -1,4 +1,7 @@
 import type { Database } from './database.types';
+import type { TaskHandoff } from './handoff';
+
+export type { TaskHandoff };
 
 type Tables = Database['public']['Tables'];
 
@@ -34,10 +37,12 @@ export type SpaceWithMeta = Space & {
 
 export type TaskAssignee = Pick<Profile, 'id' | 'display_name' | 'avatar_url'>;
 
-/** A task joined with its space (name + color) and the people assigned to it. */
+/** A task joined with its space (name + color), assignees, and the latest handoff. */
 export type TaskWithRefs = Task & {
   space: Pick<Space, 'id' | 'name' | 'color'> | null;
   assignees: TaskAssignee[];
+  latest_handoff: TaskHandoff | null;
+  agent_log_count: number;
 };
 
 /** A roster entry: membership joined with the member's profile. */
