@@ -48,6 +48,7 @@ export function TaskCard({
   const done = task.status === 'done';
   const inProgress = task.status === 'in_progress';
   const showTag = Boolean(showSpaceTag && task.space);
+  const showProgress = showProgressTag && inProgress;
   const repeats = describeRepeat(repeatRuleFromTask(task));
   const notes = plainTextFromMarkdown(task.description ?? '');
   const handoffNote = visibleHandoffNote(task);
@@ -111,12 +112,9 @@ export function TaskCard({
         accessibilityState={{ selected }}
         style={styles.body}
       >
-        {showTag || (showProgressTag && inProgress) ? (
-          <View style={[styles.tagRow, !showTag && styles.tagRowEnd]}>
-            {showTag && task.space ? (
-              <SpaceTag name={task.space.name} color={task.space.color} />
-            ) : null}
-            {showProgressTag && inProgress ? <InProgressTag /> : null}
+        {showTag && task.space ? (
+          <View style={styles.tagRow}>
+            <SpaceTag name={task.space.name} color={task.space.color} />
           </View>
         ) : null}
 
@@ -150,7 +148,7 @@ export function TaskCard({
           />
         ) : null}
 
-        {(due || task.assignees.length > 0 || heat || repeats) && (
+        {(due || task.assignees.length > 0 || heat || repeats || showProgress) && (
           <View style={styles.meta}>
             {heat ? (
               <View
@@ -158,6 +156,7 @@ export function TaskCard({
                 style={[styles.heatDot, { backgroundColor: heat }]}
               />
             ) : null}
+            {showProgress ? <InProgressTag reserveHeight={HEAT_DOT_SIZE} /> : null}
             {repeats ? (
               <View style={styles.dueWrap}>
                 <Ionicons name="repeat" size={13} color={colors.inkFaint} />
@@ -193,6 +192,8 @@ export function TaskCard({
   );
 }
 
+const HEAT_DOT_SIZE = 9;
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
@@ -225,9 +226,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  tagRowEnd: { justifyContent: 'flex-end' },
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
-  heatDot: { width: 9, height: 9, borderRadius: 4.5 },
+  heatDot: {
+    width: HEAT_DOT_SIZE,
+    height: HEAT_DOT_SIZE,
+    borderRadius: HEAT_DOT_SIZE / 2,
+  },
   dueWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   spacer: { flex: 1 },
 });

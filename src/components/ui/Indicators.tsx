@@ -1,6 +1,14 @@
 import { StyleSheet, View } from 'react-native';
 
-import { colors, labelChips, priority as priorityTokens, radii, resolveAccent, spacing } from '@/theme/tokens';
+import {
+  colors,
+  labelChips,
+  priority as priorityTokens,
+  radii,
+  resolveAccent,
+  spacing,
+  type as typeScale,
+} from '@/theme/tokens';
 import type { Priority } from '@/lib/types';
 import { Text } from './Text';
 
@@ -32,10 +40,23 @@ export function PriorityDot({ level, size = 9 }: { level: Priority | null; size?
   );
 }
 
-/** Small warm pill for a task that is in progress inside the single open list. */
-export function InProgressTag() {
+const PROGRESS_PAD_V = 2;
+
+/**
+ * Small warm pill for a task that is in progress inside the single open list.
+ * `reserveHeight` is the row it shares (the urgency dot). Vertical margin
+ * cancels the pill's extra height so that row, and the card, stay the same
+ * height as a task that is not in progress.
+ */
+export function InProgressTag({ reserveHeight }: { reserveHeight?: number }) {
+  const pillHeight = typeScale.meta.lineHeight + PROGRESS_PAD_V * 2;
+  const margin =
+    reserveHeight == null ? undefined : -((pillHeight - reserveHeight) / 2);
   return (
-    <View style={styles.progress} accessible={false}>
+    <View
+      style={[styles.progress, margin != null && { marginVertical: margin }]}
+      accessible={false}
+    >
       <Text variant="meta" color={labelChips.content.text}>
         In progress
       </Text>
@@ -70,7 +91,7 @@ const styles = StyleSheet.create({
     backgroundColor: labelChips.content.bg,
     borderRadius: radii.pill,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: PROGRESS_PAD_V,
     flexShrink: 0,
   },
 });
