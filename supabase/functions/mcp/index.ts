@@ -45,9 +45,12 @@ import {
   listCircles,
   listMembers,
   addTodayItem,
+  dismissTodayItem,
   listMyTasks,
   listToday,
   moveTask,
+  moveTodayItem,
+  restoreTodayItem,
   TASK_STATUSES,
   toolDescriptions,
   type TaskMediaContentType,
@@ -513,6 +516,46 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
       }),
     },
     async (args) => asTool(await addTodayItem(store, args)),
+  );
+
+  server.registerTool(
+    'dismiss_today_item',
+    {
+      ...described('dismiss_today_item'),
+      inputSchema: z.object({
+        item_id: z.string().describe('Line id from list_today. Not a preview id.'),
+      }),
+    },
+    async (args) => asTool(await dismissTodayItem(store, args)),
+  );
+
+  server.registerTool(
+    'restore_today_item',
+    {
+      ...described('restore_today_item'),
+      inputSchema: z.object({
+        item_id: z.string().describe('Line id that dismiss_today_item took off its day.'),
+      }),
+    },
+    async (args) => asTool(await restoreTodayItem(store, args)),
+  );
+
+  server.registerTool(
+    'move_today_item_to_day',
+    {
+      ...described('move_today_item_to_day'),
+      inputSchema: z.object({
+        item_id: z.string().describe('Line id from list_today. Not a preview id.'),
+        day: z
+          .string()
+          .describe('Destination date as YYYY-MM-DD. Must be local_today or the next day.'),
+        local_today: z
+          .string()
+          .optional()
+          .describe('The person\'s local today as YYYY-MM-DD. Defaults to the UTC date. Pass it so tomorrow is the next local day.'),
+      }),
+    },
+    async (args) => asTool(await moveTodayItem(store, args)),
   );
 
   server.registerTool(

@@ -31,11 +31,14 @@ import {
   inviteToCircle,
   listAgentLog,
   addTodayItem,
+  dismissTodayItem,
   listCircles,
   listCircleTasks,
   listMyTasks,
   listToday,
   moveTask,
+  moveTodayItem,
+  restoreTodayItem,
   TASK_STATUSES,
   toolDescriptions,
   planMove,
@@ -45,7 +48,7 @@ import {
 } from './mcpTools';
 import { inviteUrl } from './links';
 import { compareRank, rankAtBottom } from './rank';
-import { dayMatches, planTodayMaterialisation, rolloverRanks } from './today';
+import { dayMatches, planTodayMaterialisation, rolloverRanks, shiftDay } from './today';
 
 const ME = 'user-me';
 const SAM = 'user-sam';
@@ -74,6 +77,9 @@ test('the tool catalog matches the handlers we ship', () => {
     'invite_to_circle',
     'list_today',
     'add_today_item',
+    'dismiss_today_item',
+    'restore_today_item',
+    'move_today_item_to_day',
   ]);
   assert.deepEqual(TASK_STATUSES, ['todo', 'in_progress', 'done']);
   assert.equal(/use handoff_task/.test(toolDescriptions.assign_task), true);
@@ -976,6 +982,116 @@ test('planning tomorrow does not prepare it, and the next morning rolls one-offs
   assert.ok(milk && bag && compareRank(bag.rank, milk.rank) < 0);
 });
 
+test('not today leaves the task alone, and tomorrow only moves the plan line', async () => {
+  const store = memoryStore();
+  store.addRoutine({ id: 'stretch', text: 'Stretch', taskId: null, days: 127, rank: 'a2' });
+  const created = await createTask(store, { title: 'Water the herbs', due_date: '2026-11-02' });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const taskId = created.data.task.id;
+  const before = await getTask(store, { task_id: taskId });
+  assert.equal(before.ok, true);
+  if (!before.ok) return;
+
+  const linked = await addTodayItem(store, {
+    day: '2026-10-26',
+    local_today: '2026-10-26',
+    task_id: taskId,
+  });
+  assert.equal(linked.ok, true);
+  if (!linked.ok) return;
+  const note = await addTodayItem(store, {
+    day: '2026-10-26',
+    local_today: '2026-10-26',
+    text: 'Buy milk',
+  });
+  assert.equal(note.ok, true);
+  if (!note.ok) return;
+
+  const opened = await listToday(store, { day: '2026-10-26', local_today: '2026-10-26' });
+  assert.equal(opened.ok, true);
+  if (!opened.ok) return;
+  const stretch = opened.data.items.find((item) => item.routine_id === 'stretch');
+  assert.ok(stretch);
+
+  const dismissed = await dismissTodayItem(store, { item_id: linked.data.item.id });
+  assert.deepEqual(dismissed, { ok: true, data: { item_id: linked.data.item.id } });
+  const again = await dismissTodayItem(store, { item_id: linked.data.item.id });
+  assert.equal(again.ok, true);
+  const offNote = await dismissTodayItem(store, { item_id: note.data.item.id });
+  assert.equal(offNote.ok, true);
+  if (!stretch) return;
+  const offRoutine = await dismissTodayItem(store, { item_id: stretch.id });
+  assert.equal(offRoutine.ok, true);
+
+  const stillThere = await getTask(store, { task_id: taskId });
+  assert.equal(stillThere.ok, true);
+  if (!stillThere.ok) return;
+  assert.equal(stillThere.data.task.status, before.data.task.status);
+  assert.equal(stillThere.data.task.due_date, '2026-11-02');
+  assert.equal(stillThere.data.task.title, 'Water the herbs');
+
+  const monday = await listToday(store, { day: '2026-10-26', local_today: '2026-10-26' });
+  assert.equal(monday.ok, true);
+  if (!monday.ok) return;
+  assert.equal(monday.data.items.some((item) => item.task_id === taskId || item.text === 'Buy milk'), false);
+  assert.equal(monday.data.items.some((item) => item.routine_id === 'stretch'), false);
+
+  const putBack = await restoreTodayItem(store, { item_id: linked.data.item.id });
+  assert.equal(putBack.ok, true);
+  if (!putBack.ok) return;
+  assert.equal(putBack.data.item.task_id, taskId);
+  assert.equal(putBack.data.item.day, '2026-10-26');
+
+  const moved = await moveTodayItem(store, {
+    item_id: linked.data.item.id,
+    day: '2026-10-27',
+    local_today: '2026-10-26',
+  });
+  assert.equal(moved.ok, true);
+  if (!moved.ok) return;
+  assert.equal(moved.data.item.day, '2026-10-27');
+  assert.equal(moved.data.item.task_id, taskId);
+  const afterMove = await getTask(store, { task_id: taskId });
+  assert.equal(afterMove.ok, true);
+  if (!afterMove.ok) return;
+  assert.equal(afterMove.data.task.due_date, '2026-11-02');
+  assert.equal(afterMove.data.task.status, before.data.task.status);
+
+  const plan = await listToday(store, { day: '2026-10-27', local_today: '2026-10-26' });
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.data.items.some((item) => item.task_id === taskId), true);
+  assert.equal(store.prepared('2026-10-27'), false);
+  const leftMonday = await listToday(store, { day: '2026-10-26', local_today: '2026-10-26' });
+  assert.equal(leftMonday.ok, true);
+  if (!leftMonday.ok) return;
+  assert.equal(leftMonday.data.items.some((item) => item.task_id === taskId), false);
+
+  const tuesday = await listToday(store, { day: '2026-10-27', local_today: '2026-10-27' });
+  assert.equal(tuesday.ok, true);
+  if (!tuesday.ok) return;
+  assert.equal(tuesday.data.items.some((item) => item.text === 'Buy milk'), false);
+  assert.equal(tuesday.data.items.some((item) => item.task_id === taskId), true);
+  assert.equal(tuesday.data.items.some((item) => item.routine_id === 'stretch'), true);
+
+  store.markTodayChecked(note.data.item.id);
+  const ticked = await dismissTodayItem(store, { item_id: note.data.item.id });
+  assert.deepEqual(ticked, { ok: false, error: 'Ticked lines stay on their day' });
+  const tickedMove = await moveTodayItem(store, {
+    item_id: note.data.item.id,
+    day: shiftDay('2026-10-26', 1),
+    local_today: '2026-10-26',
+  });
+  assert.deepEqual(tickedMove, { ok: false, error: 'Ticked lines stay on their day' });
+  const preview = await moveTodayItem(store, {
+    item_id: 'preview:stretch',
+    day: '2026-10-27',
+    local_today: '2026-10-26',
+  });
+  assert.equal(preview.ok, false);
+});
+
 function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): TroveStore & {
   tasks: TaskRecord[];
   attachments: AttachmentRecord[];
@@ -984,6 +1100,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
   membersOf: (circleId: string) => Member[];
   addRoutine: (routine: { id: string; text: string | null; taskId: string | null; days: number; rank: string }) => void;
   prepared: (day: string) => boolean;
+  markTodayChecked: (itemId: string) => void;
   markAgent: (circleId: string, userId: string) => void;
   addMember: (circleId: string, member: Member) => void;
 } {
@@ -1048,6 +1165,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     routineId: string | null;
     rank: string;
     checkedAt: string | null;
+    dismissedAt: string | null;
     createdAt: string;
   }[] = [];
   const preparedDays = new Set<string>();
@@ -1082,6 +1200,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     membersOf: (circleId: string) => Member[];
     addRoutine: (routine: { id: string; text: string | null; taskId: string | null; days: number; rank: string }) => void;
     prepared: (day: string) => boolean;
+    markTodayChecked: (itemId: string) => void;
     markAgent: (circleId: string, userId: string) => void;
     addMember: (circleId: string, member: Member) => void;
   } = {
@@ -1339,6 +1458,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
           day: item.day,
           routineId: item.routineId,
           checked: item.checkedAt !== null,
+          dismissed: item.dismissedAt !== null,
           rank: item.rank,
         })),
         routines: routineRows,
@@ -1355,6 +1475,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
           routineId: routine.routineId,
           rank: routine.rank,
           checkedAt: null,
+          dismissedAt: null,
           createdAt: new Date(Date.UTC(2026, 9, 27, 0, 0, todayCounter)).toISOString(),
         });
       }
@@ -1375,13 +1496,15 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     },
     async listToday(day) {
       return todayItems
-        .filter((item) => item.day === day)
+        .filter((item) => item.day === day && !item.dismissedAt)
         .sort((a, b) => compareRank(a.rank, b.rank) || a.createdAt.localeCompare(b.createdAt))
         .map(todayEntry);
     },
     async listTodayPlan(day) {
-      const stored = todayItems.filter((item) => item.day === day);
-      const present = new Set(stored.flatMap((item) => (item.routineId ? [item.routineId] : [])));
+      const stored = todayItems.filter((item) => item.day === day && !item.dismissedAt);
+      const present = new Set(
+        todayItems.filter((item) => item.day === day).flatMap((item) => (item.routineId ? [item.routineId] : [])),
+      );
       const previews = routineRows
         .filter((routine) => routine.active && dayMatches(routine.days, day) && !present.has(routine.id))
         .map((routine) => ({
@@ -1405,12 +1528,25 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
       if (input.taskId) {
         const task = tasks.find((item) => item.id === input.taskId);
         if (!task) throw new TroveError('Task not found');
-        if (todayItems.some((item) => item.day === input.day && item.taskId === input.taskId)) {
+        const hidden = todayItems.find(
+          (item) => item.day === input.day && item.taskId === input.taskId && item.dismissedAt,
+        );
+        if (hidden) {
+          hidden.dismissedAt = null;
+          return todayEntry(hidden);
+        }
+        if (todayItems.some((item) => item.day === input.day && item.taskId === input.taskId && !item.dismissedAt)) {
           throw new TroveError('That task is already on this day');
         }
         if (
           routineRows.some(
-            (routine) => routine.active && routine.taskId === input.taskId && dayMatches(routine.days, input.day),
+            (routine) =>
+              routine.active &&
+              routine.taskId === input.taskId &&
+              dayMatches(routine.days, input.day) &&
+              !todayItems.some(
+                (item) => item.day === input.day && item.routineId === routine.id && item.dismissedAt,
+              ),
           )
         ) {
           throw new TroveError('That task is already on this day');
@@ -1436,10 +1572,61 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
         routineId: null,
         rank: rankAtBottom(ranks[0]),
         checkedAt: null,
+        dismissedAt: null,
         createdAt: new Date(Date.UTC(2026, 9, 27, 0, 0, todayCounter)).toISOString(),
       };
       todayItems.push(item);
       return todayEntry(item);
+    },
+    async dismissTodayItem(itemId) {
+      const item = todayItems.find((row) => row.id === itemId);
+      if (!item) throw new TroveError('Line not found');
+      if (item.checkedAt) throw new TroveError('Ticked lines stay on their day');
+      if (item.dismissedAt) return;
+      item.dismissedAt = '2026-10-26T12:00:00.000Z';
+    },
+    async restoreTodayItem(itemId) {
+      const item = todayItems.find((row) => row.id === itemId);
+      if (!item) throw new TroveError('Line not found');
+      item.dismissedAt = null;
+      return todayEntry(item);
+    },
+    async moveTodayItem(input) {
+      const item = todayItems.find((row) => row.id === input.itemId);
+      if (!item) throw new TroveError('Line not found');
+      const tomorrow = shiftDay(input.asOf, 1);
+      if (input.day !== input.asOf && input.day !== tomorrow) {
+        throw new TroveError('You can move a line to today or tomorrow');
+      }
+      if (item.day === input.day && !item.dismissedAt) return todayEntry(item);
+      if (input.day > input.asOf && item.checkedAt) throw new TroveError('Ticked lines stay on their day');
+      if (input.day <= input.asOf) await this.ensureToday(input.day);
+      if (
+        item.taskId &&
+        todayItems.some(
+          (row) =>
+            row.id !== item.id && row.day === input.day && row.taskId === item.taskId && !row.dismissedAt,
+        )
+      ) {
+        throw new TroveError('That task is already on that day');
+      }
+      const lowest = todayItems
+        .filter((row) => row.day === input.day && !row.dismissedAt)
+        .map((row) => row.rank)
+        .sort((a, b) => (a < b ? -1 : 1))[0];
+      item.day = input.day;
+      item.rank = rankAtBottom(lowest);
+      item.dismissedAt = null;
+      if (item.routineId) {
+        const routine = routineRows.find((row) => row.id === item.routineId && row.active);
+        if (routine) routine.rank = item.rank;
+      }
+      return todayEntry(item);
+    },
+    markTodayChecked(itemId: string) {
+      const item = todayItems.find((row) => row.id === itemId);
+      if (!item) throw new TroveError('Line not found');
+      item.checkedAt = '2026-10-26T18:00:00.000Z';
     },
   };
 

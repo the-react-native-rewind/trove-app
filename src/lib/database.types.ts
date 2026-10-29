@@ -356,6 +356,7 @@ export type Database = {
           checked_at: string | null
           created_at: string
           day: string
+          dismissed_at: string | null
           id: string
           rank: string
           routine_id: string | null
@@ -367,6 +368,7 @@ export type Database = {
           checked_at?: string | null
           created_at?: string
           day: string
+          dismissed_at?: string | null
           id?: string
           rank: string
           routine_id?: string | null
@@ -378,6 +380,7 @@ export type Database = {
           checked_at?: string | null
           created_at?: string
           day?: string
+          dismissed_at?: string | null
           id?: string
           rank?: string
           routine_id?: string | null
@@ -531,6 +534,8 @@ export type Database = {
         Returns: string | null
       }
       delete_today_item: { Args: { p_item_id: string }; Returns: undefined }
+      dismiss_today_item: { Args: { p_item_id: string }; Returns: undefined }
+      restore_today_item: { Args: { p_item_id: string }; Returns: undefined }
       today_rank_at_bottom: { Args: { p_day: string }; Returns: string }
     }
     Enums: { [_ in never]: never }

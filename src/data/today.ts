@@ -41,13 +41,14 @@ type TodayRow = {
   routine_id: string | null;
   rank: string;
   checked_at: string | null;
+  dismissed_at: string | null;
   created_at: string;
   task: TaskJoin | TaskJoin[] | null;
   routine: RoutineJoin;
 };
 
 const TODAY_SELECT =
-  'id, day, text, task_id, routine_id, rank, checked_at, created_at, task:tasks(id, title, status, space:spaces(id, name, color)), routine:today_routines(days, active)';
+  'id, day, text, task_id, routine_id, rank, checked_at, dismissed_at, created_at, task:tasks(id, title, status, space:spaces(id, name, color)), routine:today_routines(days, active)';
 
 function one<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -77,7 +78,7 @@ export function mapTodayRow(row: TodayRow): TodayLine {
   };
 }
 
-async function fetchTodayLines(day: string): Promise<TodayLine[]> {
+async function fetchTodayRows(day: string): Promise<TodayRow[]> {
   const { data, error } = await supabase
     .from('today_items')
     .select(TODAY_SELECT)
@@ -85,7 +86,16 @@ async function fetchTodayLines(day: string): Promise<TodayLine[]> {
     .order('rank', { ascending: false })
     .order('created_at', { ascending: true });
   if (error) throw error;
-  return ((data ?? []) as unknown as TodayRow[]).map(mapTodayRow);
+  return (data ?? []) as unknown as TodayRow[];
+}
+
+/** Visible lines. A dismissed row stays in the table so it does not roll or repeat today. */
+function visibleTodayLines(rows: readonly TodayRow[]): TodayLine[] {
+  return rows.filter((row) => row.dismissed_at == null).map(mapTodayRow);
+}
+
+async function fetchTodayLines(day: string): Promise<TodayLine[]> {
+  return visibleTodayLines(await fetchTodayRows(day));
 }
 
 /**
@@ -296,11 +306,12 @@ export function useTomorrowPlan(day: string) {
       if (!user) return [];
       const started = todayFetchGeneration();
       const settled = todaySettled();
-      const [items, routines] = await Promise.all([fetchTodayLines(day), fetchActiveRoutines()]);
+      const [rows, routines] = await Promise.all([fetchTodayRows(day), fetchActiveRoutines()]);
+      const items = visibleTodayLines(rows);
       const previews = new Set(
         previewRoutineIds(
           day,
-          items.flatMap((line) => (line.routineId ? [line.routineId] : [])),
+          rows.flatMap((row) => (row.routine_id ? [row.routine_id] : [])),
           routines.map((routine) => ({
             id: routine.id,
             text: routine.text,
@@ -779,6 +790,53 @@ export function useUpdateTodayRoutine() {
       return { snapshot, editing: true };
     },
     onError: (_error, _input, context) => restoreTodayLists(qc, context?.snapshot),
+    onSettled: (_result, _error, _variables, context) => refresh(context?.editing === true),
+  });
+}
+
+/** Hide a line for its day. The task, its due date, and any routine stay as they are. */
+export function useDismissTodayItem() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  const refresh = useRefreshToday();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc('dismiss_today_item', { p_item_id: id });
+      if (error) throw error;
+    },
+    onMutate: async (id) => {
+      if (!userId) return { snapshot: undefined, editing: false };
+      const snapshot = await beginTodayEdit(qc, userId, () => {
+        mapTodayLists(qc, userId, (lines) => withoutTodayLine(lines, id));
+      });
+      return { snapshot, editing: true };
+    },
+    onError: (_error, _id, context) => restoreTodayLists(qc, context?.snapshot),
+    onSettled: (_result, _error, _variables, context) => refresh(context?.editing === true),
+  });
+}
+
+/** Put a dismissed line back on the day it was taken off. */
+export function useRestoreTodayItem() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  const refresh = useRefreshToday();
+  const asOf = localToday();
+  return useMutation({
+    mutationFn: async (line: TodayLine) => {
+      const { error } = await supabase.rpc('restore_today_item', { p_item_id: line.id });
+      if (error) throw error;
+    },
+    onMutate: async (line) => {
+      if (!userId) return { snapshot: undefined, editing: false };
+      const snapshot = await beginTodayEdit(qc, userId, () => {
+        const key = dayQueryKey(userId, line.day, asOf);
+        const current = qc.getQueryData<TodayLine[]>(key) ?? [];
+        qc.setQueryData(key, insertTodayLine(current, line));
+      });
+      return { snapshot, editing: true };
+    },
+    onError: (_error, _line, context) => restoreTodayLists(qc, context?.snapshot),
     onSettled: (_result, _error, _variables, context) => refresh(context?.editing === true),
   });
 }

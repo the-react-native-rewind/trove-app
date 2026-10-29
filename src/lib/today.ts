@@ -102,9 +102,33 @@ export type TodaySourceItem = {
   day: string;
   routineId: string | null;
   checked: boolean;
+  /**
+   * Taken off that day. The row stays so it does not roll forward and a
+   * routine is not inserted again. The linked task is unchanged.
+   */
+  dismissed?: boolean;
   /** Higher keys sort first. Used to keep rolled lines in their old order. */
   rank: string;
 };
+
+/**
+ * Tomorrow and Not today apply to a stored, unticked line. A tick is history
+ * for that day. A routine preview is not a row yet.
+ */
+export function canRescheduleTodayLine(line: {
+  checkedAt: string | null;
+  virtual?: boolean;
+}): boolean {
+  return line.checkedAt === null && !line.virtual;
+}
+
+/** The open plan line for a task on this list, if the person can move it. */
+export function openTodayLineForTask(
+  lines: readonly TodayLine[],
+  taskId: string,
+): TodayLine | null {
+  return lines.find((line) => line.taskId === taskId && canRescheduleTodayLine(line)) ?? null;
+}
 
 /** A day after the person's local today is a plan, and must not be prepared. */
 export function shouldPrepareDay(day: string, asOf: string): boolean {
@@ -176,8 +200,10 @@ export type PlannedToday = {
  * One-offs move (they do not stay behind as a second copy) from the most
  * recent earlier day that already has rows. moveIds are that group's previous
  * top-to-bottom order; they are placed under lines already on the day.
- * A later prepared day blocks that move. Active routines scheduled for this
- * weekday are added at their saved ranks. A routine already stored is skipped.
+ * A later prepared day blocks that move. A line taken off its day
+ * (dismissed) stays there and does not roll. Active routines scheduled for
+ * this weekday are added at their saved ranks. A routine already stored,
+ * including one that was taken off, is skipped.
  */
 export function planTodayMaterialisation(input: {
   day: string;
@@ -196,7 +222,9 @@ export function planTodayMaterialisation(input: {
     input.laterDayMaterialised || sourceDay === null
       ? []
       : input.earlierItems
-          .filter((item) => item.day === sourceDay && item.routineId === null && !item.checked)
+          .filter(
+            (item) => item.day === sourceDay && item.routineId === null && !item.checked && !item.dismissed,
+          )
           .sort((a, b) => compareRank(a.rank, b.rank) || a.id.localeCompare(b.id))
           .map((item) => item.id);
   const routines = input.routines

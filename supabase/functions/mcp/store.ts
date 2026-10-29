@@ -108,6 +108,9 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     listToday: (day) => listToday(db, userId, day),
     listTodayPlan: (day) => listTodayPlan(db, userId, day),
     addTodayItem: (input) => addTodayItem(db, input),
+    dismissTodayItem: (itemId) => dismissTodayItem(db, itemId),
+    restoreTodayItem: (itemId) => restoreTodayItem(db, itemId),
+    moveTodayItem: (input) => moveTodayItem(db, input),
   };
 }
 
@@ -702,7 +705,7 @@ function rankForPriority(priority: Priority | null, groupRanks: string[]): strin
 }
 
 const TODAY_SELECT =
-  'id, day, text, task_id, routine_id, rank, checked_at, task:tasks(id, title, space:spaces(id, name, color)), routine:today_routines(days, active)';
+  'id, day, text, task_id, routine_id, rank, checked_at, dismissed_at, task:tasks(id, title, space:spaces(id, name, color)), routine:today_routines(days, active)';
 
 type TodayTaskJoin = {
   id: string;
@@ -718,6 +721,7 @@ type TodayRow = {
   routine_id: string | null;
   rank: string;
   checked_at: string | null;
+  dismissed_at: string | null;
   task: TodayTaskJoin | TodayTaskJoin[] | null;
   routine: { days: number; active: boolean } | { days: number; active: boolean }[] | null;
 };
@@ -729,32 +733,20 @@ async function ensureToday(db: SupabaseClient, day: string): Promise<void> {
 
 async function listToday(db: SupabaseClient, userId: string, day: string): Promise<TodayEntry[]> {
   await ensureToday(db, day);
-  const { data, error } = await db
-    .from('today_items')
-    .select(TODAY_SELECT)
-    .eq('user_id', userId)
-    .eq('day', day)
-    .order('rank', { ascending: false })
-    .order('created_at', { ascending: true });
-  throwIf(error);
-  return ((data ?? []) as TodayRow[]).map(mapTodayRow);
+  const rows = await readTodayRows(db, userId, day);
+  return rows.filter((row) => row.dismissed_at == null).map(mapTodayRow);
 }
 
 async function listTodayPlan(db: SupabaseClient, userId: string, day: string): Promise<TodayEntry[]> {
-  const { data, error } = await db
-    .from('today_items')
-    .select(TODAY_SELECT)
-    .eq('user_id', userId)
-    .eq('day', day);
-  throwIf(error);
-  const items = ((data ?? []) as TodayRow[]).map(mapTodayRow);
+  const rows = await readTodayRows(db, userId, day);
+  const items = rows.filter((row) => row.dismissed_at == null).map(mapTodayRow);
   const routines = await db
     .from('today_routines')
     .select('id, text, task_id, days, rank, active, task:tasks(id, title, space:spaces(id, name, color))')
     .eq('user_id', userId)
     .eq('active', true);
   throwIf(routines.error);
-  const present = new Set(items.flatMap((item) => (item.routine_id ? [item.routine_id] : [])));
+  const present = new Set(rows.flatMap((row) => (row.routine_id ? [row.routine_id] : [])));
   const weekday = weekdayOfDate(day);
   const previews = ((routines.data ?? []) as RoutinePreviewRow[])
     .filter((routine) => weekday !== null && (routine.days & (1 << weekday)) !== 0 && !present.has(routine.id))
@@ -778,6 +770,52 @@ async function addTodayItem(
     .from('today_items')
     .select(TODAY_SELECT)
     .eq('id', id)
+    .maybeSingle();
+  throwIf(readError);
+  if (!row) throw new TroveError('Line not found');
+  return mapTodayRow(row as TodayRow);
+}
+
+async function readTodayRows(db: SupabaseClient, userId: string, day: string): Promise<TodayRow[]> {
+  const { data, error } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('user_id', userId)
+    .eq('day', day)
+    .order('rank', { ascending: false })
+    .order('created_at', { ascending: true });
+  throwIf(error);
+  return (data ?? []) as TodayRow[];
+}
+
+async function dismissTodayItem(db: SupabaseClient, itemId: string): Promise<void> {
+  const { error } = await db.rpc('dismiss_today_item', { p_item_id: itemId });
+  throwIf(error);
+}
+
+async function restoreTodayItem(db: SupabaseClient, itemId: string): Promise<TodayEntry> {
+  const { error } = await db.rpc('restore_today_item', { p_item_id: itemId });
+  throwIf(error);
+  const { data: row, error: readError } = await db.from('today_items').select(TODAY_SELECT).eq('id', itemId).maybeSingle();
+  throwIf(readError);
+  if (!row) throw new TroveError('Line not found');
+  return mapTodayRow(row as TodayRow);
+}
+
+async function moveTodayItem(
+  db: SupabaseClient,
+  input: { itemId: string; day: string; asOf: string },
+): Promise<TodayEntry> {
+  const { error } = await db.rpc('move_today_item_to_day', {
+    p_item_id: input.itemId,
+    p_day: input.day,
+    p_as_of: input.asOf,
+  });
+  throwIf(error);
+  const { data: row, error: readError } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('id', input.itemId)
     .maybeSingle();
   throwIf(readError);
   if (!row) throw new TroveError('Line not found');

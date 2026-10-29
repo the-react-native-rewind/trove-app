@@ -11,7 +11,9 @@ import {
   daysFromWeekdays,
   planTodayMaterialisation,
   bottomTodayRank,
+  canRescheduleTodayLine,
   insertTodayLine,
+  openTodayLineForTask,
   momentumAppearance,
   momentumCount,
   momentumPlaybackRate,
@@ -133,6 +135,31 @@ test('reading an earlier day does not pull lines back off a later one', () => {
     plan?.routines.map((line) => line.routineId),
     ['stretch', 'office'],
   );
+});
+
+test('a line taken off its day does not roll forward, and the task is not the plan', () => {
+  const plan = planTodayMaterialisation({
+    day: TUESDAY,
+    alreadyMaterialised: false,
+    laterDayMaterialised: false,
+    earlierItems: [
+      item({ id: 'milk', day: MONDAY, dismissed: true }),
+      item({ id: 'call', day: MONDAY, rank: 'a1' }),
+      item({ id: 'stretch-mon', day: MONDAY, routineId: 'stretch', dismissed: true }),
+    ],
+    routines,
+  });
+  assert.deepEqual(plan?.moveIds, ['call']);
+  assert.equal(plan?.routines.some((line) => line.routineId === 'stretch'), true);
+
+  const kept = line('milk', { taskId: 'task-milk', taskStatus: 'todo', checkedAt: null });
+  const ticked = line('done', { checkedAt: '2026-10-27T08:00:00.000Z' });
+  const preview = line('preview:stretch', { virtual: true, routineId: 'stretch' });
+  assert.equal(canRescheduleTodayLine(kept), true);
+  assert.equal(canRescheduleTodayLine(ticked), false);
+  assert.equal(canRescheduleTodayLine(preview), false);
+  assert.equal(openTodayLineForTask([ticked, kept, preview], 'task-milk')?.id, 'milk');
+  assert.equal(openTodayLineForTask([ticked], 'task-milk'), null);
 });
 
 test('rolled lines keep their order and land under lines already on the day', () => {
@@ -349,4 +376,19 @@ test('the migration keeps Today private and prepares a day in SQL', () => {
     assert.ok(pattern.test(followUp), pattern.source);
   }
   assert.equal(/create policy/.test(followUp), false);
+
+  const notToday = readFileSync(
+    new URL('../../supabase/migrations/0029_today_not_today.sql', import.meta.url),
+    'utf8',
+  );
+  assert.ok(/add column dismissed_at timestamptz/.test(notToday));
+  assert.ok(/item\.dismissed_at is null/.test(notToday));
+  const dismissStart = notToday.indexOf('function public.dismiss_today_item');
+  const restoreStart = notToday.indexOf('function public.restore_today_item');
+  assert.ok(dismissStart > 0 && restoreStart > dismissStart);
+  const dismissBody = notToday.slice(dismissStart, restoreStart);
+  assert.equal(/public\.tasks/.test(dismissBody), false);
+  assert.equal(/today_routines/.test(dismissBody), false);
+  assert.ok(/Ticked lines stay on their day/.test(dismissBody));
+  assert.ok(/set dismissed_at = now\(\)/.test(dismissBody));
 });

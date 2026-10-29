@@ -40,6 +40,8 @@ Migrations `0020` through `0027` follow in filename order. `0026_today.sql` adds
 supabase functions deploy mcp --no-verify-jwt
 ```
 
+`0029_today_not_today.sql` adds `today_items.dismissed_at` plus `dismiss_today_item` and `restore_today_item`. Not today sets that timestamp. The task stays in its circle, with the same due date and status, and a routine keeps repeating on later days. Unticked dismissed lines do not roll forward. Apply `0029` on the hosted project before deploying the `mcp` function, so `dismiss_today_item`, `restore_today_item`, and `move_today_item_to_day` match the app. This repository does not apply that migration for you.
+
 `0014_task_recurrence.sql` adds repeating tasks. It is applied on the hosted project. Completing a repeating task inserts the next occurrence in the database, including when it is completed through the MCP server. `create_task`, `create_tasks_bulk`, and `update_task` accept `repeat_unit`, `repeat_interval`, and `repeat_weekday`. Task results include those fields and `recurrence_series_id`. `recurrence_source_id` stays server-only.
 
 `supabase/seed.sql` loads demo people with a known password. Use it only on a local database. Do not run it on the production project.
