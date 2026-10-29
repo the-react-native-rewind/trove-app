@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
@@ -14,6 +14,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from 'react-native-gesture-handler/ReanimatedSwipeable';
 import DraggableFlatList, {
   type DragEndParams,
   type RenderItemParams,
@@ -25,11 +28,13 @@ import {
   useAddTodayText,
   useCheckTodayItem,
   useDeleteTodayItem,
+  useDismissTodayItem,
   useMoveTodayItem,
   useMoveTodayItemToDay,
   useOpenTaskChoices,
   usePlaceTodayRoutine,
   useRenameTodayItem,
+  useRestoreTodayItem,
   useSetTodayRepeat,
   useTodayList,
   useTomorrowPlan,
@@ -48,6 +53,7 @@ import {
   dayMatches,
   daysFromWeekdays,
   isRepeatMask,
+  canRescheduleTodayLine,
   localToday,
   momentumCount,
   repeatLabel,
@@ -60,6 +66,7 @@ import {
 import { resolveAccent, colors, radii, shadows, spacing, type as typeScale } from '@/theme/tokens';
 import { CollapsingScreenHeader, useCollapsingHeader } from './CollapsingHeader';
 import { MomentumBadge } from './MomentumBadge';
+import { showUndoToast } from './ui/AppToast';
 import { EmptyState } from './ui/EmptyState';
 import { AccentDot } from './ui/Indicators';
 import { Text } from './ui/Text';
@@ -113,6 +120,8 @@ export function TodayView() {
   const rename = useRenameTodayItem();
   const setRepeat = useSetTodayRepeat();
   const remove = useDeleteTodayItem();
+  const dismiss = useDismissTodayItem();
+  const restore = useRestoreTodayItem();
   const taskChoices = useOpenTaskChoices(taskSearch, pickerOpen);
   const chime = useMomentumChime();
   const [tickPulse, setTickPulse] = useState(0);
@@ -347,77 +356,61 @@ export function TodayView() {
     void pending.catch((error) => quietError('Couldn’t move that line', error));
   }
 
+  function planLine(line: TodayLine, action: 'tomorrow' | 'not-today') {
+    setMenuLine(null);
+    if (!canRescheduleTodayLine(line)) return;
+    if (action === 'tomorrow') {
+      moveDay.mutate(
+        { id: line.id, day: tomorrow },
+        {
+          onSuccess: () => {
+            showUndoToast('Moved to tomorrow', () => {
+              moveDay.mutate(
+                { id: line.id, day: today },
+                { onError: (error) => quietError('Couldn’t undo that', error) },
+              );
+            });
+          },
+          onError: (error) => quietError('Couldn’t move that line', error),
+        },
+      );
+      return;
+    }
+    dismiss.mutate(line.id, {
+      onSuccess: () => {
+        showUndoToast('Off today', () => {
+          restore.mutate(line, { onError: (error) => quietError('Couldn’t undo that', error) });
+        });
+      },
+      onError: (error) => quietError('Couldn’t take that off today', error),
+    });
+  }
+
   function renderLine(line: TodayLine, drag?: () => void, isActive?: boolean) {
     const title = todayLineTitle(line);
     const checked = line.checkedAt !== null;
+    const shiftable = !planningTomorrow && canRescheduleTodayLine(line);
     return (
-      <View style={[styles.row, isActive && styles.rowActive]}>
-        <Pressable
-          onPress={() => onToggle(line)}
-          disabled={planningTomorrow}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked, disabled: planningTomorrow }}
-          accessibilityLabel={checked ? `Untick ${title}` : `Tick ${title}`}
-          hitSlop={6}
-          style={styles.checkbox}
-        >
-          <Ionicons
-            name={checked ? 'checkbox' : 'square-outline'}
-            size={22}
-            color={checked ? colors.brand : colors.inkFaint}
-          />
-        </Pressable>
-        <Pressable
-          style={styles.rowBody}
-          onPress={() => {
-            if (line.taskId) router.push(`/task/${line.taskId}` as never);
-          }}
-          onLongPress={() => {
-            hapticLight();
-            setMenuLine(line);
-          }}
-          delayLongPress={350}
-          accessibilityRole={line.taskId ? 'button' : 'text'}
-          accessibilityLabel={title}
-        >
-          <Text
-            variant="body"
-            color={checked ? colors.inkFaint : colors.ink}
-            style={checked ? styles.checkedText : undefined}
-            numberOfLines={2}
-          >
-            {title}
-          </Text>
-          {line.routineId || line.spaceName ? (
-            <View style={styles.metaRow}>
-              {line.routineId ? (
-                <Ionicons name="repeat" size={13} color={colors.inkFaint} accessibilityLabel="Repeats" />
-              ) : null}
-              {line.spaceName ? (
-                <View style={styles.circleBadge}>
-                  <AccentDot color={line.spaceColor ?? 'sage'} size={8} />
-                  <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
-                    {line.spaceName}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-        </Pressable>
-        {drag ? (
-          <Pressable
-            onPressIn={drag}
-            accessibilityRole="button"
-            accessibilityLabel={`Drag to reorder ${title}`}
-            hitSlop={4}
-            style={styles.handle}
-          >
-            <Ionicons name="reorder-three" size={22} color={colors.inkFaint} />
-          </Pressable>
-        ) : (
-          <View style={styles.handle} />
-        )}
-      </View>
+      <TodayLineRow
+        line={line}
+        title={title}
+        checked={checked}
+        shiftable={shiftable}
+        showHoverMenu={isWide && Platform.OS === 'web'}
+        isActive={isActive}
+        drag={drag}
+        onToggle={() => onToggle(line)}
+        onOpen={() => {
+          if (line.taskId) router.push(`/task/${line.taskId}` as never);
+        }}
+        onOpenMenu={() => {
+          hapticLight();
+          setMenuLine(line);
+        }}
+        onTomorrow={() => planLine(line, 'tomorrow')}
+        onNotToday={() => planLine(line, 'not-today')}
+        planningTomorrow={planningTomorrow}
+      />
     );
   }
 
@@ -583,8 +576,19 @@ export function TodayView() {
             if (menuLine) openRepeat(menuLine);
           }}
         />
-        {!planningTomorrow && menuLine && !menuLine.checkedAt ? (
-          <SheetAction label="Move to tomorrow" onPress={() => menuLine && void moveLine(menuLine)} />
+        {!planningTomorrow && menuLine && canRescheduleTodayLine(menuLine) ? (
+          <SheetAction
+            label="Tomorrow"
+            detail="Shows up tomorrow"
+            onPress={() => menuLine && planLine(menuLine, 'tomorrow')}
+          />
+        ) : null}
+        {!planningTomorrow && menuLine && canRescheduleTodayLine(menuLine) ? (
+          <SheetAction
+            label="Not today"
+            detail={menuLine.taskId ? 'Stays in the circle. The due date stays.' : 'Leaves this day'}
+            onPress={() => menuLine && planLine(menuLine, 'not-today')}
+          />
         ) : null}
         {planningTomorrow && menuLine && !(menuLine.virtual && routineAlreadyToday(menuLine)) ? (
           <SheetAction label="Move to today" onPress={() => menuLine && void moveLine(menuLine)} />
@@ -722,6 +726,180 @@ export function TodayView() {
         </ScrollView>
       </Sheet>
     </KeyboardAvoidingView>
+  );
+}
+
+function TodayLineRow({
+  line,
+  title,
+  checked,
+  shiftable,
+  showHoverMenu,
+  isActive,
+  drag,
+  planningTomorrow,
+  onToggle,
+  onOpen,
+  onOpenMenu,
+  onTomorrow,
+  onNotToday,
+}: {
+  line: TodayLine;
+  title: string;
+  checked: boolean;
+  shiftable: boolean;
+  showHoverMenu: boolean;
+  isActive?: boolean;
+  drag?: () => void;
+  planningTomorrow: boolean;
+  onToggle: () => void;
+  onOpen: () => void;
+  onOpenMenu: () => void;
+  onTomorrow: () => void;
+  onNotToday: () => void;
+}) {
+  const ref = useRef<SwipeableMethods>(null);
+  const [hovered, setHovered] = useState(false);
+  const contextMenu =
+    Platform.OS === 'web'
+      ? {
+          onContextMenu: (event: { preventDefault?: () => void }) => {
+            event.preventDefault?.();
+            onOpenMenu();
+          },
+        }
+      : undefined;
+
+  const row = (
+    <View
+      style={[styles.row, isActive && styles.rowActive]}
+      {...(showHoverMenu
+        ? {
+            onPointerEnter: () => setHovered(true),
+            onPointerLeave: () => setHovered(false),
+          }
+        : null)}
+      {...contextMenu}
+    >
+      <Pressable
+        onPress={onToggle}
+        disabled={planningTomorrow}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked, disabled: planningTomorrow }}
+        accessibilityLabel={checked ? `Untick ${title}` : `Tick ${title}`}
+        hitSlop={6}
+        style={styles.checkbox}
+      >
+        <Ionicons
+          name={checked ? 'checkbox' : 'square-outline'}
+          size={22}
+          color={checked ? colors.brand : colors.inkFaint}
+        />
+      </Pressable>
+      <Pressable
+        style={styles.rowBody}
+        onPress={onOpen}
+        onLongPress={onOpenMenu}
+        delayLongPress={350}
+        accessibilityRole={line.taskId ? 'button' : 'text'}
+        accessibilityLabel={title}
+      >
+        <Text
+          variant="body"
+          color={checked ? colors.inkFaint : colors.ink}
+          style={checked ? styles.checkedText : undefined}
+          numberOfLines={2}
+        >
+          {title}
+        </Text>
+        {line.routineId || line.spaceName ? (
+          <View style={styles.metaRow}>
+            {line.routineId ? (
+              <Ionicons name="repeat" size={13} color={colors.inkFaint} accessibilityLabel="Repeats" />
+            ) : null}
+            {line.spaceName ? (
+              <View style={styles.circleBadge}>
+                <AccentDot color={line.spaceColor ?? 'sage'} size={8} />
+                <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
+                  {line.spaceName}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </Pressable>
+      {showHoverMenu && hovered ? (
+        <Pressable
+          onPress={onOpenMenu}
+          accessibilityRole="button"
+          accessibilityLabel={`Actions for ${title}`}
+          hitSlop={4}
+          style={styles.rowMenu}
+        >
+          <Ionicons name="ellipsis-horizontal" size={18} color={colors.inkSoft} />
+        </Pressable>
+      ) : null}
+      {drag ? (
+        <Pressable
+          onPressIn={drag}
+          accessibilityRole="button"
+          accessibilityLabel={`Drag to reorder ${title}`}
+          hitSlop={4}
+          style={styles.handle}
+        >
+          <Ionicons name="reorder-three" size={22} color={colors.inkFaint} />
+        </Pressable>
+      ) : (
+        <View style={styles.handle} />
+      )}
+    </View>
+  );
+
+  if (!shiftable) return row;
+
+  return (
+    <ReanimatedSwipeable
+      ref={ref}
+      friction={1.6}
+      rightThreshold={36}
+      dragOffsetFromRightEdge={48}
+      overshootRight={false}
+      onSwipeableWillOpen={() => hapticLight()}
+      renderRightActions={() => (
+        <View style={styles.swipeActions}>
+          <Pressable
+            onPress={() => {
+              ref.current?.close();
+              hapticLight();
+              onTomorrow();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Tomorrow"
+            style={[styles.swipeAction, styles.swipeTomorrow]}
+          >
+            <Text variant="meta" color={colors.brandDeep}>
+              Tomorrow
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              ref.current?.close();
+              hapticLight();
+              onNotToday();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Not today"
+            style={[styles.swipeAction, styles.swipeNotToday]}
+          >
+            <Text variant="meta" color={colors.ink}>
+              Not today
+            </Text>
+          </Pressable>
+        </View>
+      )}
+    >
+      {row}
+    </ReanimatedSwipeable>
   );
 }
 
@@ -891,6 +1069,30 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   circleBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   handle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  rowMenu: {
+    position: 'absolute',
+    right: 44,
+    top: 0,
+    bottom: 0,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swipeActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: spacing.sm,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.sm,
+  },
+  swipeAction: {
+    minWidth: 104,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swipeTomorrow: { backgroundColor: colors.brandSoft },
+  swipeNotToday: { backgroundColor: colors.surfaceAlt },
   composer: {
     flexDirection: 'row',
     alignItems: 'center',

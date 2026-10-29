@@ -92,6 +92,9 @@ export const MCP_TOOL_NAMES = [
   'invite_to_circle',
   'list_today',
   'add_today_item',
+  'dismiss_today_item',
+  'restore_today_item',
+  'move_today_item_to_day',
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
@@ -134,9 +137,15 @@ export const toolDescriptions: Record<McpToolName, string> = {
   invite_to_circle:
     'Invite someone to a circle by email. Only an owner or admin can invite. This sends an email to that address as soon as the invite is created (database trigger invites_send_email). You can create 25 invites in 24 hours; over that, the invite is not created and no email is sent. role is admin, member, or viewer (default member). agent true marks the invite as a bot; the flag is copied onto the membership when they join. It defaults to false, a human invite. Returns the invite token and an https link. The link opens Trove, or offers the download if they do not have the app yet. The invite expires in 14 days. One pending invite per email per circle.',
   list_today:
-    'List the signed-in person\'s private Today checklist for one date. Today is not a circle and is never shared. day is YYYY-MM-DD and defaults to the current UTC date. local_today is the person\'s local date and defaults to the UTC date; pass both to match the app. A day after local_today is a plan: it is not prepared, unticked lines do not roll into it, and routines due that weekday are included as previews (id starts with preview:). Today and earlier dates are prepared on the first read: routines are added at their saved ranks, then unticked one-offs from the previous day move under lines already there. Ticked lines stay on the day they were ticked. Repeating lines do not move. Reading an earlier day after a later one was prepared does not pull lines backward. Lines are ordered by rank (higher first). repeat_days is a Sunday-based bitmask (bit 0 = Sunday) when the line will come back; otherwise null. checked_at is null when the line is unticked.',
+    'List the signed-in person\'s private Today checklist for one date. Today is not a circle and is never shared. A task is on Today only when this person has a line for it on that date, not because of its due date. day is YYYY-MM-DD and defaults to the current UTC date. local_today is the person\'s local date and defaults to the UTC date; pass both to match the app. A day after local_today is a plan: it is not prepared, unticked lines do not roll into it, and routines due that weekday are included as previews (id starts with preview:). Today and earlier dates are prepared on the first read: routines are added at their saved ranks, then unticked one-offs from the previous day move under lines already there. Lines taken off a day (Not today) stay off and do not roll. Ticked lines stay on the day they were ticked. Repeating lines do not move. Reading an earlier day after a later one was prepared does not pull lines backward. Lines are ordered by rank (higher first). repeat_days is a Sunday-based bitmask (bit 0 = Sunday) when the line will come back; otherwise null. checked_at is null when the line is unticked.',
   add_today_item:
-    'Append a line to the signed-in person\'s private Today list, or to tomorrow when day is the day after local_today. Pass text or task_id, not both. task_id must be a task they can see, and the same task cannot be added twice on the same day, including when a routine already shows it. The line goes at the bottom. day defaults to the current UTC date. local_today is the person\'s local date and defaults to the UTC date. A day after local_today is stored as a plan and is not prepared, so today\'s unticked lines stay put. Today and earlier dates are prepared first.',
+    'Append a line to the signed-in person\'s private Today list, or to tomorrow when day is the day after local_today. Pass text or task_id, not both. task_id must be a task they can see, and the same task cannot be added twice on the same day, including when a routine already shows it. A task that was taken off that day is put back instead of inserted twice. The line goes at the bottom. day defaults to the current UTC date. local_today is the person\'s local date and defaults to the UTC date. A day after local_today is stored as a plan and is not prepared, so today\'s unticked lines stay put. Today and earlier dates are prepared first.',
+  dismiss_today_item:
+    'Take one Today line off its day (Not today). The line disappears from Today and does not roll onto tomorrow. If it is a task, the task stays in its circle: this does not delete it, complete it, or change its due date. If it repeats, the routine stays active and still appears on later scheduled days. Ticked lines stay on their day. Pass the line id from list_today, not a preview id. Idempotent when the line is already off the day.',
+  restore_today_item:
+    'Put a Today line back on the day it was taken off. Does not change the linked task. Pass the same line id dismiss_today_item used.',
+  move_today_item_to_day:
+    'Move one Today line to the person\'s local today or the next day (Tomorrow). It leaves the day it is on and shows on the destination. Tomorrow is stored as a plan and is not prepared, so today\'s other unticked lines stay put. The line goes to the bottom of that day. Ticked lines cannot move to tomorrow. Pass item_id from list_today, day as YYYY-MM-DD, and local_today as the person\'s local date. This does not change the task\'s due date or status.',
 };
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
@@ -404,6 +413,18 @@ export interface TroveStore {
     taskId: string | null;
     asOf: string | null;
   }): Promise<TodayEntry>;
+  /**
+   * Hide one line for its day. Does not delete, complete, or reschedule the
+   * linked task, and does not stop a routine.
+   */
+  dismissTodayItem(itemId: string): Promise<void>;
+  /** Clear Not today for one line. */
+  restoreTodayItem(itemId: string): Promise<TodayEntry>;
+  /**
+   * Move one stored line to local today or the next day. Tomorrow is not
+   * prepared. The linked task's due date and status stay as they are.
+   */
+  moveTodayItem(input: { itemId: string; day: string; asOf: string }): Promise<TodayEntry>;
 }
 
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -1557,6 +1578,70 @@ function resolveLocalToday(value: string | undefined): string | { error: string 
   const day = parseDueDate(value.trim());
   if (!day) return { error: 'local_today must be a real date as YYYY-MM-DD.' };
   return day;
+}
+
+export async function dismissTodayItem(
+  store: TroveStore,
+  input: { item_id?: string },
+): Promise<ToolResult<{ item_id: string }>> {
+  const itemId = input.item_id?.trim() ?? '';
+  if (!itemId) return { ok: false, error: 'item_id is required.' };
+  if (itemId.startsWith('preview:')) {
+    return { ok: false, error: 'That line is a preview. Take off the stored line on today.' };
+  }
+  try {
+    await store.dismissTodayItem(itemId);
+    return { ok: true, data: { item_id: itemId } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function restoreTodayItem(
+  store: TroveStore,
+  input: { item_id?: string },
+): Promise<ToolResult<{ item: TodayEntry }>> {
+  const itemId = input.item_id?.trim() ?? '';
+  if (!itemId) return { ok: false, error: 'item_id is required.' };
+  try {
+    const item = await store.restoreTodayItem(itemId);
+    return { ok: true, data: { item } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function moveTodayItem(
+  store: TroveStore,
+  input: { item_id?: string; day?: string; local_today?: string },
+): Promise<ToolResult<{ item: TodayEntry }>> {
+  const itemId = input.item_id?.trim() ?? '';
+  if (!itemId) return { ok: false, error: 'item_id is required.' };
+  if (itemId.startsWith('preview:')) {
+    return { ok: false, error: 'That line is a preview. Move the stored line.' };
+  }
+  const day = resolveTodayDay(input.day);
+  if (typeof day !== 'string') return { ok: false, error: day.error };
+  const asOf = resolveLocalToday(input.local_today);
+  if (typeof asOf !== 'string') return { ok: false, error: asOf.error };
+  if (day !== asOf && day !== shiftIsoDay(asOf, 1)) {
+    return { ok: false, error: 'You can move a line to today or tomorrow.' };
+  }
+  try {
+    const item = await store.moveTodayItem({ itemId, day, asOf });
+    return { ok: true, data: { item } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+function shiftIsoDay(iso: string, amount: number): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1));
+  date.setUTCDate(date.getUTCDate() + amount);
+  const monthText = `${date.getUTCMonth() + 1}`.padStart(2, '0');
+  const dayText = `${date.getUTCDate()}`.padStart(2, '0');
+  return `${date.getUTCFullYear()}-${monthText}-${dayText}`;
 }
 
 function fail(error: unknown): ToolResult<never> {

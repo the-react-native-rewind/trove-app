@@ -19,6 +19,8 @@ import { useRoster } from '@/data/members';
 import { useMyWeekEnabled } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
 import { useHandoffTask, useMoveTask, useTask, useUpdateTask } from '@/data/tasks';
+import { useDismissTodayItem, useMoveTodayItemToDay, useRestoreTodayItem, useTodayList } from '@/data/today';
+import { showUndoToast } from '@/components/ui/AppToast';
 import { confirmDialog } from '@/lib/dialog';
 import { canHandOff } from '@/lib/handoff';
 import {
@@ -34,6 +36,7 @@ import {
 } from '@/lib/recurrence';
 import { canManage, canWrite, STATUSES, type TaskStatus } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
+import { localToday, openTodayLineForTask, shiftDay } from '@/lib/today';
 import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
 import { colors, radii, spacing } from '@/theme/tokens';
 
@@ -53,6 +56,12 @@ export default function TaskView() {
   const removeWeekPlan = useRemoveTaskWeekPlan();
   const updateStatus = useUpdateTask();
   const currentWeek = getCurrentWeekStart();
+  const today = localToday();
+  const tomorrow = shiftDay(today, 1);
+  const todayList = useTodayList(today);
+  const moveToday = useMoveTodayItemToDay();
+  const dismissToday = useDismissTodayItem();
+  const restoreToday = useRestoreTodayItem();
 
   if (isLoading) {
     return (
@@ -89,6 +98,7 @@ export default function TaskView() {
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
   const repeatRule = repeatRuleFromTask(task);
+  const todayLine = openTodayLineForTask(todayList.data ?? [], task.id);
   const repeatCopy = repeatScheduleCopy(
     repeatRule,
     task.due_date ? formatDueDate(nextRecurrenceDate(task.due_date, repeatRule)) : null,
@@ -228,6 +238,62 @@ export default function TaskView() {
       )}
 
       <AgentLogSection taskId={task.id} userId={userId} canModerate={canManage(role)} />
+
+      {todayLine ? (
+        <View style={styles.weekPlan}>
+          <View style={styles.weekPlanCopy}>
+            <Text variant="bodyMedium">On today</Text>
+            <Text variant="meta" color={colors.inkSoft}>
+              Your private plan. The task stays in its circle, and the due date stays.
+            </Text>
+          </View>
+          <Button
+            label="Tomorrow"
+            variant="secondary"
+            size="md"
+            loading={moveToday.isPending}
+            onPress={() => {
+              const line = todayLine;
+              moveToday.mutate(
+                { id: line.id, day: tomorrow },
+                {
+                  onSuccess: () => {
+                    showUndoToast('Moved to tomorrow', () => {
+                      moveToday.mutate(
+                        { id: line.id, day: today },
+                        {
+                          onError: () =>
+                            Toast.show({ type: 'error', text1: 'Couldn’t undo that' }),
+                        },
+                      );
+                    });
+                  },
+                  onError: () => Toast.show({ type: 'error', text1: 'Couldn’t move that to tomorrow' }),
+                },
+              );
+            }}
+          />
+          <Button
+            label="Not today"
+            variant="secondary"
+            size="md"
+            loading={dismissToday.isPending || restoreToday.isPending}
+            onPress={() => {
+              const line = todayLine;
+              dismissToday.mutate(line.id, {
+                onSuccess: () => {
+                  showUndoToast('Off today', () => {
+                    restoreToday.mutate(line, {
+                      onError: () => Toast.show({ type: 'error', text1: 'Couldn’t undo that' }),
+                    });
+                  });
+                },
+                onError: () => Toast.show({ type: 'error', text1: 'Couldn’t take that off today' }),
+              });
+            }}
+          />
+        </View>
+      ) : null}
 
       {myWeekEnabled ? (
       <View style={styles.weekPlan}>
