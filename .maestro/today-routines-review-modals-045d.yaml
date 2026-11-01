@@ -1,0 +1,62 @@
+appId: com.rewind.trove
+---
+# Stop a Today routine only when you mean to: removing a repeating line from
+# Today (the row's long-press menu) only dismisses today's occurrence. The
+# line is undo-able and the routine keeps repeating — it is NOT the same as
+# "Delete routine", which is a separate destructive action that needs a
+# confirm and actually turns the routine off.
+- launchApp:
+    clearState: true
+
+# Log in (app launches on a logged-out login screen)
+- tapOn:
+    text: "you@example.com"
+- inputText: ${MAESTRO_TEST_EMAIL}
+- tapOn:
+    text: "Your password"
+- inputText: ${MAESTRO_TEST_PASSWORD}
+- tapOn:
+    text: "Sign in"
+- extendedWaitUntil:
+    notVisible:
+      text: "Sign in"
+    timeout: 10000
+- assertVisible: "Add a line, or @ a task"
+
+# Add a one-off line, then turn it into a daily routine
+- tapOn:
+    text: "Add a line, or @ a task"
+- inputText: "Maestro QA routine line"
+- pressKey: Enter
+- assertVisible: "Maestro QA routine line"
+- longPressOn:
+    text: "Maestro QA routine line"
+- assertVisible: "Repeat"
+- tapOn: "Repeat"
+- tapOn: "Every day"
+- tapOn: "Save"
+- assertVisible: "Maestro QA routine line"
+
+# Removing it from today only takes today's occurrence off — the routine
+# itself stays active (shown by "Repeat · Every day" still being there)
+- longPressOn:
+    text: "Maestro QA routine line"
+- assertVisible: "Repeat · Every day"
+- tapOn: "Remove from today"
+- assertNotVisible: "Maestro QA routine line"
+- assertVisible: "Off today"
+- assertVisible: "Undo"
+
+# Undo restores the line, and the routine was never stopped
+- tapOn: "Undo"
+- assertVisible: "Maestro QA routine line"
+- longPressOn:
+    text: "Maestro QA routine line"
+- assertVisible: "Repeat · Every day"
+
+# "Delete routine" is the separate destructive action that actually stops it,
+# and it asks for a confirm first
+- tapOn: "Delete routine"
+- assertVisible: "Delete this routine?"
+- tapOn: "Delete routine"
+- assertNotVisible: "Maestro QA routine line"
