@@ -13,6 +13,7 @@ import {
   bottomTodayRank,
   canRescheduleTodayLine,
   insertTodayLine,
+  openPastReview,
   openTodayLineForTask,
   momentumAppearance,
   momentumCount,
@@ -76,7 +77,7 @@ function item(partial: Partial<TodaySourceItem> & Pick<TodaySourceItem, 'id' | '
   return { routineId: null, checked: false, rank: 'a0', ...partial };
 }
 
-test('a new day moves unticked one-offs and adds routines that are due', () => {
+test('a new day adds routines that are due and leaves earlier lines where they are', () => {
   const plan = planTodayMaterialisation({
     day: TUESDAY,
     alreadyMaterialised: false,
@@ -90,7 +91,7 @@ test('a new day moves unticked one-offs and adds routines that are due', () => {
     routines,
   });
   if (!plan) throw new Error('expected a plan');
-  assert.deepEqual(plan.moveIds, ['milk']);
+  assert.deepEqual(plan.moveIds, []);
   assert.deepEqual(
     plan.routines.map((line) => line.routineId),
     ['stretch', 'office'],
@@ -110,7 +111,7 @@ test('Saturday skips weekday routines and a prepared day is left alone', () => {
     saturday?.routines.map((line) => line.routineId),
     ['stretch'],
   );
-  assert.deepEqual(saturday?.moveIds, ['milk']);
+  assert.deepEqual(saturday?.moveIds, []);
 
   const again = planTodayMaterialisation({
     day: SATURDAY,
@@ -137,7 +138,7 @@ test('reading an earlier day does not pull lines back off a later one', () => {
   );
 });
 
-test('a line taken off its day does not roll forward, and the task is not the plan', () => {
+test('a line taken off its day stays there, and the task is not the plan', () => {
   const plan = planTodayMaterialisation({
     day: TUESDAY,
     alreadyMaterialised: false,
@@ -149,7 +150,7 @@ test('a line taken off its day does not roll forward, and the task is not the pl
     ],
     routines,
   });
-  assert.deepEqual(plan?.moveIds, ['call']);
+  assert.deepEqual(plan?.moveIds, []);
   assert.equal(plan?.routines.some((line) => line.routineId === 'stretch'), true);
 
   const kept = line('milk', { taskId: 'task-milk', taskStatus: 'todo', checkedAt: null });
@@ -176,7 +177,7 @@ test('rolled lines keep their order and land under lines already on the day', ()
     routines,
   });
   if (!plan) throw new Error('expected a plan');
-  assert.deepEqual(plan.moveIds, ['first', 'later']);
+  assert.deepEqual(plan.moveIds, []);
   const placed = rolloverRanks('a1', [
     { id: 'first', rank: 'a2' },
     { id: 'later', rank: 'a0' },
@@ -339,6 +340,32 @@ test('a today refetch keeps row identity when only the checked timestamp changed
   assert.equal(stillEditing, current);
 });
 
+test('yesterday review lists open one-offs, newest day first, and skips routines', () => {
+  const groups = openPastReview({
+    today: TUESDAY,
+    items: [
+      item({ id: 'milk', day: MONDAY, rank: 'a2' }),
+      item({ id: 'call', day: MONDAY, rank: 'a0' }),
+      item({ id: 'done', day: MONDAY, rank: 'a3', checked: true }),
+      item({ id: 'skipped', day: MONDAY, dismissed: true }),
+      item({ id: 'stretch-mon', day: MONDAY, routineId: 'stretch' }),
+      item({ id: 'older', day: '2026-10-20', rank: 'a1' }),
+      item({ id: 'today', day: TUESDAY, rank: 'a5' }),
+    ],
+  });
+  assert.deepEqual(groups, [
+    { day: MONDAY, ids: ['milk', 'call'] },
+    { day: '2026-10-20', ids: ['older'] },
+  ]);
+  const many = openPastReview({
+    today: TUESDAY,
+    items: Array.from({ length: 45 }, (_, index) =>
+      item({ id: `old-${index}`, day: '2026-10-01', rank: `b${String(index).padStart(2, '0')}` }),
+    ),
+  });
+  assert.equal(many.reduce((count, group) => count + group.ids.length, 0), 40);
+});
+
 test('tomorrow is not prepared, and a routine already on the day is not previewed twice', () => {
   assert.equal(shouldPrepareDay(TUESDAY, MONDAY), false);
   assert.equal(shouldPrepareDay(MONDAY, MONDAY), true);
@@ -391,4 +418,23 @@ test('the migration keeps Today private and prepares a day in SQL', () => {
   assert.equal(/today_routines/.test(dismissBody), false);
   assert.ok(/Ticked lines stay on their day/.test(dismissBody));
   assert.ok(/set dismissed_at = now\(\)/.test(dismissBody));
+
+  const review = readFileSync(
+    new URL('../../supabase/migrations/0030_today_yesterday_review.sql', import.meta.url),
+    'utf8',
+  );
+  const ensureStart = review.indexOf('function public.ensure_today');
+  const skipStart = review.indexOf('function public.skip_today_routine');
+  assert.ok(ensureStart > 0 && skipStart > ensureStart);
+  const ensureBody = review.slice(ensureStart, skipStart);
+  assert.equal(/set day = p_day/.test(ensureBody), false);
+  assert.ok(/today_routines/.test(ensureBody));
+  assert.ok(/Does not move unticked lines/.test(review));
+  const deleteStart = review.indexOf('function public.delete_today_item');
+  assert.ok(deleteStart > skipStart);
+  const deleteBody = review.slice(deleteStart);
+  assert.ok(/v_item\.routine_id is not null/.test(deleteBody));
+  assert.ok(/set dismissed_at = now\(\)/.test(deleteBody));
+  assert.equal(/set active = false/.test(deleteBody), false);
+  assert.ok(/function public\.skip_today_routine/.test(review));
 });

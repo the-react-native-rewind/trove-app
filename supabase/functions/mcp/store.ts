@@ -111,6 +111,8 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     dismissTodayItem: (itemId) => dismissTodayItem(db, itemId),
     restoreTodayItem: (itemId) => restoreTodayItem(db, itemId),
     moveTodayItem: (input) => moveTodayItem(db, input),
+    listOpenPast: (day) => listOpenPast(db, userId, day),
+    checkTodayItem: (input) => checkTodayItem(db, input),
   };
 }
 
@@ -786,6 +788,58 @@ async function readTodayRows(db: SupabaseClient, userId: string, day: string): P
     .order('created_at', { ascending: true });
   throwIf(error);
   return (data ?? []) as TodayRow[];
+}
+
+async function listOpenPast(db: SupabaseClient, userId: string, day: string): Promise<TodayEntry[]> {
+  const { data, error } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('user_id', userId)
+    .lt('day', day)
+    .is('routine_id', null)
+    .is('checked_at', null)
+    .is('dismissed_at', null)
+    .order('day', { ascending: false })
+    .order('rank', { ascending: false })
+    .limit(40);
+  throwIf(error);
+  return ((data ?? []) as TodayRow[]).map(mapTodayRow);
+}
+
+async function checkTodayItem(
+  db: SupabaseClient,
+  input: { itemId: string; completeTask: boolean },
+): Promise<TodayEntry> {
+  const { data: existing, error: readError } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('id', input.itemId)
+    .maybeSingle();
+  throwIf(readError);
+  if (!existing) throw new TroveError('Line not found');
+  const row = existing as TodayRow;
+  if (row.checked_at == null) {
+    if (input.completeTask && row.task_id) {
+      const { error: taskError } = await db
+        .from('tasks')
+        .update({ status: 'done', position: Date.now() })
+        .eq('id', row.task_id);
+      throwIf(taskError);
+    }
+    const { error } = await db
+      .from('today_items')
+      .update({ checked_at: new Date().toISOString() })
+      .eq('id', input.itemId);
+    throwIf(error);
+  }
+  const { data: fresh, error: freshError } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('id', input.itemId)
+    .maybeSingle();
+  throwIf(freshError);
+  if (!fresh) throw new TroveError('Line not found');
+  return mapTodayRow(fresh as TodayRow);
 }
 
 async function dismissTodayItem(db: SupabaseClient, itemId: string): Promise<void> {

@@ -155,6 +155,7 @@ function captureTodayLists(qc: QueryClient, userId: string): TodaySnapshot {
   return [
     ...qc.getQueriesData<TodayLine[]>({ queryKey: ['today', userId] }),
     ...qc.getQueriesData<TodayLine[]>({ queryKey: ['tomorrow', userId] }),
+    ...qc.getQueriesData<TodayLine[]>({ queryKey: ['today-review', userId] }),
   ];
 }
 
@@ -213,6 +214,33 @@ async function beginTodayEdit(qc: QueryClient, userId: string, apply: () => void
     pendingTodayEdits = Math.max(0, pendingTodayEdits - 1);
     throw error;
   }
+}
+
+/**
+ * Open one-off lines from before this day. Routines are left out.
+ * Opening today does not move these; the review at the top of Today does.
+ */
+export function useOpenPastToday(day: string) {
+  const { userId } = useAuth();
+  return useQuery({
+    queryKey: qk.todayReview(userId ?? '', day),
+    enabled: !!userId && !!day,
+    refetchOnWindowFocus: false,
+    queryFn: async (): Promise<TodayLine[]> => {
+      const { data, error } = await supabase
+        .from('today_items')
+        .select(TODAY_SELECT)
+        .lt('day', day)
+        .is('routine_id', null)
+        .is('checked_at', null)
+        .is('dismissed_at', null)
+        .order('day', { ascending: false })
+        .order('rank', { ascending: false })
+        .limit(40);
+      if (error) throw error;
+      return visibleTodayLines((data ?? []) as unknown as TodayRow[]);
+    },
+  });
 }
 
 /** Prepare the day, then read it. Later reads in this session skip ensure_today. */
@@ -386,6 +414,7 @@ function useRefreshToday() {
     if (!userId) return;
     void qc.invalidateQueries({ queryKey: ['today', userId] });
     void qc.invalidateQueries({ queryKey: ['tomorrow', userId] });
+    void qc.invalidateQueries({ queryKey: ['today-review', userId] });
   };
 }
 
@@ -816,6 +845,37 @@ export function useDismissTodayItem() {
   });
 }
 
+/**
+ * Take a routine off one day when it is still a preview and has no row.
+ * The routine stays active. Undo is restore_today_item on the returned id.
+ */
+export function useSkipTodayRoutine() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  const refresh = useRefreshToday();
+  return useMutation({
+    mutationFn: async (input: { routineId: string; day: string }) => {
+      const { data, error } = await supabase.rpc('skip_today_routine', {
+        p_routine_id: input.routineId,
+        p_day: input.day,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onMutate: async (input) => {
+      if (!userId) return { snapshot: undefined, editing: false };
+      const snapshot = await beginTodayEdit(qc, userId, () => {
+        mapTodayLists(qc, userId, (lines) =>
+          lines.filter((line) => !(line.virtual && line.routineId === input.routineId && line.day === input.day)),
+        );
+      });
+      return { snapshot, editing: true };
+    },
+    onError: (_error, _input, context) => restoreTodayLists(qc, context?.snapshot),
+    onSettled: (_result, _error, _variables, context) => refresh(context?.editing === true),
+  });
+}
+
 /** Put a dismissed line back on the day it was taken off. */
 export function useRestoreTodayItem() {
   const { userId } = useAuth();
@@ -852,16 +912,8 @@ export function useDeleteTodayItem() {
     },
     onMutate: async (id) => {
       if (!userId) return { snapshot: undefined, editing: false };
-      const line = findTodayLine(qc, userId, id);
       const snapshot = await beginTodayEdit(qc, userId, () => {
-        mapTodayLists(qc, userId, (lines) => {
-          let next = withoutTodayLine(lines, id);
-          if (line?.routineId) {
-            next = withoutVirtualRoutine(next, line.routineId);
-            next = withRoutinePatch(next, line.routineId, { routineActive: false });
-          }
-          return next;
-        });
+        mapTodayLists(qc, userId, (lines) => withoutTodayLine(lines, id));
       });
       return { snapshot, editing: true };
     },

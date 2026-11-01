@@ -534,6 +534,7 @@ export type Database = {
         Returns: string | null
       }
       delete_today_item: { Args: { p_item_id: string }; Returns: undefined }
+      skip_today_routine: { Args: { p_routine_id: string; p_day: string }; Returns: string }
       dismiss_today_item: { Args: { p_item_id: string }; Returns: undefined }
       restore_today_item: { Args: { p_item_id: string }; Returns: undefined }
       today_rank_at_bottom: { Args: { p_day: string }; Returns: string }

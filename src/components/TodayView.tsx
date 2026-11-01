@@ -1,11 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -31,17 +30,20 @@ import {
   useDismissTodayItem,
   useMoveTodayItem,
   useMoveTodayItemToDay,
+  useOpenPastToday,
   useOpenTaskChoices,
   usePlaceTodayRoutine,
   useRenameTodayItem,
   useRestoreTodayItem,
   useSetTodayRepeat,
+  useSkipTodayRoutine,
   useTodayList,
   useTomorrowPlan,
   useUpdateTodayRoutine,
 } from '@/data/today';
 import { useIsWide } from '@/hooks/useIsWide';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
+import { formatDueDate } from '@/lib/format';
 import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from '@/lib/haptics';
 import { useMomentumChime } from '@/lib/momentumSound';
 import { rankAfterDrop } from '@/lib/rank';
@@ -56,7 +58,9 @@ import {
   canRescheduleTodayLine,
   localToday,
   momentumCount,
+  openPastReview,
   repeatLabel,
+  type OpenPastGroup,
   shiftDay,
   todayLineTitle,
   weekdayIndex,
@@ -68,8 +72,11 @@ import { CollapsingScreenHeader, useCollapsingHeader } from './CollapsingHeader'
 import { MomentumBadge } from './MomentumBadge';
 import { showUndoToast } from './ui/AppToast';
 import { EmptyState } from './ui/EmptyState';
+import { FadeSheet } from './ui/FadeSheet';
 import { AccentDot } from './ui/Indicators';
 import { Text } from './ui/Text';
+
+const EMPTY_TODAY_LINES: TodayLine[] = [];
 
 function messageOf(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -93,22 +100,31 @@ export function TodayView() {
   const tomorrow = shiftDay(today, 1);
   const [when, setWhen] = useState<'today' | 'tomorrow'>('today');
   const [draft, setDraft] = useState('');
+  const [sheet, setSheet] = useState<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | null>(null);
   const [menuLine, setMenuLine] = useState<TodayLine | null>(null);
   const [editLine, setEditLine] = useState<TodayLine | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [repeatLine, setRepeatLine] = useState<TodayLine | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(true);
+  const afterClose = useRef<(() => void) | null>(null);
+  const heldSheet = useRef<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | null>(null);
+  useEffect(() => {
+    if (sheet) heldSheet.current = sheet;
+  }, [sheet]);
+  const shown = sheet ?? heldSheet.current;
   const [repeatChoice, setRepeatChoice] = useState<'every' | 'weekdays' | 'custom'>('every');
   const [customDays, setCustomDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [tickLine, setTickLine] = useState<TodayLine | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [taskSearch, setTaskSearch] = useState('');
 
   const planningTomorrow = when === 'tomorrow';
   const activeDay = planningTomorrow ? tomorrow : today;
   const todayQuery = useTodayList(today);
   const tomorrowQuery = useTomorrowPlan(tomorrow);
+  const pastQuery = useOpenPastToday(today);
   const activeQuery = planningTomorrow ? tomorrowQuery : todayQuery;
-  const lines = activeQuery.data ?? [];
+  const lines = activeQuery.data ?? EMPTY_TODAY_LINES;
   const [refreshing, setRefreshing] = useState(false);
   const addText = useAddTodayText(activeDay);
   const addTask = useAddTodayTask(activeDay);
@@ -122,9 +138,24 @@ export function TodayView() {
   const remove = useDeleteTodayItem();
   const dismiss = useDismissTodayItem();
   const restore = useRestoreTodayItem();
+  const skipRoutine = useSkipTodayRoutine();
+  const pickerOpen = sheet === 'picker';
   const taskChoices = useOpenTaskChoices(taskSearch, pickerOpen);
   const chime = useMomentumChime();
   const [tickPulse, setTickPulse] = useState(0);
+
+  const pastLines = pastQuery.data ?? [];
+  const pastGroups = openPastReview({
+    today,
+    items: pastLines.map((line) => ({
+      id: line.id,
+      day: line.day,
+      routineId: line.routineId,
+      checked: line.checkedAt !== null,
+      rank: line.rank,
+    })),
+  });
+  const pastById = new Map(pastLines.map((line) => [line.id, line]));
 
   const takenTaskIds = new Set(lines.flatMap((line) => (line.taskId ? [line.taskId] : [])));
   const choices = (taskChoices.data ?? []).filter((choice) => !takenTaskIds.has(choice.id));
@@ -136,7 +167,7 @@ export function TodayView() {
   function onDraftChange(value: string) {
     if (value.includes('@')) {
       setDraft(value.replaceAll('@', ''));
-      setPickerOpen(true);
+      setSheet('picker');
       hapticLight();
       return;
     }
@@ -157,7 +188,7 @@ export function TodayView() {
   }
 
   function pickTask(choice: { id: string; title: string; spaceName: string; spaceColor: string }) {
-    setPickerOpen(false);
+    setSheet(null);
     setTaskSearch('');
     hapticMedium();
     addTask.mutate(
@@ -201,6 +232,7 @@ export function TodayView() {
     if (line.taskId) {
       hapticLight();
       setTickLine(line);
+      setSheet('tick');
       return;
     }
     setTickPulse((pulse) => pulse + 1);
@@ -221,7 +253,7 @@ export function TodayView() {
     const line = tickLine;
     const taskId = line?.taskId;
     if (!line || !taskId) return;
-    setTickLine(null);
+    closeSheet();
     const taskStatus = mode === 'done' ? 'done' : 'in_progress';
     setTickPulse((pulse) => pulse + 1);
     hapticSuccess();
@@ -268,8 +300,28 @@ export function TodayView() {
       const todayIndex = weekdayIndex(line.day);
       setCustomDays(todayIndex === null ? [1, 2, 3, 4, 5] : [todayIndex]);
     }
-    setMenuLine(null);
     setRepeatLine(line);
+    setSheet('repeat');
+  }
+
+  function closeSheet(then?: () => void) {
+    afterClose.current = then ?? null;
+    setSheet(null);
+  }
+
+  function openEditor(line: TodayLine) {
+    if (line.taskId) {
+      const href = `/task/${line.taskId}/edit` as never;
+      if (sheet) {
+        closeSheet(() => router.push(href));
+        return;
+      }
+      router.push(href);
+      return;
+    }
+    setEditDraft(line.text ?? '');
+    setEditLine(line);
+    setSheet('edit');
   }
 
   function repeatMask(): number {
@@ -286,7 +338,7 @@ export function TodayView() {
       return;
     }
     const line = repeatLine;
-    setRepeatLine(null);
+    closeSheet();
     const pending =
       line.virtual && line.routineId
         ? updateRoutine.mutateAsync({ id: line.routineId, days })
@@ -294,15 +346,23 @@ export function TodayView() {
     void pending.catch((error) => quietError('Couldn’t save that repeat', error));
   }
 
-  function stopRepeat() {
-    if (!repeatLine) return;
-    const line = repeatLine;
-    setRepeatLine(null);
-    const pending =
-      line.virtual && line.routineId
-        ? updateRoutine.mutateAsync({ id: line.routineId, active: false })
-        : setRepeat.mutateAsync({ id: line.id, days: 0 });
-    void pending.catch((error) => quietError('Couldn’t stop that repeat', error));
+  async function deleteRoutine(line: TodayLine) {
+    if (!line.routineId || !line.routineActive) return;
+    closeSheet();
+    const ok = await confirmDialog({
+      title: 'Delete this routine?',
+      message: 'It leaves this day and will not come back on later days.',
+      confirmLabel: 'Delete routine',
+      destructive: true,
+    });
+    if (!ok) return;
+    const routineId = line.routineId;
+    try {
+      await updateRoutine.mutateAsync({ id: routineId, active: false });
+      if (!line.virtual) await dismiss.mutateAsync(line.id);
+    } catch (error) {
+      quietError('Couldn’t delete that routine', error);
+    }
   }
 
   function saveEdit() {
@@ -310,7 +370,7 @@ export function TodayView() {
     const text = editDraft.replace(/\s+/g, ' ').trim();
     if (!text) return;
     const line = editLine;
-    setEditLine(null);
+    closeSheet();
     const pending =
       line.virtual && line.routineId
         ? updateRoutine.mutateAsync({ id: line.routineId, text })
@@ -318,27 +378,48 @@ export function TodayView() {
     void pending.catch((error) => quietError('Couldn’t save that line', error));
   }
 
-  async function deleteLine(line: TodayLine) {
-    setMenuLine(null);
-    const repeating = line.routineId !== null && line.routineActive;
-    const ok = await confirmDialog({
-      title: repeating ? 'Delete this repeating line?' : 'Delete this line?',
-      message: repeating
-        ? line.virtual
-          ? 'It won’t come back on later days.'
-          : planningTomorrow
-            ? 'It leaves tomorrow, and it won’t come back on later days.'
-            : 'It leaves today, and it won’t come back on later days.'
-        : undefined,
+  function removeFromDay(line: TodayLine) {
+    closeSheet();
+    if (line.checkedAt) return;
+    const label = line.day === today ? 'Off today' : 'Off that day';
+    if (line.virtual && line.routineId) {
+      const routineId = line.routineId;
+      skipRoutine.mutate(
+        { routineId, day: line.day },
+        {
+          onSuccess: (id) => {
+            if (!id) return;
+            showUndoToast(label, () => {
+              restore.mutate(
+                { ...line, id, virtual: undefined },
+                { onError: (error) => quietError('Couldn’t undo that', error) },
+              );
+            });
+          },
+          onError: (error) => quietError('Couldn’t take that off the day', error),
+        },
+      );
+      return;
+    }
+    if (line.routineId) {
+      dismiss.mutate(line.id, {
+        onSuccess: () => {
+          showUndoToast(label, () => {
+            restore.mutate(line, { onError: (error) => quietError('Couldn’t undo that', error) });
+          });
+        },
+        onError: (error) => quietError('Couldn’t take that off the day', error),
+      });
+      return;
+    }
+    void confirmDialog({
+      title: 'Delete this line?',
       confirmLabel: 'Delete',
       destructive: true,
+    }).then((ok) => {
+      if (!ok) return;
+      void remove.mutateAsync(line.id).catch((error) => quietError('Couldn’t delete that line', error));
     });
-    if (!ok) return;
-    const pending =
-      line.virtual && line.routineId
-        ? updateRoutine.mutateAsync({ id: line.routineId, active: false })
-        : remove.mutateAsync(line.id);
-    void pending.catch((error) => quietError('Couldn’t delete that line', error));
   }
 
   function routineAlreadyToday(line: TodayLine): boolean {
@@ -347,7 +428,7 @@ export function TodayView() {
   }
 
   function moveLine(line: TodayLine) {
-    setMenuLine(null);
+    closeSheet();
     const pending = planningTomorrow
       ? line.virtual && line.routineId
         ? placeRoutine.mutateAsync(line.routineId)
@@ -357,7 +438,7 @@ export function TodayView() {
   }
 
   function planLine(line: TodayLine, action: 'tomorrow' | 'not-today') {
-    setMenuLine(null);
+    closeSheet();
     if (!canRescheduleTodayLine(line)) return;
     if (action === 'tomorrow') {
       moveDay.mutate(
@@ -400,12 +481,15 @@ export function TodayView() {
         isActive={isActive}
         drag={drag}
         onToggle={() => onToggle(line)}
-        onOpen={() => {
-          if (line.taskId) router.push(`/task/${line.taskId}` as never);
-        }}
+        onOpen={() => openEditor(line)}
+        onEdit={() => openEditor(line)}
+        onRemove={() => removeFromDay(line)}
+        focused={focusedId === line.id}
+        onFocusLine={() => setFocusedId(line.id)}
         onOpenMenu={() => {
           hapticLight();
           setMenuLine(line);
+          setSheet('menu');
         }}
         onTomorrow={() => planLine(line, 'tomorrow')}
         onNotToday={() => planLine(line, 'not-today')}
@@ -446,6 +530,25 @@ export function TodayView() {
       tintColor={colors.brand}
     />
   );
+
+  const removeFromDayRef = useRef(removeFromDay);
+  removeFromDayRef.current = removeFromDay;
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      const line = lines.find((item) => item.id === focusedId);
+      if (!line || line.checkedAt) return;
+      event.preventDefault();
+      removeFromDayRef.current(line);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [focusedId, lines]);
 
   const repeatDays = repeatMask();
   const repeatLeaves =
@@ -510,6 +613,61 @@ export function TodayView() {
             onDragBegin={() => hapticLight()}
             onDragEnd={onDragEnd}
             onScrollOffsetChange={collapse.onScrollOffsetChange}
+            ListHeaderComponent={
+              planningTomorrow || pastGroups.length === 0 ? null : (
+                <YesterdayReview
+                  today={today}
+                  groups={pastGroups}
+                  lines={pastById}
+                  open={reviewOpen}
+                  onToggleOpen={() => setReviewOpen((value) => !value)}
+                  onDone={(line) => {
+                    if (line.taskId) {
+                      setTickLine(line);
+                      setSheet('tick');
+                      return;
+                    }
+                    check.mutate(
+                      { id: line.id, checked: true },
+                      { onError: (error) => quietError('Couldn’t update that line', error) },
+                    );
+                  }}
+                  onMove={(line) => {
+                    moveDay.mutate(
+                      { id: line.id, day: today },
+                      { onError: (error) => quietError('Couldn’t move that line', error) },
+                    );
+                  }}
+                  onDrop={(line) => {
+                    dismiss.mutate(line.id, {
+                      onSuccess: () => {
+                        showUndoToast('Dropped', () => {
+                          restore.mutate(line, { onError: (error) => quietError('Couldn’t undo that', error) });
+                        });
+                      },
+                      onError: (error) => quietError('Couldn’t drop that line', error),
+                    });
+                  }}
+                  onMoveAll={() => {
+                    const ordered = pastGroups.flatMap((group) => group.ids);
+                    for (const id of ordered) {
+                      moveDay.mutate(
+                        { id, day: today },
+                        { onError: (error) => quietError('Couldn’t move that line', error) },
+                      );
+                    }
+                  }}
+                  onClearAll={() => {
+                    for (const line of pastLines) {
+                      if (line.checkedAt) continue;
+                      dismiss.mutate(line.id, {
+                        onError: (error) => quietError('Couldn’t drop that line', error),
+                      });
+                    }
+                  }}
+                />
+              )
+            }
             ListEmptyComponent={empty}
             contentContainerStyle={[
               lines.length === 0 ? styles.emptyList : styles.listContent,
@@ -537,7 +695,7 @@ export function TodayView() {
           <Pressable
             onPress={() => {
               hapticLight();
-              setPickerOpen(true);
+              setSheet('picker');
             }}
             accessibilityRole="button"
             accessibilityLabel="Add a task"
@@ -550,181 +708,219 @@ export function TodayView() {
           </Pressable>
         </View>
 
-      <Sheet
-        visible={menuLine !== null}
-        title={menuLine ? todayLineTitle(menuLine) : ''}
+      <FadeSheet
+        visible={sheet !== null}
         wide={isWide}
-        onClose={() => setMenuLine(null)}
+        onClose={() => closeSheet()}
+        onClosed={() => {
+          const next = afterClose.current;
+          afterClose.current = null;
+          next?.();
+        }}
       >
-        <SheetAction
-          label={menuLine?.taskId ? 'Open task' : 'Edit'}
-          onPress={() => {
-            const line = menuLine;
-            setMenuLine(null);
-            if (!line) return;
-            if (line.taskId) {
-              router.push(`/task/${line.taskId}` as never);
-              return;
-            }
-            setEditDraft(line.text ?? '');
-            setEditLine(line);
-          }}
-        />
-        <SheetAction
-          label={menuLine?.routineActive ? `Repeat · ${repeatLabel(menuLine.repeatDays ?? EVERY_DAY)}` : 'Repeat'}
-          onPress={() => {
-            if (menuLine) openRepeat(menuLine);
-          }}
-        />
-        {!planningTomorrow && menuLine && canRescheduleTodayLine(menuLine) ? (
-          <SheetAction
-            label="Tomorrow"
-            detail="Shows up tomorrow"
-            onPress={() => menuLine && planLine(menuLine, 'tomorrow')}
-          />
-        ) : null}
-        {!planningTomorrow && menuLine && canRescheduleTodayLine(menuLine) ? (
-          <SheetAction
-            label="Not today"
-            detail={menuLine.taskId ? 'Stays in the circle. The due date stays.' : 'Leaves this day'}
-            onPress={() => menuLine && planLine(menuLine, 'not-today')}
-          />
-        ) : null}
-        {planningTomorrow && menuLine && !(menuLine.virtual && routineAlreadyToday(menuLine)) ? (
-          <SheetAction label="Move to today" onPress={() => menuLine && void moveLine(menuLine)} />
-        ) : null}
-        <SheetAction label="Delete" destructive onPress={() => menuLine && void deleteLine(menuLine)} />
-      </Sheet>
-
-      <Sheet
-        visible={editLine !== null}
-        title="Edit line"
-        wide={isWide}
-        onClose={() => setEditLine(null)}
-      >
-        <TextInput
-          value={editDraft}
-          onChangeText={setEditDraft}
-          onSubmitEditing={() => void saveEdit()}
-          placeholder="The line"
-          placeholderTextColor={colors.inkFaint}
-          style={styles.sheetInput}
-          autoFocus
-          accessibilityLabel="Line text"
-        />
-        <SheetAction label="Save" onPress={() => void saveEdit()} />
-      </Sheet>
-
-      <Sheet
-        visible={repeatLine !== null}
-        title="Repeat"
-        wide={isWide}
-        onClose={() => setRepeatLine(null)}
-      >
-        <ChoiceRow label="Every day" selected={repeatChoice === 'every'} onPress={() => setRepeatChoice('every')} />
-        <ChoiceRow label="Weekdays" selected={repeatChoice === 'weekdays'} onPress={() => setRepeatChoice('weekdays')} />
-        <ChoiceRow label="Specific days" selected={repeatChoice === 'custom'} onPress={() => setRepeatChoice('custom')} />
-        {repeatChoice === 'custom' ? (
-          <View style={styles.dayRow}>
-            {WEEKDAY_PICKER_ORDER.map((index) => {
-              const selected = customDays.includes(index);
-              return (
-                <Pressable
-                  key={index}
-                  onPress={() => {
-                    hapticSelection();
-                    setCustomDays((current) =>
-                      current.includes(index) ? current.filter((day) => day !== index) : [...current, index],
-                    );
-                  }}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selected }}
-                  accessibilityLabel={WEEKDAY_SHORT[index]}
-                  style={[styles.dayChip, selected && styles.dayChipOn]}
-                >
-                  <Text variant="meta" color={selected ? colors.brandDeep : colors.inkSoft}>
-                    {WEEKDAY_SHORT[index]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-        {repeatLeaves ? (
-          <Text variant="meta" color={colors.inkSoft}>
-            This day isn’t included, so the line leaves today and comes back on the days you picked.
-          </Text>
-        ) : null}
-        <SheetAction label="Save" onPress={() => void saveRepeat()} />
-        {repeatLine?.routineActive ? (
-          <SheetAction label="Stop repeating" onPress={() => void stopRepeat()} />
-        ) : null}
-      </Sheet>
-
-      <Sheet
-        visible={tickLine !== null}
-        title={tickLine ? todayLineTitle(tickLine) : ''}
-        wide={isWide}
-        onClose={() => setTickLine(null)}
-      >
-        <Text variant="meta" color={colors.inkSoft}>
-          Ticking this also updates the task. Unticking later only clears the line.
-        </Text>
-        <SheetAction
-          label="Done for today"
-          detail="Keep the task in progress"
-          quiet
-          onPress={() => void chooseTick('today')}
-        />
-        <SheetAction label="Finished" detail="Mark the task done" quiet onPress={() => void chooseTick('done')} />
-      </Sheet>
-
-      <Sheet visible={pickerOpen} title="Add a task" wide={isWide} onClose={() => setPickerOpen(false)}>
-        <TextInput
-          value={taskSearch}
-          onChangeText={setTaskSearch}
-          placeholder="Search your open tasks"
-          placeholderTextColor={colors.inkFaint}
-          style={styles.sheetInput}
-          accessibilityLabel="Search tasks"
-        />
-        {taskChoices.isLoading ? <ActivityIndicator color={colors.brand} /> : null}
-        {taskChoices.isError ? (
-          <Text variant="meta" color={colors.priorityHigh}>
-            Couldn’t load tasks. Try again.
-          </Text>
-        ) : null}
-        <ScrollView
-          style={styles.choiceList}
-          contentContainerStyle={styles.taskChoices}
-          keyboardShouldPersistTaps="handled"
+        <View
+          style={[
+            styles.sheet,
+            isWide && styles.sheetWide,
+            { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+          ]}
         >
-          {choices.map((choice) => (
-            <Pressable
-              key={choice.id}
-              onPress={() => pickTask(choice)}
-              accessibilityRole="button"
-              accessibilityLabel={`Add ${choice.title}`}
-              style={styles.choice}
-            >
-              <Text variant="body" numberOfLines={2} style={styles.choiceTitle}>
-                {choice.title}
-              </Text>
-              <View style={styles.circleBadge}>
-                <AccentDot color={resolveAccent(choice.spaceColor)} size={8} />
-                <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
-                  {choice.spaceName}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-          {!taskChoices.isLoading && choices.length === 0 ? (
-            <Text variant="meta" color={colors.inkSoft}>
-              No open tasks match.
+          <View style={styles.sheetHeader}>
+            <Text variant="sectionHeading" numberOfLines={2} style={styles.sheetTitle}>
+              {shown === 'edit'
+                ? 'Edit line'
+                : shown === 'repeat'
+                  ? 'Repeat'
+                  : shown === 'picker'
+                    ? 'Add a task'
+                    : shown === 'tick' && tickLine
+                      ? todayLineTitle(tickLine)
+                      : menuLine
+                        ? todayLineTitle(menuLine)
+                        : ''}
             </Text>
+            <Pressable onPress={() => closeSheet()} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
+              <Ionicons name="close" size={24} color={colors.inkSoft} />
+            </Pressable>
+          </View>
+          {shown === 'menu' ? (
+            <>
+              <SheetAction label="Edit" onPress={() => menuLine && openEditor(menuLine)} />
+              {menuLine?.taskId ? (
+                <SheetAction
+                  label="Open task"
+                  onPress={() => {
+                    const taskId = menuLine?.taskId;
+                    if (!taskId) return;
+                    closeSheet(() => router.push(`/task/${taskId}` as never));
+                  }}
+                />
+              ) : null}
+              <SheetAction
+                label={menuLine?.routineActive ? `Repeat · ${repeatLabel(menuLine.repeatDays ?? EVERY_DAY)}` : 'Repeat'}
+                onPress={() => {
+                  if (menuLine) openRepeat(menuLine);
+                }}
+              />
+              {!planningTomorrow && menuLine && canRescheduleTodayLine(menuLine) ? (
+                <SheetAction
+                  label="Tomorrow"
+                  detail="Shows up tomorrow"
+                  onPress={() => menuLine && planLine(menuLine, 'tomorrow')}
+                />
+              ) : null}
+              {!planningTomorrow && menuLine && canRescheduleTodayLine(menuLine) ? (
+                <SheetAction
+                  label="Not today"
+                  detail={menuLine.taskId ? 'Stays in the circle. The due date stays.' : 'Leaves this day'}
+                  onPress={() => menuLine && planLine(menuLine, 'not-today')}
+                />
+              ) : null}
+              {planningTomorrow && menuLine && !(menuLine.virtual && routineAlreadyToday(menuLine)) ? (
+                <SheetAction label="Move to today" onPress={() => menuLine && void moveLine(menuLine)} />
+              ) : null}
+              {menuLine?.routineId && menuLine.routineActive ? (
+                <SheetAction
+                  label={planningTomorrow ? 'Remove from tomorrow' : 'Remove from today'}
+                  detail="It comes back on the next day it repeats"
+                  onPress={() => menuLine && removeFromDay(menuLine)}
+                />
+              ) : (
+                <SheetAction label="Delete" destructive onPress={() => menuLine && removeFromDay(menuLine)} />
+              )}
+              {menuLine?.routineActive ? (
+                <SheetAction label="Delete routine" destructive onPress={() => menuLine && void deleteRoutine(menuLine)} />
+              ) : null}
+            </>
           ) : null}
-        </ScrollView>
-      </Sheet>
+          {shown === 'edit' ? (
+            <>
+              <TextInput
+                value={editDraft}
+                onChangeText={setEditDraft}
+                onSubmitEditing={() => void saveEdit()}
+                placeholder="The line"
+                placeholderTextColor={colors.inkFaint}
+                style={styles.sheetInput}
+                autoFocus
+                accessibilityLabel="Line text"
+              />
+              <SheetAction label="Save" onPress={() => void saveEdit()} />
+              {editLine?.routineActive ? (
+                <SheetAction
+                  label="Delete routine"
+                  destructive
+                  onPress={() => editLine && void deleteRoutine(editLine)}
+                />
+              ) : null}
+            </>
+          ) : null}
+          {shown === 'repeat' ? (
+            <>
+              <ChoiceRow label="Every day" selected={repeatChoice === 'every'} onPress={() => setRepeatChoice('every')} />
+              <ChoiceRow label="Weekdays" selected={repeatChoice === 'weekdays'} onPress={() => setRepeatChoice('weekdays')} />
+              <ChoiceRow label="Specific days" selected={repeatChoice === 'custom'} onPress={() => setRepeatChoice('custom')} />
+              {repeatChoice === 'custom' ? (
+                <View style={styles.dayRow}>
+                  {WEEKDAY_PICKER_ORDER.map((index) => {
+                    const selected = customDays.includes(index);
+                    return (
+                      <Pressable
+                        key={index}
+                        onPress={() => {
+                          hapticSelection();
+                          setCustomDays((current) =>
+                            current.includes(index) ? current.filter((day) => day !== index) : [...current, index],
+                          );
+                        }}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: selected }}
+                        accessibilityLabel={WEEKDAY_SHORT[index]}
+                        style={[styles.dayChip, selected && styles.dayChipOn]}
+                      >
+                        <Text variant="meta" color={selected ? colors.brandDeep : colors.inkSoft}>
+                          {WEEKDAY_SHORT[index]}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+              {repeatLeaves ? (
+                <Text variant="meta" color={colors.inkSoft}>
+                  This day isn’t included, so the line leaves today and comes back on the days you picked.
+                </Text>
+              ) : null}
+              <SheetAction label="Save" onPress={() => void saveRepeat()} />
+              {repeatLine?.routineActive ? (
+                <SheetAction label="Delete routine" destructive onPress={() => repeatLine && void deleteRoutine(repeatLine)} />
+              ) : null}
+            </>
+          ) : null}
+          {shown === 'tick' ? (
+            <>
+              <Text variant="meta" color={colors.inkSoft}>
+                Ticking this also updates the task. Unticking later only clears the line.
+              </Text>
+              <SheetAction
+                label="Done for today"
+                detail="Keep the task in progress"
+                quiet
+                onPress={() => void chooseTick('today')}
+              />
+              <SheetAction label="Finished" detail="Mark the task done" quiet onPress={() => void chooseTick('done')} />
+            </>
+          ) : null}
+          {shown === 'picker' ? (
+            <>
+              <TextInput
+                value={taskSearch}
+                onChangeText={setTaskSearch}
+                placeholder="Search your open tasks"
+                placeholderTextColor={colors.inkFaint}
+                style={styles.sheetInput}
+                accessibilityLabel="Search tasks"
+              />
+              {taskChoices.isLoading ? <ActivityIndicator color={colors.brand} /> : null}
+              {taskChoices.isError ? (
+                <Text variant="meta" color={colors.priorityHigh}>
+                  Couldn’t load tasks. Try again.
+                </Text>
+              ) : null}
+              <ScrollView
+                style={styles.choiceList}
+                contentContainerStyle={styles.taskChoices}
+                keyboardShouldPersistTaps="handled"
+              >
+                {choices.map((choice) => (
+                  <Pressable
+                    key={choice.id}
+                    onPress={() => pickTask(choice)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add ${choice.title}`}
+                    style={styles.choice}
+                  >
+                    <Text variant="body" numberOfLines={2} style={styles.choiceTitle}>
+                      {choice.title}
+                    </Text>
+                    <View style={styles.circleBadge}>
+                      <AccentDot color={resolveAccent(choice.spaceColor)} size={8} />
+                      <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
+                        {choice.spaceName}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+                {!taskChoices.isLoading && choices.length === 0 ? (
+                  <Text variant="meta" color={colors.inkSoft}>
+                    No open tasks match.
+                  </Text>
+                ) : null}
+              </ScrollView>
+            </>
+          ) : null}
+        </View>
+      </FadeSheet>
     </KeyboardAvoidingView>
   );
 }
@@ -740,9 +936,13 @@ function TodayLineRow({
   planningTomorrow,
   onToggle,
   onOpen,
+  onEdit,
+  onRemove,
   onOpenMenu,
   onTomorrow,
   onNotToday,
+  focused,
+  onFocusLine,
 }: {
   line: TodayLine;
   title: string;
@@ -754,9 +954,13 @@ function TodayLineRow({
   planningTomorrow: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
   onOpenMenu: () => void;
   onTomorrow: () => void;
   onNotToday: () => void;
+  focused?: boolean;
+  onFocusLine: () => void;
 }) {
   const ref = useRef<SwipeableMethods>(null);
   const [hovered, setHovered] = useState(false);
@@ -772,7 +976,7 @@ function TodayLineRow({
 
   const row = (
     <View
-      style={[styles.row, isActive && styles.rowActive]}
+      style={[styles.row, isActive && styles.rowActive, focused && styles.rowFocused]}
       {...(showHoverMenu
         ? {
             onPointerEnter: () => setHovered(true),
@@ -780,6 +984,9 @@ function TodayLineRow({
           }
         : null)}
       {...contextMenu}
+      {...(Platform.OS === 'web'
+        ? { tabIndex: 0 as const, onFocus: onFocusLine }
+        : null)}
     >
       <Pressable
         onPress={onToggle}
@@ -855,17 +1062,40 @@ function TodayLineRow({
     </View>
   );
 
-  if (!shiftable) return row;
+  const routineSkip = !checked && line.routineId !== null && !shiftable;
 
   return (
     <ReanimatedSwipeable
       ref={ref}
       friction={1.6}
+      leftThreshold={36}
       rightThreshold={36}
+      dragOffsetFromLeftEdge={48}
       dragOffsetFromRightEdge={48}
       overshootRight={false}
+      overshootLeft={false}
       onSwipeableWillOpen={() => hapticLight()}
-      renderRightActions={() => (
+      renderLeftActions={() => (
+        <View style={styles.swipeActions}>
+          <Pressable
+            onPress={() => {
+              ref.current?.close();
+              hapticLight();
+              onEdit();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Edit"
+            style={[styles.swipeAction, styles.swipeTomorrow]}
+          >
+            <Text variant="meta" color={colors.brandDeep}>
+              Edit
+            </Text>
+          </Pressable>
+        </View>
+      )}
+      renderRightActions={
+        shiftable
+          ? () => (
         <View style={styles.swipeActions}>
           <Pressable
             onPress={() => {
@@ -896,10 +1126,123 @@ function TodayLineRow({
             </Text>
           </Pressable>
         </View>
-      )}
+      )
+          : routineSkip
+            ? () => (
+                <View style={styles.swipeActions}>
+                  <Pressable
+                    onPress={() => {
+                      ref.current?.close();
+                      hapticLight();
+                      onRemove();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove from this day"
+                    style={[styles.swipeAction, styles.swipeNotToday]}
+                  >
+                    <Text variant="meta" color={colors.ink}>
+                      Remove
+                    </Text>
+                  </Pressable>
+                </View>
+              )
+            : undefined
+      }
     >
       {row}
     </ReanimatedSwipeable>
+  );
+}
+
+function YesterdayReview({
+  today,
+  groups,
+  lines,
+  open,
+  onToggleOpen,
+  onDone,
+  onMove,
+  onDrop,
+  onMoveAll,
+  onClearAll,
+}: {
+  today: string;
+  groups: OpenPastGroup[];
+  lines: Map<string, TodayLine>;
+  open: boolean;
+  onToggleOpen: () => void;
+  onDone: (line: TodayLine) => void;
+  onMove: (line: TodayLine) => void;
+  onDrop: (line: TodayLine) => void;
+  onMoveAll: () => void;
+  onClearAll: () => void;
+}) {
+  const yesterday = shiftDay(today, -1);
+  const count = groups.reduce((sum, group) => sum + group.ids.length, 0);
+  return (
+    <View style={styles.review}>
+      <Pressable
+        onPress={onToggleOpen}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel="Yesterday"
+        style={styles.reviewHeader}
+      >
+        <View style={styles.reviewTitle}>
+          <Text variant="bodyMedium">Yesterday</Text>
+          <Text variant="meta" color={colors.inkFaint}>
+            {count === 1 ? '1 still open' : `${count} still open`}
+          </Text>
+        </View>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.inkSoft} />
+      </Pressable>
+      {open ? (
+        <View style={styles.reviewBody}>
+          {groups.map((group) => {
+            const showDate = groups.length > 1 || group.day !== yesterday;
+            return (
+              <View key={group.day} style={styles.reviewGroup}>
+                {showDate ? (
+                  <Text variant="meta" color={colors.inkFaint}>
+                    {formatDueDate(group.day)}
+                  </Text>
+                ) : null}
+                {group.ids.map((id) => {
+                  const line = lines.get(id);
+                  if (!line) return null;
+                  return (
+                    <View key={id} style={styles.reviewLine}>
+                      <Text variant="body" numberOfLines={2} style={styles.reviewLineTitle}>
+                        {todayLineTitle(line)}
+                      </Text>
+                      <View style={styles.reviewActions}>
+                        <ReviewButton label="Done" onPress={() => onDone(line)} />
+                        <ReviewButton label="Move to today" onPress={() => onMove(line)} />
+                        <ReviewButton label="Drop" onPress={() => onDrop(line)} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+          <View style={styles.reviewBulk}>
+            <ReviewButton label="Move all to today" onPress={onMoveAll} />
+            <ReviewButton label="Clear all" onPress={onClearAll} />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ReviewButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.reviewButton}>
+      <Text variant="meta" color={colors.brandDeep}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -923,46 +1266,6 @@ function DaySwitch({
         {label}
       </Text>
     </Pressable>
-  );
-}
-
-function Sheet({
-  visible,
-  title,
-  wide,
-  onClose,
-  children,
-}: {
-  visible: boolean;
-  title: string;
-  wide: boolean;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const insets = useSafeAreaInsets();
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.backdrop, wide && styles.backdropWide]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-        <View
-          style={[
-            styles.sheet,
-            wide && styles.sheetWide,
-            { paddingBottom: Math.max(insets.bottom, spacing.lg) },
-          ]}
-        >
-          <View style={styles.sheetHeader}>
-            <Text variant="sectionHeading" numberOfLines={2} style={styles.sheetTitle}>
-              {title}
-            </Text>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
-              <Ionicons name="close" size={24} color={colors.inkSoft} />
-            </Pressable>
-          </View>
-          {children}
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -1063,6 +1366,37 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.hairline,
   },
   rowActive: { backgroundColor: colors.surface, ...shadows.floating },
+  rowFocused: { backgroundColor: colors.surfaceAlt },
+  review: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.hairline,
+    overflow: 'hidden',
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+  },
+  reviewTitle: { flex: 1, gap: 2 },
+  reviewBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.md },
+  reviewGroup: { gap: spacing.sm },
+  reviewLine: { gap: spacing.sm },
+  reviewLineTitle: { flex: 1 },
+  reviewActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  reviewBulk: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  reviewButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+    backgroundColor: colors.brandSoft,
+  },
   checkbox: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   rowBody: { flex: 1, paddingVertical: spacing.sm, gap: 2 },
   checkedText: { textDecorationLine: 'line-through' },

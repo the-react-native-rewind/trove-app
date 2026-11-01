@@ -45,8 +45,10 @@ import {
   listCircles,
   listMembers,
   addTodayItem,
+  checkTodayItem,
   dismissTodayItem,
   listMyTasks,
+  listOpenPastToday,
   listToday,
   moveTask,
   moveTodayItem,
@@ -556,6 +558,35 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
       }),
     },
     async (args) => asTool(await moveTodayItem(store, args)),
+  );
+
+  server.registerTool(
+    'list_open_past_today',
+    {
+      ...described('list_open_past_today'),
+      inputSchema: z.object({
+        local_today: z
+          .string()
+          .optional()
+          .describe('The person\'s local today as YYYY-MM-DD. Lines on earlier days are listed. Defaults to the UTC date.'),
+      }),
+    },
+    async (args) => asTool(await listOpenPastToday(store, args)),
+  );
+
+  server.registerTool(
+    'check_today_item',
+    {
+      ...described('check_today_item'),
+      inputSchema: z.object({
+        item_id: z.string().describe('Line id from list_today or list_open_past_today. Not a preview id.'),
+        complete_task: z
+          .boolean()
+          .optional()
+          .describe('When true (the default) and the line is a task, mark that task done. Pass false to tick the line only.'),
+      }),
+    },
+    async (args) => asTool(await checkTodayItem(store, args)),
   );
 
   server.registerTool(

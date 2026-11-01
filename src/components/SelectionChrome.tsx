@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQueries } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 
@@ -13,6 +13,7 @@ import type { RosterMember, TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Avatar } from './ui/Avatar';
+import { FadeSheet } from './ui/FadeSheet';
 import { Text } from './ui/Text';
 
 export function SelectionHeader({
@@ -224,10 +225,13 @@ function AssignSheet({
   const severalCircles = spaceIds.length > 1;
   const loaded = rosters.length > 0 && rosters.every((query) => query.isSuccess);
   const [picked, setPicked] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    if (visible) setPicked(null);
-  }, [visible]);
+  const [wasOpen, setWasOpen] = useState(visible);
+  if (visible && !wasOpen) {
+    setWasOpen(true);
+    setPicked(null);
+  } else if (!visible && wasOpen) {
+    setWasOpen(false);
+  }
 
   const selectedIds = picked ?? sharedAssigneeIds(tasks);
   const everyEmpty = tasks.length > 0 && tasks.every((task) => task.assignees.length === 0);
@@ -241,10 +245,8 @@ function AssignSheet({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close assign" />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+    <FadeSheet visible={visible} onClose={onClose}>
+      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
           <View style={styles.sheetHeader}>
             <Text variant="sectionHeading">Assign</Text>
             <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
@@ -312,9 +314,8 @@ function AssignSheet({
               </Text>
             )}
           </Pressable>
-        </View>
       </View>
-    </Modal>
+    </FadeSheet>
   );
 }
 

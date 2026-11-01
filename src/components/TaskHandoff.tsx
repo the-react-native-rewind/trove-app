@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import {
   useAgentLog,
@@ -16,6 +16,7 @@ import { colors, fonts, radii, resolveAccent, spacing } from '@/theme/tokens';
 import { MarkdownNotes } from './MarkdownNotes';
 import { Avatar } from './ui/Avatar';
 import { Button } from './ui/Button';
+import { FadeSheet } from './ui/FadeSheet';
 import { Text } from './ui/Text';
 
 export type HandoffMember = {
@@ -73,6 +74,7 @@ export function HandoffSheet({
   const [step, setStep] = useState<'person' | 'status' | 'note'>(only ? 'status' : 'person');
   const [status, setStatus] = useState<HandoffStatus>(currentStatus === 'in_progress' ? 'in_progress' : 'todo');
   const [note, setNote] = useState('');
+  const [open, setOpen] = useState(true);
   const dictationBase = useRef('');
   const dictation = useDictation((transcript) => {
     const base = dictationBase.current;
@@ -98,9 +100,8 @@ export function HandoffSheet({
   }
 
   return (
-    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => undefined}>
+    <FadeSheet visible={open} wide onClose={() => setOpen(false)} onClosed={onClose}>
+        <View style={styles.sheet}>
           <Text variant="bodyMedium">Hand off</Text>
           {step === 'person' ? (
             <View style={styles.stack}>
@@ -185,9 +186,8 @@ export function HandoffSheet({
               <Button label="Back" variant="ghost" size="md" onPress={() => setStep('status')} />
             </View>
           ) : null}
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </FadeSheet>
   );
 }
 

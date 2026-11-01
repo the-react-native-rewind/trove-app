@@ -16,7 +16,7 @@ export type ToolMetadata = {
   openWorldHint: boolean;
 };
 
-export const SERVER_VERSION = '1.5.0';
+export const SERVER_VERSION = '1.6.0';
 
 export const toolMetadata: Record<McpToolName, ToolMetadata> = {
   list_circles: {
@@ -175,6 +175,20 @@ export const toolMetadata: Record<McpToolName, ToolMetadata> = {
   },
   move_today_item_to_day: {
     title: 'Move a Today line',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  list_open_past_today: {
+    title: 'List open lines from earlier days',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  check_today_item: {
+    title: 'Mark a Today line done',
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,

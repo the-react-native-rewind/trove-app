@@ -110,7 +110,10 @@ export default function TaskView() {
       title="Task"
       footer={
         writable ? (
-          <Button label="Edit task" onPress={() => router.push(`/task/${id}/edit` as never)} />
+          <Button
+            label="Edit task"
+            onPress={() => router.replace(`/task/${id}/edit` as never)}
+          />
         ) : undefined
       }
     >

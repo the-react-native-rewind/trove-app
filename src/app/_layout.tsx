@@ -24,7 +24,6 @@ import '@/lib/devtools';
 import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { toastConfig } from '@/components/ui/AppToast';
 import { Celebration } from '@/components/Celebration';
-import { useIsWide } from '@/hooks/useIsWide';
 import { hrefAfterSignIn } from '@/lib/pendingOAuth';
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
@@ -69,18 +68,16 @@ function useProtectedRoute() {
 
 function RootNavigator() {
   const { initializing } = useAuth();
-  const isWide = useIsWide();
   useProtectedRoute();
 
   if (initializing) return null; // splash stays up
 
-  // On wide screens, present these routes as transparent overlays so the board
-  // stays visible behind the ModalScaffold's dimmed, centered dialog. On phones
-  // they're regular full-screen modals.
+  // Transparent on every size so ModalScaffold can fade the dim and slide only
+  // the sheet. A native modal animation would move the backdrop with it.
   const modalOptions = {
-    presentation: (isWide ? 'transparentModal' : 'modal') as 'transparentModal' | 'modal',
-    animation: (isWide ? 'fade' : 'default') as 'fade' | 'default',
-    contentStyle: { backgroundColor: isWide ? 'transparent' : colors.paper },
+    presentation: 'transparentModal' as const,
+    animation: 'none' as const,
+    contentStyle: { backgroundColor: 'transparent' },
   };
 
   return (

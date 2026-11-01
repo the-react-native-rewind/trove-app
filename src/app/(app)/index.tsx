@@ -102,11 +102,12 @@ function SpaceBoard() {
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set());
   const [showFilter, setShowFilter] = useState(false);
-
-  useEffect(() => {
+  const [filterSpaceId, setFilterSpaceId] = useState(selectedSpaceId);
+  if (filterSpaceId !== selectedSpaceId) {
+    setFilterSpaceId(selectedSpaceId);
     setAssigneeFilter(new Set());
     setShowFilter(false);
-  }, [selectedSpaceId]);
+  }
 
   const visibleTasks = useMemo(() => {
     const byCircle =
