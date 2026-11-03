@@ -48,6 +48,7 @@ export function useCreateInvite(spaceId: string) {
       email: string;
       role: SpaceRole;
       isAgent?: boolean;
+      projectIds?: string[];
     }): Promise<Invite> => {
       const role = input.role === 'owner' ? 'member' : input.role; // owner is not invitable
       const { data, error } = await supabase
@@ -62,6 +63,13 @@ export function useCreateInvite(spaceId: string) {
         .select('*')
         .single();
       if (error) throw error;
+      const projectIds = [...new Set((input.projectIds ?? []).filter((id) => id.length > 0))];
+      if (projectIds.length > 0) {
+        const { error: linkError } = await supabase
+          .from('invite_projects')
+          .insert(projectIds.map((projectId) => ({ invite_id: data.id, project_id: projectId })));
+        if (linkError) throw linkError;
+      }
       return data;
     },
     onSuccess: () => {

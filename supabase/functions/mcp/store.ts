@@ -25,6 +25,9 @@ import {
   type HandoffRecord,
   type TaskRecord,
   type TaskWrite,
+  type ProjectPatch,
+  type ProjectRecord,
+  type ProjectWrite,
   type TodayEntry,
   type TroveStore,
   weekdayOfDate,
@@ -35,7 +38,7 @@ import { INVITE_LIMIT_PER_DAY } from '../_shared/inviteLimit.ts';
 import { DEFAULT_SITE_URL, inviteUrl } from '../_shared/site.ts';
 
 const TASK_SELECT =
-  'id, title, description, status, priority, rank, due_date, space_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignees:task_assignees(position, profile:profiles(id,display_name)), task_labels(label:labels(name)), latest_handoff:task_handoffs(id,from_user_id,to_user_id,status,note,created_at,from:profiles!task_handoffs_from_user_id_fkey(id,display_name),to:profiles!task_handoffs_to_user_id_fkey(id,display_name)), agent_log_entries(count)';
+  'id, title, description, status, priority, rank, due_date, space_id, project_id, external_id, repeat_unit, repeat_interval, repeat_weekday, recurrence_series_id, created_at, updated_at, space:spaces(id,name), assignees:task_assignees(position, profile:profiles(id,display_name)), task_labels(label:labels(name)), latest_handoff:task_handoffs(id,from_user_id,to_user_id,status,note,created_at,from:profiles!task_handoffs_from_user_id_fkey(id,display_name),to:profiles!task_handoffs_to_user_id_fkey(id,display_name)), agent_log_entries(count)';
 
 const AGENT_LOG_SELECT =
   'id, task_id, author_id, body, created_at, author:profiles!agent_log_entries_author_id_fkey(id,display_name)';
@@ -49,6 +52,7 @@ type TaskRow = {
   rank: string;
   due_date: string | null;
   space_id: string;
+  project_id: string | null;
   external_id: string | null;
   repeat_unit: string | null;
   repeat_interval: number | null;
@@ -91,6 +95,10 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     userId,
     listCircles: (options) => listCircles(db, userId, options),
     listMembers: (circleId) => listMembers(db, circleId),
+    listProjects: (filter) => listProjects(db, filter),
+    createProject: (input) => createProject(db, userId, input),
+    updateProject: (id, patch) => updateProject(db, id, patch),
+    setMemberProjects: (input) => setMemberProjects(db, input),
     listTasks: (filter) => listTasks(db, filter),
     getTask: (id) => getTask(db, id),
     handoffTask: (input) => handoffTask(db, input),
@@ -193,6 +201,7 @@ async function listTasks(db: SupabaseClient, filter: TaskFilter): Promise<TaskRe
   let query = taskSelect(db);
   if (assignedIds) query = query.in('id', assignedIds);
   if (filter.circleId) query = query.eq('space_id', filter.circleId);
+  if (filter.projectId) query = query.eq('project_id', filter.projectId);
   if (filter.status) query = query.eq('status', filter.status);
   if (filter.dueOn) query = query.eq('due_date', filter.dueOn);
   if (filter.dueBefore) query = query.lte('due_date', filter.dueBefore);
@@ -328,6 +337,7 @@ async function insertTask(db: SupabaseClient, userId: string, input: TaskWrite):
       priority: input.priority,
       rank: rankForPriority(input.priority, ranks),
       due_date: input.dueDate,
+      project_id: input.projectId,
       external_id: input.externalId,
       created_by: userId,
       position: input.position,
@@ -373,6 +383,7 @@ async function updateTask(
     }
   }
   if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
+  if (patch.projectId !== undefined) row.project_id = patch.projectId;
   if (patch.repeatUnit !== undefined) {
     row.repeat_unit = patch.repeatUnit;
     row.repeat_interval = patch.repeatInterval ?? 1;
@@ -531,10 +542,122 @@ async function countRecentInvites(db: SupabaseClient): Promise<number> {
   return typeof data === 'number' ? data : Number(data ?? 0);
 }
 
+async function listProjects(
+  db: SupabaseClient,
+  filter?: { circleId?: string; includeArchived?: boolean },
+): Promise<ProjectRecord[]> {
+  let query = db
+    .from('projects')
+    .select('id, space_id, name, color, description, rank, archived_at, created_at, updated_at')
+    .order('rank', { ascending: false })
+    .order('name', { ascending: true });
+  if (filter?.circleId) query = query.eq('space_id', filter.circleId);
+  if (!filter?.includeArchived) query = query.is('archived_at', null);
+  const { data, error } = await query;
+  throwIf(error);
+  const rows = (data ?? []) as {
+    id: string;
+    space_id: string;
+    name: string;
+    color: string;
+    description: string | null;
+    rank: string;
+    archived_at: string | null;
+    created_at: string;
+    updated_at: string;
+  }[];
+  const ids = rows.map((row) => row.id);
+  const members = new Map<string, string[]>();
+  if (ids.length > 0) {
+    const { data: links, error: linkError } = await db
+      .from('project_members')
+      .select('project_id, user_id')
+      .in('project_id', ids);
+    throwIf(linkError);
+    for (const link of links ?? []) {
+      const list = members.get(link.project_id) ?? [];
+      list.push(link.user_id);
+      members.set(link.project_id, list);
+    }
+  }
+  return rows.map((row) => ({
+    id: row.id,
+    circle_id: row.space_id,
+    name: row.name,
+    color: row.color,
+    description: row.description,
+    rank: row.rank,
+    archived_at: row.archived_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    member_ids: members.get(row.id) ?? [],
+  }));
+}
+
+async function createProject(
+  db: SupabaseClient,
+  userId: string,
+  input: ProjectWrite,
+): Promise<ProjectRecord> {
+  // A separate read: the creator trigger runs after insert, and RETURNING
+  // cannot see a project a limited member was just added to.
+  const id = crypto.randomUUID();
+  const { error } = await db.from('projects').insert({
+    id,
+    space_id: input.circleId,
+    name: input.name,
+    color: input.color,
+    description: input.description,
+    created_by: userId,
+  });
+  throwIf(error);
+  const projects = await listProjects(db, { circleId: input.circleId, includeArchived: true });
+  const project = projects.find((item) => item.id === id);
+  if (!project) throw new TroveError('Project not found');
+  return project;
+}
+
+async function updateProject(
+  db: SupabaseClient,
+  id: string,
+  patch: ProjectPatch,
+): Promise<ProjectRecord | null> {
+  const row: Record<string, unknown> = {};
+  if (patch.name !== undefined) row.name = patch.name;
+  if (patch.color !== undefined) row.color = patch.color;
+  if (patch.description !== undefined) row.description = patch.description;
+  if (patch.archived === true) row.archived_at = new Date().toISOString();
+  if (patch.archived === false) row.archived_at = null;
+  if (Object.keys(row).length > 0) {
+    const { error } = await db.from('projects').update(row).eq('id', id);
+    throwIf(error);
+  }
+  const projects = await listProjects(db, { includeArchived: true });
+  return projects.find((item) => item.id === id) ?? null;
+}
+
+async function setMemberProjects(
+  db: SupabaseClient,
+  input: { circleId: string; userId: string; projectIds: string[] },
+): Promise<void> {
+  const { error } = await db.rpc('set_member_projects', {
+    p_space_id: input.circleId,
+    p_user_id: input.userId,
+    p_project_ids: input.projectIds,
+  });
+  throwIf(error);
+}
+
 async function createInvite(
   db: SupabaseClient,
   userId: string,
-  input: { circleId: string; email: string; role: 'admin' | 'member' | 'viewer'; isAgent?: boolean },
+  input: {
+    circleId: string;
+    email: string;
+    role: 'admin' | 'member' | 'viewer';
+    isAgent?: boolean;
+    projectIds?: string[];
+  },
 ): Promise<InviteResult> {
   const { data, error } = await db
     .from('invites')
@@ -556,6 +679,13 @@ async function createInvite(
     );
   }
   throwIf(error);
+  const projectIds = [...new Set(input.projectIds ?? [])];
+  if (projectIds.length > 0) {
+    const { error: linkError } = await db
+      .from('invite_projects')
+      .insert(projectIds.map((projectId) => ({ invite_id: data.id, project_id: projectId })));
+    throwIf(linkError);
+  }
   return {
     id: data.id,
     circle_id: data.space_id,
@@ -628,6 +758,7 @@ function toTask(row: TaskRow): TaskRecord {
     due_date: row.due_date,
     circle_id: row.space_id,
     circle_name: space?.name ?? '',
+    project_id: row.project_id ?? null,
     assignee_id: primary?.user_id ?? null,
     assignee_name: primary?.display_name ?? null,
     assignees,

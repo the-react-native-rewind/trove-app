@@ -9,11 +9,12 @@ import { fetchRoster } from '@/data/members';
 import { useBulkUpdateTasks } from '@/data/tasks';
 import { peopleInEveryCircle, sharedAssigneeIds, uniqueSpaceIds, type AssignablePerson } from '@/lib/assign';
 import { qk } from '@/lib/queryClient';
-import type { RosterMember, TaskStatus, TaskWithRefs } from '@/lib/types';
+import type { RosterMember, TaskWithRefs } from '@/lib/types';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Avatar } from './ui/Avatar';
 import { FadeSheet } from './ui/FadeSheet';
+import { AccentDot } from './ui/Indicators';
 import { Text } from './ui/Text';
 
 export function SelectionHeader({
@@ -64,23 +65,26 @@ export function SelectionHeader({
   );
 }
 
-export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }) {
+export function SelectionActionBar({
+  tasks,
+  projects = [],
+}: {
+  tasks: readonly TaskWithRefs[];
+  projects?: readonly { id: string; name: string; color: string }[];
+}) {
   const insets = useSafeAreaInsets();
   const { active, selectedIds, count, exit } = useSelection();
   const bulk = useBulkUpdateTasks();
   const [assignOpen, setAssignOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'complete' | 'progress' | null>(null);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'complete' | null>(null);
 
   if (!active) return null;
 
   const selected = tasks.filter((task) => selectedIds.has(task.id));
   const ids = selected.map((task) => task.id);
   const canComplete = selected.some((task) => task.status !== 'done');
-  const open = selected.filter((task) => task.status !== 'done');
-  const markingTodo = open.length > 0 && open.every((task) => task.status === 'in_progress');
-  const progressStatus: TaskStatus = markingTodo ? 'todo' : 'in_progress';
-  const progressIds = open.filter((task) => task.status !== progressStatus).map((task) => task.id);
-  const canSetProgress = progressIds.length > 0;
+  const showProject = projects.length > 0;
 
   async function complete() {
     if (!canComplete || bulk.isPending) return;
@@ -90,22 +94,6 @@ export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }
         ids,
         status: 'done',
         celebrateCompletion: true,
-      });
-      exit();
-    } catch (error) {
-      showBulkError(error);
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function setProgress() {
-    if (!canSetProgress || bulk.isPending) return;
-    setPendingAction('progress');
-    try {
-      await bulk.mutateAsync({
-        ids: progressIds,
-        status: progressStatus,
       });
       exit();
     } catch (error) {
@@ -128,26 +116,20 @@ export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }
           <Ionicons name="person-outline" size={18} color={colors.ink} />
           <Text variant="bodyMedium">Assign</Text>
         </Pressable>
-        <Pressable
-          onPress={() => void setProgress()}
-          disabled={!canSetProgress || bulk.isPending}
-          accessibilityRole="button"
-          accessibilityLabel={
-            markingTodo ? 'Move selected tasks back to to do' : 'Mark selected tasks in progress'
-          }
-          style={[styles.action, styles.progress, (!canSetProgress || bulk.isPending) && styles.disabled]}
-        >
-          {pendingAction === 'progress' ? (
-            <ActivityIndicator color={colors.brandDeep} />
-          ) : (
-            <>
-              <Ionicons name="ellipse" size={12} color={colors.honey} />
-              <Text variant="bodyMedium" numberOfLines={1}>
-                {markingTodo ? 'To do' : 'In progress'}
-              </Text>
-            </>
-          )}
-        </Pressable>
+        {showProject ? (
+          <Pressable
+            onPress={() => setProjectOpen(true)}
+            disabled={count === 0 || bulk.isPending}
+            accessibilityRole="button"
+            accessibilityLabel="Set the project for selected actions"
+            style={[styles.action, styles.progress, (count === 0 || bulk.isPending) && styles.disabled]}
+          >
+            <Ionicons name="layers-outline" size={18} color={colors.ink} />
+            <Text variant="bodyMedium" numberOfLines={1}>
+              Project
+            </Text>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={() => void complete()}
           disabled={!canComplete || bulk.isPending}
@@ -155,15 +137,10 @@ export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }
           accessibilityLabel="Complete selected tasks"
           style={[styles.action, styles.complete, (!canComplete || bulk.isPending) && styles.disabled]}
         >
-          {pendingAction === 'complete' || (bulk.isPending && pendingAction !== 'progress') ? (
+          {pendingAction === 'complete' || bulk.isPending ? (
             <ActivityIndicator color={colors.onBrand} />
           ) : (
-            <>
-              <Ionicons name="checkmark" size={18} color={colors.onBrand} />
-              <Text variant="bodyMedium" color={colors.onBrand} numberOfLines={1}>
-                Complete
-              </Text>
-            </>
+            <Ionicons name="checkmark" size={22} color={colors.onBrand} />
           )}
         </Pressable>
       </View>
@@ -191,7 +168,130 @@ export function SelectionActionBar({ tasks }: { tasks: readonly TaskWithRefs[] }
           }
         }}
       />
+      <ProjectSheet
+        visible={projectOpen}
+        tasks={selected}
+        projects={projects}
+        pending={bulk.isPending}
+        onClose={() => setProjectOpen(false)}
+        onApply={async (projectId) => {
+          try {
+            await bulk.mutateAsync({
+              ids,
+              setProject: true,
+              projectId,
+            });
+            setProjectOpen(false);
+            exit();
+          } catch (error) {
+            showBulkError(error);
+          }
+        }}
+      />
     </>
+  );
+}
+
+function sharedProjectId(tasks: readonly TaskWithRefs[]): string | null | 'mixed' {
+  if (tasks.length === 0) return null;
+  const first = tasks[0]?.project_id ?? null;
+  return tasks.every((task) => (task.project_id ?? null) === first) ? first : 'mixed';
+}
+
+function ProjectSheet({
+  visible,
+  tasks,
+  projects,
+  pending,
+  onClose,
+  onApply,
+}: {
+  visible: boolean;
+  tasks: readonly TaskWithRefs[];
+  projects: readonly { id: string; name: string; color: string }[];
+  pending: boolean;
+  onClose: () => void;
+  onApply: (projectId: string | null) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [picked, setPicked] = useState<string | null | undefined>(undefined);
+  const [wasOpen, setWasOpen] = useState(visible);
+  if (visible && !wasOpen) {
+    setWasOpen(true);
+    setPicked(undefined);
+  } else if (!visible && wasOpen) {
+    setWasOpen(false);
+  }
+  const shared = sharedProjectId(tasks);
+  const selectedId = picked === undefined ? (shared === 'mixed' ? undefined : shared) : picked;
+
+  return (
+    <FadeSheet visible={visible} onClose={onClose}>
+      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+        <View style={styles.sheetHeader}>
+          <Text variant="sectionHeading">Project</Text>
+          <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
+            <Ionicons name="close" size={22} color={colors.inkSoft} />
+          </Pressable>
+        </View>
+        <Text variant="meta" color={colors.inkFaint}>
+          One action sits in one project. Clear it to leave the action in the circle list.
+        </Text>
+        <ScrollView style={styles.roster} contentContainerStyle={styles.rosterContent}>
+          <Pressable
+            onPress={() => setPicked(null)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: selectedId === null }}
+            style={[styles.row, selectedId === null && styles.rowSelected]}
+          >
+            <View style={styles.unassignedIcon}>
+              <Ionicons name="remove-outline" size={16} color={colors.inkSoft} />
+            </View>
+            <Text variant="bodyMedium" style={styles.rowLabel}>
+              No project
+            </Text>
+            {selectedId === null ? <Ionicons name="checkmark" size={18} color={colors.brandDeep} /> : null}
+          </Pressable>
+          {projects.map((project) => {
+            const on = selectedId === project.id;
+            return (
+              <Pressable
+                key={project.id}
+                onPress={() => setPicked(project.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={project.name}
+                style={[styles.row, on && styles.rowSelected]}
+              >
+                <AccentDot color={project.color} size={12} />
+                <Text variant="bodyMedium" style={styles.rowLabel}>
+                  {project.name}
+                </Text>
+                {on ? <Ionicons name="checkmark" size={18} color={colors.brandDeep} /> : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        <Pressable
+          onPress={() => {
+            if (selectedId === undefined) return;
+            onApply(selectedId);
+          }}
+          disabled={pending || selectedId === undefined}
+          accessibilityRole="button"
+          accessibilityLabel="Apply project"
+          style={[styles.apply, (pending || selectedId === undefined) && styles.disabled]}
+        >
+          {pending ? (
+            <ActivityIndicator color={colors.onBrand} />
+          ) : (
+            <Text variant="bodyMedium" color={colors.onBrand}>
+              Apply
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    </FadeSheet>
   );
 }
 
@@ -374,7 +474,9 @@ function showBulkError(error: unknown) {
   const message = error instanceof Error ? error.message : '';
   const detail = /not in every circle/i.test(message)
     ? 'Those people aren’t in every circle.'
-    : 'Nothing was changed.';
+    : /not in this circle/i.test(message)
+      ? 'That project is not in this circle.'
+      : 'Nothing was changed.';
   Toast.show({ type: 'error', text1: 'Couldn’t update those tasks', text2: detail });
 }
 

@@ -5,14 +5,14 @@ import { LIST_STATUSES, type ListStatus } from '@/lib/types';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { Text } from './ui/Text';
 
-export function StatusSegmented({
+export function SegmentTabs<T extends string>({
+  options,
   value,
-  counts,
   onChange,
 }: {
-  value: ListStatus;
-  counts: Record<ListStatus, number>;
-  onChange: (status: ListStatus) => void;
+  options: readonly { key: T; label: string; count?: number }[];
+  value: T;
+  onChange: (key: T) => void;
 }) {
   return (
     <ScrollView
@@ -21,7 +21,7 @@ export function StatusSegmented({
       style={styles.bar}
       contentContainerStyle={styles.track}
     >
-      {LIST_STATUSES.map(({ key, label }) => {
+      {options.map(({ key, label, count }) => {
         const active = key === value;
         return (
           <Pressable
@@ -40,15 +40,35 @@ export function StatusSegmented({
             >
               {label}
             </Text>
-            <View style={[styles.badge, active && styles.badgeActive]}>
-              <Text variant="meta" color={active ? colors.onBrand : colors.inkFaint}>
-                {counts[key] ?? 0}
-              </Text>
-            </View>
+            {count === undefined ? null : (
+              <View style={styles.badge}>
+                <Text variant="meta" color={active ? colors.onBrand : colors.inkFaint}>
+                  {count}
+                </Text>
+              </View>
+            )}
           </Pressable>
         );
       })}
     </ScrollView>
+  );
+}
+
+export function StatusSegmented({
+  value,
+  counts,
+  onChange,
+}: {
+  value: ListStatus;
+  counts: Record<ListStatus, number>;
+  onChange: (status: ListStatus) => void;
+}) {
+  return (
+    <SegmentTabs
+      options={LIST_STATUSES.map(({ key, label }) => ({ key, label, count: counts[key] ?? 0 }))}
+      value={value}
+      onChange={onChange}
+    />
   );
 }
 

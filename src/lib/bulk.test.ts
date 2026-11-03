@@ -18,6 +18,22 @@ test('complete marks only the chosen tasks done', () => {
   assert.equal(applyBulkPatch({ ...task, id: 'b' }, patch).status, 'todo');
 });
 
+test('setting a project leaves status and can clear it', () => {
+  const next = applyBulkPatch({ ...task, project_id: null }, {
+    ids: new Set(['a']),
+    setProject: true,
+    projectId: 'project-1',
+  });
+  assert.equal(next.project_id, 'project-1');
+  assert.equal(next.status, 'todo');
+  const cleared = applyBulkPatch(next, {
+    ids: new Set(['a']),
+    setProject: true,
+    projectId: null,
+  });
+  assert.equal(cleared.project_id, null);
+});
+
 test('unassign clears every person and leaves status', () => {
   const next = applyBulkPatch(task, {
     ids: new Set(['a']),

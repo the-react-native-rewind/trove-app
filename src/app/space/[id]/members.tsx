@@ -5,6 +5,7 @@ import { Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { OptionChips } from '@/components/form';
 import { Avatar } from '@/components/ui/Avatar';
+import { AccentDot } from '@/components/ui/Indicators';
 import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
@@ -17,6 +18,7 @@ import {
   useRoster,
   useUpdateMemberRole,
 } from '@/data/members';
+import { useProjectMembers, useProjects, useSetMemberProjects } from '@/data/projects';
 import { useSpaces } from '@/data/spaces';
 import { useAuth } from '@/providers/AuthProvider';
 import { inviteUrl } from '@/lib/links';
@@ -55,10 +57,14 @@ export default function Members() {
   const revokeInvite = useRevokeInvite(spaceId);
   const updateRole = useUpdateMemberRole(spaceId);
   const removeMember = useRemoveMember(spaceId);
+  const { data: projects = [] } = useProjects(spaceId);
+  const { data: projectMembers = [] } = useProjectMembers(spaceId);
+  const setMemberProjects = useSetMemberProjects(spaceId);
 
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<SpaceRole>('member');
   const [agent, setAgent] = useState(false);
+  const [inviteProjects, setInviteProjects] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [managingId, setManagingId] = useState<string | null>(null);
 
@@ -79,9 +85,15 @@ export default function Members() {
       return;
     }
     try {
-      const invite = await createInvite.mutateAsync({ email: trimmed, role, isAgent: agent });
+      const invite = await createInvite.mutateAsync({
+        email: trimmed,
+        role,
+        isAgent: agent,
+        projectIds: inviteProjects,
+      });
       setEmail('');
       setAgent(false);
+      setInviteProjects([]);
       await shareInvite(invite);
     } catch {
       setError('We could not create that invite. Try again.');
@@ -133,6 +145,42 @@ export default function Members() {
               </Text>
             </View>
           </Pressable>
+          {projects.length > 0 ? (
+            <View style={styles.projectBlock}>
+              <Text variant="label" color={colors.inkFaint}>
+                Projects
+              </Text>
+              <Text variant="meta" color={colors.inkFaint}>
+                Optional. Leave them off and they see the whole circle. Pick one or more to limit
+                them, including an agent, to those projects.
+              </Text>
+              <View style={styles.manageRow}>
+                {projects.map((project) => {
+                  const on = inviteProjects.includes(project.id);
+                  return (
+                    <Pressable
+                      key={project.id}
+                      onPress={() =>
+                        setInviteProjects((current) =>
+                          current.includes(project.id)
+                            ? current.filter((id) => id !== project.id)
+                            : [...current, project.id],
+                        )
+                      }
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: on }}
+                      style={[styles.manageChip, on && styles.manageChipOn]}
+                    >
+                      <AccentDot color={project.color} size={8} />
+                      <Text variant="meta" color={on ? colors.brandDeep : colors.inkSoft}>
+                        {project.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
           {error ? (
             <Text variant="meta" color={colors.priorityHigh}>
               {error}
@@ -186,6 +234,42 @@ export default function Members() {
                   </Text>
                 </Pressable>
               ))}
+              {projects.length > 0 ? (
+                <View style={styles.projectBlock}>
+                  <Text variant="meta" color={colors.inkFaint}>
+                    Projects. All off means the whole circle.
+                  </Text>
+                  <View style={styles.manageRow}>
+                    {projects.map((project) => {
+                      const selected = projectMembers.some(
+                        (row) => row.user_id === m.user_id && row.project_id === project.id,
+                      );
+                      return (
+                        <Pressable
+                          key={project.id}
+                          onPress={() => {
+                            const current = projectMembers
+                              .filter((row) => row.user_id === m.user_id)
+                              .map((row) => row.project_id);
+                            const next = selected
+                              ? current.filter((id) => id !== project.id)
+                              : [...current, project.id];
+                            setMemberProjects.mutate({ userId: m.user_id, projectIds: next });
+                          }}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: selected }}
+                          style={[styles.manageChip, selected && styles.manageChipOn]}
+                        >
+                          <AccentDot color={project.color} size={8} />
+                          <Text variant="meta" color={selected ? colors.brandDeep : colors.inkSoft}>
+                            {project.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
               <Pressable
                 onPress={() => {
                   removeMember.mutate(m.id);
@@ -258,9 +342,14 @@ const styles = StyleSheet.create({
   memberText: { flex: 1, gap: 2 },
   manageRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingLeft: 50 },
   manageChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceAlt,
   },
+  manageChipOn: { backgroundColor: colors.brandSoft },
+  projectBlock: { width: '100%', gap: spacing.xs },
 });

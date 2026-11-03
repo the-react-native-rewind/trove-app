@@ -110,6 +110,7 @@ export type TaskInput = {
   assignee_ids?: string[];
   priority?: Priority | null;
   due_date?: string | null;
+  project_id?: string | null;
 };
 
 export type TaskPatch = Partial<TaskInput> & {
@@ -132,6 +133,7 @@ export function useCreateTask() {
           status: input.status,
           priority: input.priority ?? null,
           due_date: input.due_date ?? null,
+          project_id: input.project_id ?? null,
           created_by: userId,
           position: Date.now(), // append to the end of its status column
         })
@@ -351,6 +353,8 @@ export type BulkUpdateInput = {
   assignees?: BulkAssignee[];
   /** Confetti when this completion newly finishes at least one task. */
   celebrateCompletion?: boolean;
+  setProject?: boolean;
+  projectId?: string | null;
 };
 
 /**
@@ -366,6 +370,8 @@ export function useBulkUpdateTasks() {
         p_status: input.status ?? null,
         p_assignee_ids: input.setAssignees ? (input.assigneeIds ?? []) : null,
         p_set_assignee: input.setAssignees ?? false,
+        p_project_id: input.setProject ? (input.projectId ?? null) : null,
+        p_set_project: input.setProject ?? false,
       });
       if (error) throw error;
       return data;
@@ -384,6 +390,8 @@ export function useBulkUpdateTasks() {
         status: input.status,
         setAssignees: input.setAssignees,
         assignees: input.setAssignees ? (input.assignees ?? []) : undefined,
+        setProject: input.setProject,
+        projectId: input.setProject ? (input.projectId ?? null) : undefined,
       };
       const apply = (data: unknown) => patchCachedTasks(data, patch);
       qc.setQueriesData({ queryKey: ['tasks'] }, apply);

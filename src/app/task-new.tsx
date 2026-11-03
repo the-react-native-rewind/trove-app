@@ -29,7 +29,7 @@ import { colors, radii, spacing, type as typeScale } from '@/theme/tokens';
  */
 export default function NewTask() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ spaceId?: string }>();
+  const params = useLocalSearchParams<{ spaceId?: string; projectId?: string }>();
   const { data: spaces = [] } = useSpaces();
   const { userId } = useAuth();
   const { selectedSpaceId } = useSelectedSpace();
@@ -103,6 +103,7 @@ export default function NewTask() {
         priority: null,
         due_date: due,
         assignee_ids: assigneeIds,
+        project_id: spaceId === params.spaceId ? (params.projectId ?? null) : null,
       });
       for (const m of media) {
         try {
