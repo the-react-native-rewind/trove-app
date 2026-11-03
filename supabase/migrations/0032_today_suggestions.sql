@@ -82,7 +82,8 @@ returns table (
   space_id uuid,
   space_name text,
   space_color text,
-  position smallint
+  -- position is reserved in a RETURNS TABLE list, so the order is slot.
+  slot smallint
 )
 language plpgsql
 security definer
@@ -112,13 +113,13 @@ begin
       and offer.day = p_day
   ) then
     insert into public.today_suggestions (user_id, day, task_id, position)
-    select v_uid, p_day, picked.id, (picked.position - 1)::smallint
+    select v_uid, p_day, picked.id, (picked.slot - 1)::smallint
     from (
       select
         candidate.id,
         row_number() over (
           order by candidate.tier asc, candidate.soon_due asc nulls last, candidate.rank collate "C" desc, candidate.id asc
-        ) as position
+        ) as slot
       from (
         select
           t.id,
@@ -149,7 +150,7 @@ begin
           )
       ) candidate
     ) picked
-    where picked.position <= 3;
+    where picked.slot <= 3;
   end if;
 
   return query

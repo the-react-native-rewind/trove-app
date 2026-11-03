@@ -439,7 +439,7 @@ type SuggestionRow = {
   space_id: string;
   space_name: string;
   space_color: string;
-  position: number;
+  slot: number;
 };
 
 function mapSuggestion(row: SuggestionRow): TodaySuggestion {

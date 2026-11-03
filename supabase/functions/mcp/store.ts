@@ -1040,7 +1040,7 @@ type SuggestionRow = {
   space_id: string;
   space_name: string;
   space_color: string;
-  position: number;
+  slot: number;
 };
 
 async function dismissTodayItem(db: SupabaseClient, itemId: string): Promise<void> {

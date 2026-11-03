@@ -659,7 +659,7 @@ export type Database = {
           space_id: string
           space_name: string
           space_color: string
-          position: number
+          slot: number
         }[]
       }
       dismiss_today_suggestion: {

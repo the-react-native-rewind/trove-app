@@ -454,7 +454,8 @@ test('the migration keeps Today private and prepares a day in SQL', () => {
   assert.ok(/user_id = \(select auth\.uid\(\)\)/.test(suggestions));
   assert.ok(/enable row level security/.test(suggestions));
   assert.ok(/p_day \+ 2/.test(suggestions));
-  assert.ok(/position <= 3/.test(suggestions));
+  assert.ok(/slot <= 3/.test(suggestions));
+  assert.equal(/returns table \([\s\S]*\bposition smallint/.test(suggestions), false);
   assert.ok(/t\.status <> 'done'/.test(suggestions));
   assert.ok(/task_assignees/.test(suggestions));
   assert.ok(/if p_day <> v_as_of then/.test(suggestions));
