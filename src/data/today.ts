@@ -154,6 +154,7 @@ type TodaySnapshot = [queryKey: readonly unknown[], data: TodayLine[] | undefine
 function captureTodayLists(qc: QueryClient, userId: string): TodaySnapshot {
   return [
     ...qc.getQueriesData<TodayLine[]>({ queryKey: ['today', userId] }),
+    ...qc.getQueriesData<TodayLine[]>({ queryKey: ['yesterday', userId] }),
     ...qc.getQueriesData<TodayLine[]>({ queryKey: ['tomorrow', userId] }),
     ...qc.getQueriesData<TodayLine[]>({ queryKey: ['today-review', userId] }),
   ];
@@ -193,7 +194,15 @@ function findRoutinePreview(qc: QueryClient, userId: string, routineId: string):
 }
 
 function dayQueryKey(userId: string, day: string, asOf: string) {
-  return day === asOf ? qk.today(userId, day) : qk.tomorrow(userId, day);
+  if (day === asOf) return qk.today(userId, day);
+  if (day < asOf) return qk.yesterday(userId, day);
+  return qk.tomorrow(userId, day);
+}
+
+function dayListKey(userId: string, day: string, scope: 'yesterday' | 'today' | 'tomorrow') {
+  if (scope === 'yesterday') return qk.yesterday(userId, day);
+  if (scope === 'tomorrow') return qk.tomorrow(userId, day);
+  return qk.today(userId, day);
 }
 
 /**
@@ -208,6 +217,7 @@ async function beginTodayEdit(qc: QueryClient, userId: string, apply: () => void
     const snapshot = captureTodayLists(qc, userId);
     apply();
     await qc.cancelQueries({ queryKey: ['today', userId] });
+    await qc.cancelQueries({ queryKey: ['yesterday', userId] });
     await qc.cancelQueries({ queryKey: ['tomorrow', userId] });
     return snapshot;
   } catch (error) {
@@ -218,7 +228,8 @@ async function beginTodayEdit(qc: QueryClient, userId: string, apply: () => void
 
 /**
  * Open one-off lines from before this day. Routines are left out.
- * Opening today does not move these; the review at the top of Today does.
+ * Opening a day does not move these. The Today screen shows yesterday on
+ * its own page; this list is what agents still read for older open lines.
  */
 export function useOpenPastToday(day: string) {
   const { userId } = useAuth();
@@ -239,6 +250,37 @@ export function useOpenPastToday(day: string) {
         .limit(40);
       if (error) throw error;
       return visibleTodayLines((data ?? []) as unknown as TodayRow[]);
+    },
+  });
+}
+
+/**
+ * Yesterday's stored lines. Does not prepare the day, so routines are not
+ * inserted and nothing is carried onto today.
+ */
+export function useYesterdayList(day: string) {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: qk.yesterday(userId ?? '', day),
+    enabled: !!userId && !!day,
+    refetchOnWindowFocus: false,
+    structuralSharing: shareTodayLines,
+    queryFn: async (): Promise<TodayLine[]> => {
+      const user = userId;
+      if (!user) return [];
+      const started = todayFetchGeneration();
+      const settled = todaySettled();
+      const fetched = await fetchTodayLines(day);
+      return preferFreshTodayLines({
+        startedGeneration: started,
+        currentGeneration: todayFetchGeneration(),
+        startedSettled: settled,
+        currentSettled: todaySettled(),
+        editsInFlight: todayEditsInFlight(),
+        fetched,
+        cached: qc.getQueryData<TodayLine[]>(qk.yesterday(user, day)),
+      });
     },
   });
 }
@@ -413,6 +455,7 @@ function useRefreshToday() {
     markTodaySettled();
     if (!userId) return;
     void qc.invalidateQueries({ queryKey: ['today', userId] });
+    void qc.invalidateQueries({ queryKey: ['yesterday', userId] });
     void qc.invalidateQueries({ queryKey: ['tomorrow', userId] });
     void qc.invalidateQueries({ queryKey: ['today-review', userId] });
     void qc.invalidateQueries({ queryKey: ['today-suggestions', userId] });
@@ -509,7 +552,7 @@ export type TodayReorder = {
   id: string;
   rank: string;
   day: string;
-  scope: 'today' | 'tomorrow';
+  scope: 'yesterday' | 'today' | 'tomorrow';
   lines: TodayLine[];
 };
 
@@ -680,8 +723,7 @@ export function useMoveTodayItem() {
     onMutate: async (input) => {
       if (!userId) return { snapshot: undefined, editing: false };
       const snapshot = await beginTodayEdit(qc, userId, () => {
-        const key = input.scope === 'today' ? qk.today(userId, input.day) : qk.tomorrow(userId, input.day);
-        qc.setQueryData(key, input.lines);
+        qc.setQueryData(dayListKey(userId, input.day, input.scope), input.lines);
       });
       return { snapshot, editing: true };
     },
@@ -844,7 +886,7 @@ export type TodayRoutinePatch = {
   rank?: string;
   /** The list order after a drag. Applied as-is so keys stay where they were dropped. */
   day?: string;
-  scope?: 'today' | 'tomorrow';
+  scope?: 'yesterday' | 'today' | 'tomorrow';
   lines?: TodayLine[];
 };
 
@@ -866,8 +908,7 @@ export function useUpdateTodayRoutine() {
       if (!userId) return { snapshot: undefined, editing: false };
       const snapshot = await beginTodayEdit(qc, userId, () => {
         if (input.lines && input.day && input.scope) {
-          const key = input.scope === 'today' ? qk.today(userId, input.day) : qk.tomorrow(userId, input.day);
-          qc.setQueryData(key, input.lines);
+          qc.setQueryData(dayListKey(userId, input.day, input.scope), input.lines);
           return;
         }
         mapTodayLists(qc, userId, (lines) => {

@@ -523,12 +523,6 @@ export function todayLineRepeats(line: Pick<TodayLine, 'routineId' | 'routineAct
  */
 export const TODAY_SUGGESTION_LIMIT = 3;
 
-/**
- * Due on this day, earlier, or within this many days after it. Those sort
- * ahead of In progress. The same window is used in list_today_suggestions.
- */
-export const TODAY_DUE_SOON_DAYS = 2;
-
 /** Task titles stop at 300 characters. A Today line can be longer. */
 export const ACTION_TITLE_MAX = 300;
 
@@ -538,6 +532,9 @@ export type MineAction = {
   status: string;
   dueDate: string | null;
   rank: string;
+  /** Lower values sort first when rank and due date tie, matching Mine. */
+  position?: number;
+  createdAt?: string;
   spaceId: string;
   spaceName: string;
   spaceColor: string;
@@ -549,42 +546,41 @@ export type SuggestionOffer = {
   dismissed: boolean;
 };
 
-/** 0 = overdue or due soon, 1 = in progress, 2 = everything else still open. */
-export function suggestionTier(action: Pick<MineAction, 'status' | 'dueDate'>, day: string): 0 | 1 | 2 {
-  if (action.dueDate && action.dueDate <= shiftDay(day, TODAY_DUE_SOON_DAYS)) return 0;
-  if (action.status === 'in_progress') return 1;
-  return 2;
-}
-
-/** Overdue and due soon first (earliest date first), then In progress, then rank. */
-export function compareMineSuggestions(day: string, a: MineAction, b: MineAction): number {
-  const tier = suggestionTier(a, day) - suggestionTier(b, day);
-  if (tier !== 0) return tier;
-  if (suggestionTier(a, day) === 0 && a.dueDate !== b.dueDate) {
+/**
+ * The Mine tab's open list. Rank leads (a higher key sits above a lower one).
+ * Due date only breaks a tie (earliest first, no date last), then position,
+ * creation time, and id. In progress stays where that order puts it.
+ */
+export function compareMineOrder(a: MineAction, b: MineAction): number {
+  const rank = compareRank(a.rank, b.rank);
+  if (rank !== 0) return rank;
+  if (a.dueDate !== b.dueDate) {
     if (!a.dueDate) return 1;
     if (!b.dueDate) return -1;
     return a.dueDate < b.dueDate ? -1 : 1;
   }
-  return compareRank(a.rank, b.rank) || a.id.localeCompare(b.id);
+  const position = (a.position ?? 0) - (b.position ?? 0);
+  if (position !== 0) return position;
+  const created = (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
+  return created || a.id.localeCompare(b.id);
 }
 
 /**
- * Open Mine actions that are not already on this day, in suggestion order.
+ * Open Mine actions that are not already on this day, in Mine's order.
  * `blockedTaskIds` is every task that already has a Today row that day,
  * including one that was ticked or taken off.
  */
 export function eligibleMineSuggestions(
-  day: string,
   actions: readonly MineAction[],
   blockedTaskIds: ReadonlySet<string>,
 ): MineAction[] {
   return actions
     .filter((action) => action.status !== 'done' && !blockedTaskIds.has(action.id))
-    .sort((a, b) => compareMineSuggestions(day, a, b));
+    .sort(compareMineOrder);
 }
 
 /**
- * What the Suggestions card shows, and which offers to store the first time.
+ * What Today offers under Suggested, and which offers to store the first time.
  * A day other than `asOf` shows nothing and stores nothing.
  * An empty offer list is not frozen, so the first actions of the day can
  * still appear. Once any offer is stored, later actions are not added.
@@ -599,7 +595,7 @@ export function resolveTodaySuggestions(input: {
   onDayTaskIds: ReadonlySet<string>;
 }): { insert: SuggestionOffer[] | null; visible: MineAction[] } {
   if (input.day !== input.asOf) return { insert: null, visible: [] };
-  const ranked = eligibleMineSuggestions(input.day, input.actions, input.onDayTaskIds);
+  const ranked = eligibleMineSuggestions(input.actions, input.onDayTaskIds);
   const byId = new Map(ranked.map((action) => [action.id, action]));
   if (input.offers.length > 0) {
     const visible = [...input.offers]

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
@@ -13,9 +13,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { runOnJS } from 'react-native-reanimated';
 import DraggableFlatList, {
   type DragEndParams,
   type RenderItemParams,
@@ -32,7 +34,6 @@ import {
   useDismissTodaySuggestion,
   useMoveTodayItem,
   useMoveTodayItemToDay,
-  useOpenPastToday,
   useOpenTaskChoices,
   usePlaceTodayRoutine,
   useRenameTodayItem,
@@ -43,12 +44,12 @@ import {
   useTodaySuggestions,
   useTomorrowPlan,
   useUpdateTodayRoutine,
+  useYesterdayList,
   type TodaySuggestion,
 } from '@/data/today';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
-import { formatDueDate } from '@/lib/format';
 import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from '@/lib/haptics';
 import { useMomentumChime } from '@/lib/momentumSound';
 import { rankAfterDrop } from '@/lib/rank';
@@ -64,9 +65,7 @@ import {
   canRescheduleTodayLine,
   localToday,
   momentumCount,
-  openPastReview,
   repeatLabel,
-  type OpenPastGroup,
   shiftDay,
   todayLineTitle,
   weekdayIndex,
@@ -84,6 +83,27 @@ import { AccentDot } from './ui/Indicators';
 import { Text } from './ui/Text';
 
 const EMPTY_TODAY_LINES: TodayLine[] = [];
+
+const DAY_ORDER = ['yesterday', 'today', 'tomorrow'] as const;
+type DayKind = (typeof DAY_ORDER)[number];
+
+const DAY_LABEL: Record<DayKind, string> = {
+  yesterday: 'Yesterday',
+  today: 'Today',
+  tomorrow: 'Tomorrow',
+};
+
+function dayPanGesture(step: (delta: number) => void) {
+  return Gesture.Pan()
+    .activeOffsetX([-32, 32])
+    .failOffsetY([-18, 18])
+    .onEnd((event) => {
+      const forward = event.translationX < -48 || event.velocityX < -700;
+      const back = event.translationX > 48 || event.velocityX > 700;
+      if (forward && !back) runOnJS(step)(1);
+      else if (back && !forward) runOnJS(step)(-1);
+    });
+}
 
 function messageOf(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -104,8 +124,9 @@ export function TodayView() {
   const isWide = useIsWide();
   const collapse = useCollapsingHeader(insets.top, 64);
   const today = localToday();
+  const yesterday = shiftDay(today, -1);
   const tomorrow = shiftDay(today, 1);
-  const [when, setWhen] = useState<'today' | 'tomorrow'>('today');
+  const [when, setWhen] = useState<DayKind>('today');
   const [draft, setDraft] = useState('');
   const [sheet, setSheet] = useState<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action' | null>(null);
   const [menuLine, setMenuLine] = useState<TodayLine | null>(null);
@@ -113,7 +134,6 @@ export function TodayView() {
   const [editDraft, setEditDraft] = useState('');
   const [repeatLine, setRepeatLine] = useState<TodayLine | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [reviewOpen, setReviewOpen] = useState(true);
   const afterClose = useRef<(() => void) | null>(null);
   const [heldSheet, setHeldSheet] = useState<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action' | null>(null);
   if (sheet && sheet !== heldSheet) setHeldSheet(sheet);
@@ -124,14 +144,16 @@ export function TodayView() {
   const [taskSearch, setTaskSearch] = useState('');
   const [actionLine, setActionLine] = useState<TodayLine | null>(null);
 
-  const planningTomorrow = when === 'tomorrow';
-  const activeDay = planningTomorrow ? tomorrow : today;
+  const viewingYesterday = when === 'yesterday';
+  const viewingToday = when === 'today';
+  const viewingTomorrow = when === 'tomorrow';
+  const activeDay = viewingYesterday ? yesterday : viewingTomorrow ? tomorrow : today;
+  const yesterdayQuery = useYesterdayList(yesterday);
   const todayQuery = useTodayList(today);
   const tomorrowQuery = useTomorrowPlan(tomorrow);
-  const pastQuery = useOpenPastToday(today);
-  const suggestionsQuery = useTodaySuggestions(today, true);
+  const suggestionsQuery = useTodaySuggestions(today, viewingToday);
   const { data: spaces = [] } = useSpaces();
-  const activeQuery = planningTomorrow ? tomorrowQuery : todayQuery;
+  const activeQuery = viewingYesterday ? yesterdayQuery : viewingTomorrow ? tomorrowQuery : todayQuery;
   const lines = activeQuery.data ?? EMPTY_TODAY_LINES;
   const [refreshing, setRefreshing] = useState(false);
   const addText = useAddTodayText(activeDay);
@@ -154,23 +176,16 @@ export function TodayView() {
   const chime = useMomentumChime();
   const [tickPulse, setTickPulse] = useState(0);
 
-  const pastLines = pastQuery.data ?? [];
-  const pastGroups = openPastReview({
-    today,
-    items: pastLines.map((line) => ({
-      id: line.id,
-      day: line.day,
-      routineId: line.routineId,
-      checked: line.checkedAt !== null,
-      rank: line.rank,
-    })),
-  });
-  const pastById = new Map(pastLines.map((line) => [line.id, line]));
-
   const takenTaskIds = new Set(lines.flatMap((line) => (line.taskId ? [line.taskId] : [])));
   const choices = (taskChoices.data ?? []).filter((choice) => !takenTaskIds.has(choice.id));
-  const suggestions = planningTomorrow ? [] : (suggestionsQuery.data ?? []);
+  const suggestions = viewingToday ? (suggestionsQuery.data ?? []) : [];
   const writableCircles = spaces.filter((space) => canWrite(space.role));
+  const stepDay = useCallback((delta: number) => {
+    hapticLight();
+    setWhen((current) => DAY_ORDER[DAY_ORDER.indexOf(current) + delta] ?? current);
+  }, []);
+  const headerPan = useMemo(() => dayPanGesture(stepDay), [stepDay]);
+  const listPan = useMemo(() => dayPanGesture(stepDay), [stepDay]);
 
   function openDrawer() {
     (navigation as unknown as { openDrawer: () => void }).openDrawer();
@@ -214,7 +229,9 @@ export function TodayView() {
     );
   }
 
-  function selectDay(next: 'today' | 'tomorrow') {
+  function selectNextDay() {
+    const index = DAY_ORDER.indexOf(when);
+    const next = DAY_ORDER[(index + 1) % DAY_ORDER.length] ?? 'today';
     if (next === when) return;
     hapticLight();
     setWhen(next);
@@ -226,15 +243,15 @@ export function TodayView() {
   }
 
   function onToggle(line: TodayLine) {
-    if (planningTomorrow) return;
+    if (viewingTomorrow) return;
     if (line.checkedAt) {
       hapticLight();
-      chime.setStep(countAfter(line, false));
+      if (viewingToday) chime.setStep(countAfter(line, false));
       check.mutate(
         { id: line.id, checked: false },
         {
           onError: (error) => {
-            chime.setStep(momentumCount(lines, today));
+            if (viewingToday) chime.setStep(momentumCount(lines, today));
             quietError('Couldn’t update that line', error);
           },
         },
@@ -247,14 +264,16 @@ export function TodayView() {
       setSheet('tick');
       return;
     }
-    setTickPulse((pulse) => pulse + 1);
+    if (viewingToday) {
+      setTickPulse((pulse) => pulse + 1);
+      chime.play(countAfter(line, true));
+    }
     hapticSuccess();
-    chime.play(countAfter(line, true));
     check.mutate(
       { id: line.id, checked: true },
       {
         onError: (error) => {
-          chime.setStep(momentumCount(lines, today));
+          if (viewingToday) chime.setStep(momentumCount(lines, today));
           quietError('Couldn’t update that line', error);
         },
       },
@@ -267,14 +286,16 @@ export function TodayView() {
     if (!line || !taskId) return;
     closeSheet();
     const taskStatus = mode === 'done' ? 'done' : 'in_progress';
-    setTickPulse((pulse) => pulse + 1);
+    if (viewingToday) {
+      setTickPulse((pulse) => pulse + 1);
+      chime.play(countAfter(line, true));
+    }
     hapticSuccess();
-    chime.play(countAfter(line, true));
     check.mutate(
       { id: line.id, checked: true, taskId, taskStatus },
       {
         onError: (error) => {
-          chime.setStep(momentumCount(lines, today));
+          if (viewingToday) chime.setStep(momentumCount(lines, today));
           quietError('Couldn’t update that action', error);
         },
       },
@@ -288,7 +309,7 @@ export function TodayView() {
     const nextRank = rankAfterDrop(data[to - 1]?.rank, data[to + 1]?.rank);
     if (nextRank === dropped.rank) return;
     const next = data.map((line) => (line.id === dropped.id ? { ...line, rank: nextRank } : line));
-    const scope = planningTomorrow ? 'tomorrow' : 'today';
+    const scope = when;
     const onError = (error: unknown) => quietError('Couldn’t reorder that line', error);
     if (dropped.virtual && dropped.routineId) {
       updateRoutine.mutate(
@@ -441,11 +462,11 @@ export function TodayView() {
 
   function moveLine(line: TodayLine) {
     closeSheet();
-    const pending = planningTomorrow
+    const pending = viewingTomorrow
       ? line.virtual && line.routineId
         ? placeRoutine.mutateAsync(line.routineId)
         : moveDay.mutateAsync({ id: line.id, day: today })
-      : moveDay.mutateAsync({ id: line.id, day: tomorrow });
+      : moveDay.mutateAsync({ id: line.id, day: viewingYesterday ? today : tomorrow });
     void pending.catch((error) => quietError('Couldn’t move that line', error));
   }
 
@@ -471,7 +492,7 @@ export function TodayView() {
     }
     dismiss.mutate(line.id, {
       onSuccess: () => {
-        showUndoToast('Off today', () => {
+        showUndoToast(viewingYesterday ? 'Dropped' : 'Off today', () => {
           restore.mutate(line, { onError: (error) => quietError('Couldn’t undo that', error) });
         });
       },
@@ -517,16 +538,28 @@ export function TodayView() {
     });
   }
 
+  function bringToToday(line: TodayLine) {
+    closeSheet();
+    hapticMedium();
+    moveDay.mutate(
+      { id: line.id, day: today },
+      { onError: (error) => quietError('Couldn’t move that line', error) },
+    );
+  }
+
   function renderLine(line: TodayLine, drag?: () => void, isActive?: boolean) {
     const title = todayLineTitle(line);
     const checked = line.checkedAt !== null;
-    const shiftable = !planningTomorrow && canRescheduleTodayLine(line);
+    const shiftable = viewingToday && canRescheduleTodayLine(line);
+    const canBringToday = viewingYesterday && canRescheduleTodayLine(line);
     return (
       <TodayLineRow
         line={line}
         title={title}
         checked={checked}
         shiftable={shiftable}
+        canBringToday={canBringToday}
+        daySwipe={listPan}
         showHoverMenu={isWide && Platform.OS === 'web'}
         isActive={isActive}
         drag={drag}
@@ -543,8 +576,9 @@ export function TodayView() {
         }}
         onTomorrow={() => planLine(line, 'tomorrow')}
         onNotToday={() => planLine(line, 'not-today')}
+        onBringToday={() => bringToToday(line)}
         onMakeAction={() => openMakeAction(line)}
-        planningTomorrow={planningTomorrow}
+        planningTomorrow={viewingTomorrow}
       />
     );
   }
@@ -554,19 +588,21 @@ export function TodayView() {
       icon={activeQuery.isError ? 'cloud-offline-outline' : 'sunny-outline'}
       title={
         activeQuery.isError
-          ? planningTomorrow
-            ? 'Couldn’t load tomorrow'
-            : 'Couldn’t load today'
-          : planningTomorrow
+          ? `Couldn’t load ${DAY_LABEL[when].toLowerCase()}`
+          : viewingTomorrow
             ? 'Nothing planned'
-            : 'A clear day'
+            : viewingYesterday
+              ? 'Nothing left from yesterday'
+              : 'A clear day'
       }
       body={
         activeQuery.isError
           ? 'Pull to refresh and try again.'
-          : planningTomorrow
+          : viewingTomorrow
             ? 'Write a line for tomorrow. Routines that fall on that day show here too.'
-            : 'Write a line at the bottom. Type @ to pull in an action.'
+            : viewingYesterday
+              ? 'Lines you wrote yesterday show here. Tick one, or move it to today.'
+              : 'Write a line at the bottom. Type @ to pull in an action.'
       }
     />
   );
@@ -578,8 +614,7 @@ export function TodayView() {
         setRefreshing(true);
         void Promise.all([
           activeQuery.refetch(),
-          planningTomorrow ? Promise.resolve() : suggestionsQuery.refetch(),
-          planningTomorrow ? Promise.resolve() : pastQuery.refetch(),
+          viewingToday ? suggestionsQuery.refetch() : Promise.resolve(),
         ]).finally(() => setRefreshing(false));
       }}
       tintColor={colors.brand}
@@ -627,42 +662,41 @@ export function TodayView() {
         animatedStyle={collapse.animatedStyle}
         pointerEvents={collapse.pointerEvents}
       >
-        <View style={[styles.header, isWide && styles.headerWide]}>
-          {!isWide ? (
-            <Pressable
-              onPress={openDrawer}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Open circles"
-              style={styles.iconButton}
-            >
-              <Ionicons name="menu" size={26} color={colors.ink} />
-            </Pressable>
-          ) : null}
-          <View style={styles.titleBlock}>
-            <Pressable
-              onPress={() => selectDay(planningTomorrow ? 'today' : 'tomorrow')}
-              accessibilityRole="button"
-              accessibilityLabel={planningTomorrow ? 'Tomorrow, show today' : 'Today, show tomorrow'}
-              hitSlop={8}
-              style={styles.titleToggle}
-            >
-              <Text variant="screenTitle" numberOfLines={1} style={styles.titleLabel}>
-                {planningTomorrow ? 'Tomorrow' : 'Today'}
-              </Text>
-              <Ionicons
-                name={planningTomorrow ? 'chevron-back' : 'chevron-forward'}
-                size={16}
-                color={colors.inkSoft}
-              />
-            </Pressable>
+        <GestureDetector gesture={headerPan} touchAction="pan-y">
+          <View style={[styles.header, isWide && styles.headerWide]}>
+            {!isWide ? (
+              <Pressable
+                onPress={openDrawer}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Open circles"
+                style={styles.iconButton}
+              >
+                <Ionicons name="menu" size={26} color={colors.ink} />
+              </Pressable>
+            ) : null}
+            <View style={styles.titleBlock}>
+              <Pressable
+                onPress={selectNextDay}
+                accessibilityRole="button"
+                accessibilityLabel={`${DAY_LABEL[when]}, show ${DAY_LABEL[DAY_ORDER[(DAY_ORDER.indexOf(when) + 1) % DAY_ORDER.length] ?? 'today']}`}
+                hitSlop={8}
+                style={styles.titleToggle}
+              >
+                <Text variant="screenTitle" numberOfLines={1} style={styles.titleLabel}>
+                  {DAY_LABEL[when]}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.inkSoft} />
+              </Pressable>
+            </View>
+            {viewingToday ? (
+              <MomentumBadge count={momentumCount(todayQuery.data ?? [], today)} pulse={tickPulse} />
+            ) : null}
           </View>
-          {planningTomorrow ? null : (
-            <MomentumBadge count={momentumCount(todayQuery.data ?? [], today)} pulse={tickPulse} />
-          )}
-        </View>
+        </GestureDetector>
       </CollapsingScreenHeader>
 
+      <GestureDetector gesture={listPan} touchAction="pan-y">
       <View style={styles.listFrame}>
         {activeQuery.data === undefined && !activeQuery.isError ? (
           <View style={[styles.center, listPad]}>
@@ -680,74 +714,17 @@ export function TodayView() {
             onDragEnd={onDragEnd}
             onScrollOffsetChange={collapse.onScrollOffsetChange}
             ListHeaderComponent={
-              planningTomorrow || (pastGroups.length === 0 && suggestions.length === 0) ? null : (
-                <View>
-                {pastGroups.length === 0 ? null : (
-                <YesterdayReview
-                  today={today}
-                  groups={pastGroups}
-                  lines={pastById}
-                  open={reviewOpen}
-                  onToggleOpen={() => setReviewOpen((value) => !value)}
-                  onDone={(line) => {
-                    if (line.taskId) {
-                      setTickLine(line);
-                      setSheet('tick');
-                      return;
-                    }
-                    check.mutate(
-                      { id: line.id, checked: true },
-                      { onError: (error) => quietError('Couldn’t update that line', error) },
-                    );
-                  }}
-                  onMove={(line) => {
-                    moveDay.mutate(
-                      { id: line.id, day: today },
-                      { onError: (error) => quietError('Couldn’t move that line', error) },
-                    );
-                  }}
-                  onDrop={(line) => {
-                    dismiss.mutate(line.id, {
-                      onSuccess: () => {
-                        showUndoToast('Dropped', () => {
-                          restore.mutate(line, { onError: (error) => quietError('Couldn’t undo that', error) });
-                        });
-                      },
-                      onError: (error) => quietError('Couldn’t drop that line', error),
-                    });
-                  }}
-                  onMoveAll={() => {
-                    const ordered = pastGroups.flatMap((group) => group.ids);
-                    for (const id of ordered) {
-                      moveDay.mutate(
-                        { id, day: today },
-                        { onError: (error) => quietError('Couldn’t move that line', error) },
-                      );
-                    }
-                  }}
-                  onClearAll={() => {
-                    for (const line of pastLines) {
-                      if (line.checkedAt) continue;
-                      dismiss.mutate(line.id, {
-                        onError: (error) => quietError('Couldn’t drop that line', error),
-                      });
-                    }
-                  }}
+              suggestions.length === 0 ? null : (
+                <SuggestionsSection
+                  items={suggestions}
+                  onAdd={addSuggestion}
+                  onDismiss={hideSuggestion}
                 />
-                )}
-                {suggestions.length === 0 ? null : (
-                  <SuggestionsCard
-                    items={suggestions}
-                    onAdd={addSuggestion}
-                    onDismiss={hideSuggestion}
-                  />
-                )}
-                </View>
               )
             }
-            ListEmptyComponent={empty}
+            ListEmptyComponent={suggestions.length > 0 ? null : empty}
             contentContainerStyle={[
-              lines.length === 0 ? styles.emptyList : styles.listContent,
+              lines.length === 0 && suggestions.length === 0 ? styles.emptyList : styles.listContent,
               listPad,
             ]}
             refreshControl={refresh}
@@ -756,13 +733,20 @@ export function TodayView() {
           />
         )}
       </View>
+      </GestureDetector>
 
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
           <TextInput
             value={draft}
             onChangeText={onDraftChange}
             onSubmitEditing={() => void submitDraft()}
-            placeholder={planningTomorrow ? 'Add a line for tomorrow' : 'Add a line, or @ an action'}
+            placeholder={
+              viewingTomorrow
+                ? 'Add a line for tomorrow'
+                : viewingYesterday
+                  ? 'Add a line for yesterday'
+                  : 'Add a line, or @ an action'
+            }
             placeholderTextColor={colors.inkFaint}
             returnKeyType="done"
             blurOnSubmit={false}
@@ -848,26 +832,46 @@ export function TodayView() {
                   if (menuLine) openRepeat(menuLine);
                 }}
               />
-              {!planningTomorrow && menuLine && canRescheduleTodayLine(menuLine) ? (
+              {viewingToday && menuLine && canRescheduleTodayLine(menuLine) ? (
                 <SheetAction
                   label="Tomorrow"
                   detail="Shows up tomorrow"
                   onPress={() => menuLine && planLine(menuLine, 'tomorrow')}
                 />
               ) : null}
-              {!planningTomorrow && menuLine && canRescheduleTodayLine(menuLine) ? (
+              {viewingToday && menuLine && canRescheduleTodayLine(menuLine) ? (
                 <SheetAction
                   label="Not today"
                   detail={menuLine.taskId ? 'Stays in the circle. The due date stays.' : 'Leaves this day'}
                   onPress={() => menuLine && planLine(menuLine, 'not-today')}
                 />
               ) : null}
-              {planningTomorrow && menuLine && !(menuLine.virtual && routineAlreadyToday(menuLine)) ? (
+              {viewingYesterday && menuLine && canRescheduleTodayLine(menuLine) ? (
+                <SheetAction
+                  label="Move to today"
+                  detail="Leaves yesterday"
+                  onPress={() => menuLine && bringToToday(menuLine)}
+                />
+              ) : null}
+              {viewingYesterday && menuLine && canRescheduleTodayLine(menuLine) ? (
+                <SheetAction
+                  label="Drop"
+                  detail={menuLine.taskId ? 'Stays in the circle. The due date stays.' : 'Leaves that day'}
+                  onPress={() => menuLine && planLine(menuLine, 'not-today')}
+                />
+              ) : null}
+              {viewingTomorrow && menuLine && !(menuLine.virtual && routineAlreadyToday(menuLine)) ? (
                 <SheetAction label="Move to today" onPress={() => menuLine && void moveLine(menuLine)} />
               ) : null}
               {menuLine?.routineId && menuLine.routineActive ? (
                 <SheetAction
-                  label={planningTomorrow ? 'Remove from tomorrow' : 'Remove from today'}
+                  label={
+                    viewingTomorrow
+                      ? 'Remove from tomorrow'
+                      : viewingYesterday
+                        ? 'Remove from yesterday'
+                        : 'Remove from today'
+                  }
                   detail="It comes back on the next day it repeats"
                   onPress={() => menuLine && removeFromDay(menuLine)}
                 />
@@ -1042,6 +1046,8 @@ function TodayLineRow({
   title,
   checked,
   shiftable,
+  canBringToday,
+  daySwipe,
   showHoverMenu,
   isActive,
   drag,
@@ -1053,6 +1059,7 @@ function TodayLineRow({
   onOpenMenu,
   onTomorrow,
   onNotToday,
+  onBringToday,
   onMakeAction,
   focused,
   onFocusLine,
@@ -1061,6 +1068,8 @@ function TodayLineRow({
   title: string;
   checked: boolean;
   shiftable: boolean;
+  canBringToday: boolean;
+  daySwipe: GestureType;
   showHoverMenu: boolean;
   isActive?: boolean;
   drag?: () => void;
@@ -1072,6 +1081,7 @@ function TodayLineRow({
   onOpenMenu: () => void;
   onTomorrow: () => void;
   onNotToday: () => void;
+  onBringToday: () => void;
   onMakeAction: () => void;
   focused?: boolean;
   onFocusLine: () => void;
@@ -1171,6 +1181,19 @@ function TodayLineRow({
           <Ionicons name="ellipsis-horizontal" size={18} color={colors.inkSoft} />
         </Pressable>
       ) : null}
+      {canBringToday ? (
+        <Pressable
+          onPress={onBringToday}
+          accessibilityRole="button"
+          accessibilityLabel={`Move ${title} to today`}
+          hitSlop={6}
+          style={styles.bringToday}
+        >
+          <Text variant="meta" color={colors.inkSoft}>
+            Today
+          </Text>
+        </Pressable>
+      ) : null}
       {drag ? (
         <Pressable
           onPressIn={drag}
@@ -1195,8 +1218,9 @@ function TodayLineRow({
       friction={1.6}
       leftThreshold={36}
       rightThreshold={36}
-      dragOffsetFromLeftEdge={48}
-      dragOffsetFromRightEdge={48}
+      dragOffsetFromLeftEdge={20}
+      dragOffsetFromRightEdge={20}
+      blocksExternalGesture={daySwipe}
       overshootRight={false}
       overshootLeft={false}
       onSwipeableWillOpen={() => hapticLight()}
@@ -1252,6 +1276,39 @@ function TodayLineRow({
           </Pressable>
         </View>
       )
+          : canBringToday
+            ? () => (
+                <View style={styles.swipeActions}>
+                  <Pressable
+                    onPress={() => {
+                      ref.current?.close();
+                      hapticLight();
+                      onBringToday();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Move to today"
+                    style={[styles.swipeAction, styles.swipeTomorrow]}
+                  >
+                    <Text variant="meta" color={colors.brandDeep}>
+                      Today
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      ref.current?.close();
+                      hapticLight();
+                      onNotToday();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Drop"
+                    style={[styles.swipeAction, styles.swipeNotToday]}
+                  >
+                    <Text variant="meta" color={colors.ink}>
+                      Drop
+                    </Text>
+                  </Pressable>
+                </View>
+              )
           : routineSkip
             ? () => (
                 <View style={styles.swipeActions}>
@@ -1279,99 +1336,7 @@ function TodayLineRow({
   );
 }
 
-function YesterdayReview({
-  today,
-  groups,
-  lines,
-  open,
-  onToggleOpen,
-  onDone,
-  onMove,
-  onDrop,
-  onMoveAll,
-  onClearAll,
-}: {
-  today: string;
-  groups: OpenPastGroup[];
-  lines: Map<string, TodayLine>;
-  open: boolean;
-  onToggleOpen: () => void;
-  onDone: (line: TodayLine) => void;
-  onMove: (line: TodayLine) => void;
-  onDrop: (line: TodayLine) => void;
-  onMoveAll: () => void;
-  onClearAll: () => void;
-}) {
-  const yesterday = shiftDay(today, -1);
-  const count = groups.reduce((sum, group) => sum + group.ids.length, 0);
-  return (
-    <View style={styles.review}>
-      <Pressable
-        onPress={onToggleOpen}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        accessibilityLabel="Yesterday"
-        style={styles.reviewHeader}
-      >
-        <View style={styles.reviewTitle}>
-          <Text variant="bodyMedium">Yesterday</Text>
-          <Text variant="meta" color={colors.inkFaint}>
-            {count === 1 ? '1 still open' : `${count} still open`}
-          </Text>
-        </View>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.inkSoft} />
-      </Pressable>
-      {open ? (
-        <View style={styles.reviewBody}>
-          {groups.map((group) => {
-            const showDate = groups.length > 1 || group.day !== yesterday;
-            return (
-              <View key={group.day} style={styles.reviewGroup}>
-                {showDate ? (
-                  <Text variant="meta" color={colors.inkFaint}>
-                    {formatDueDate(group.day)}
-                  </Text>
-                ) : null}
-                {group.ids.map((id) => {
-                  const line = lines.get(id);
-                  if (!line) return null;
-                  return (
-                    <View key={id} style={styles.reviewLine}>
-                      <Text variant="body" numberOfLines={2} style={styles.reviewLineTitle}>
-                        {todayLineTitle(line)}
-                      </Text>
-                      <View style={styles.reviewActions}>
-                        <ReviewButton label="Done" onPress={() => onDone(line)} />
-                        <ReviewButton label="Move to today" onPress={() => onMove(line)} />
-                        <ReviewButton label="Drop" onPress={() => onDrop(line)} />
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            );
-          })}
-          <View style={styles.reviewBulk}>
-            <ReviewButton label="Move all to today" onPress={onMoveAll} />
-            <ReviewButton label="Clear all" onPress={onClearAll} />
-          </View>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function ReviewButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.reviewButton}>
-      <Text variant="meta" color={colors.brandDeep}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SuggestionsCard({
+function SuggestionsSection({
   items,
   onAdd,
   onDismiss,
@@ -1381,14 +1346,15 @@ function SuggestionsCard({
   onDismiss: (item: TodaySuggestion) => void;
 }) {
   return (
-    <View style={styles.suggestions}>
+    <View>
       <Text variant="meta" color={colors.inkFaint} style={styles.suggestionLabel}>
-        Suggestions
+        Suggested
       </Text>
       {items.map((item) => (
-        <View key={item.taskId} style={styles.suggestionRow}>
-          <View style={styles.suggestionBody}>
-            <Text variant="body" numberOfLines={2}>
+        <View key={item.taskId} style={styles.row}>
+          <View style={styles.checkbox} />
+          <View style={styles.rowBody}>
+            <Text variant="body" color={colors.inkSoft} numberOfLines={2}>
               {item.title}
             </Text>
             <View style={styles.circleBadge}>
@@ -1405,7 +1371,7 @@ function SuggestionsCard({
             hitSlop={6}
             style={styles.suggestionAdd}
           >
-            <Ionicons name="add" size={18} color={colors.brandDeep} />
+            <Ionicons name="add" size={22} color={colors.inkSoft} />
           </Pressable>
           <Pressable
             onPress={() => onDismiss(item)}
@@ -1414,7 +1380,7 @@ function SuggestionsCard({
             hitSlop={6}
             style={styles.suggestionDismiss}
           >
-            <Ionicons name="close" size={16} color={colors.inkFaint} />
+            <Ionicons name="close" size={18} color={colors.inkFaint} />
           </Pressable>
         </View>
       ))}
@@ -1513,72 +1479,26 @@ const styles = StyleSheet.create({
   },
   rowActive: { backgroundColor: colors.surface, ...shadows.floating },
   rowFocused: { backgroundColor: colors.surfaceAlt },
-  review: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.hairline,
-    overflow: 'hidden',
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.md,
-  },
-  reviewTitle: { flex: 1, gap: 2 },
-  reviewBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.md },
-  reviewGroup: { gap: spacing.sm },
-  reviewLine: { gap: spacing.sm },
-  reviewLineTitle: { flex: 1 },
-  reviewActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  reviewBulk: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  reviewButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
-    backgroundColor: colors.brandSoft,
-  },
-  suggestions: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.hairline,
-    overflow: 'hidden',
-  },
   suggestionLabel: {
-    paddingHorizontal: spacing.md,
+    paddingLeft: spacing.sm + 44,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
   },
-  suggestionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.hairline,
-  },
-  suggestionBody: { flex: 1, gap: 2 },
   suggestionAdd: {
     width: 36,
-    height: 36,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radii.pill,
-    backgroundColor: colors.brandSoft,
   },
   suggestionDismiss: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bringToday: {
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1246,7 +1246,7 @@ test('today suggestions freeze the first set and do not backfill', async () => {
   const overdue = await mine('File the VAT', { due_date: '2026-11-01', rank: 'm' });
   const soon = await mine('Renew the domain', { due_date: '2026-11-05', rank: 'a' });
   const later = await mine('Reply to José', { status: 'in_progress', due_date: '2026-11-06', rank: 'z' });
-  await mine('Sort the drawer', { rank: 'c' });
+  const drawer = await mine('Sort the drawer', { rank: 'c' });
   const finished = await mine('Already done', { status: 'done', due_date: '2026-11-01', rank: 'zz' });
   const sam = await createTask(store, { title: 'Sam’s errand', circle_id: HOUSE, assignees: ['Sam'] });
   assert.equal(sam.ok, true);
@@ -1259,7 +1259,7 @@ test('today suggestions freeze the first set and do not backfill', async () => {
   if (!first.ok) return;
   assert.deepEqual(
     first.data.suggestions.map((item) => item.task_id),
-    [overdue, soon, later],
+    [later, overdue, drawer],
   );
   assert.equal(first.data.suggestions.some((item) => item.task_id === finished), false);
 
@@ -1270,18 +1270,18 @@ test('today suggestions freeze the first set and do not backfill', async () => {
   if (!again.ok) return;
   assert.deepEqual(
     again.data.suggestions.map((item) => item.task_id),
-    [soon, later],
+    [later, drawer],
   );
 
   const linked = await addTodayItem(store, { day, task_id: soon, ...asOf });
   assert.equal(linked.ok, true);
-  await mine('Brand new overdue', { due_date: '2026-10-01', rank: 'zz' });
+  await mine('Brand new top', { due_date: '2026-10-01', rank: 'zz' });
   const afterAdd = await listTodaySuggestions(store, { day, ...asOf });
   assert.equal(afterAdd.ok, true);
   if (!afterAdd.ok) return;
   assert.deepEqual(
     afterAdd.data.suggestions.map((item) => item.task_id),
-    [later],
+    [later, drawer],
   );
 
   const tomorrow = await listTodaySuggestions(store, { day: '2026-11-04', ...asOf });

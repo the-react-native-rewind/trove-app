@@ -188,7 +188,7 @@ Send the OAuth access token, or `Authorization: Bearer trove_…`. The public ho
 | `move_today_item_to_day` | Move a line to today or tomorrow. Tomorrow is stored without preparing the day. The task's due date stays. Also how a yesterday-review line moves to today. |
 | `list_open_past_today` | Open one-off lines from before today. They are not moved on their own. Routines are left out. |
 | `check_today_item` | Tick a line on the day it is already on. By default a linked task is marked done. |
-| `list_today_suggestions` | Up to three open Mine actions for today. The first set stays frozen for that day. |
+| `list_today_suggestions` | Up to three open Mine actions, in Mine's order, for today. The first set stays frozen for that day. |
 | `dismiss_today_suggestion` | Hide one of those suggestions for the rest of the day. The action is unchanged. |
 | `convert_today_item_to_task` | Turn a plain Today line into an action in a circle. The line stays where it is. |
 
@@ -212,15 +212,15 @@ Planning tomorrow does not prepare that day. Unticked lines stay on today, and n
 
 The first request for today, or any earlier date, prepares it. Routines are inserted at the ranks they were left in. A routine already stored on that date is kept. Unticked one-off lines stay on the day they were written. They are not moved forward. Ticked lines stay where they were ticked. A routine from a past day is not carried into today; it lapses.
 
-`list_open_past_today` is the yesterday review. It lists open one-off lines from before `local_today`, newest day first, up to 40. It does not prepare a day and does not move anything. Resolve a line with `check_today_item` (done on that day), `move_today_item_to_day` with `day` set to `local_today` (move to today), or `dismiss_today_item` (drop). When nothing is left open, the list is empty.
+`list_open_past_today` lists open one-off lines from before `local_today`, newest day first, up to 40. It does not prepare a day and does not move anything. The app shows yesterday as its own day; this tool still includes older open lines. Resolve a line with `check_today_item` (done on that day), `move_today_item_to_day` with `day` set to `local_today` (move to today), or `dismiss_today_item` (drop). When nothing is left open, the list is empty.
 
 `add_today_item` takes `text` or `task_id`, not both, and appends the line. The same task cannot be on the day twice, including when a routine already shows it. A task that was taken off that day is put back instead of inserted twice. Pass `local_today` when `day` is tomorrow so the line is saved without preparing the day.
 
-`dismiss_today_item` is Not today, and Drop on the yesterday review. It hides that line and keeps it from being carried forward. It does not delete the task, mark it done, change its due date, or stop a repeat. `restore_today_item` undoes that. `move_today_item_to_day` is Tomorrow when `day` is the day after `local_today`, and Move to today when `day` is `local_today`. Ticked lines stay where they were ticked. Lines taken off a day are omitted from `list_today`.
+`dismiss_today_item` is Not today, and Drop on an earlier day. It hides that line and keeps it from being carried forward. It does not delete the task, mark it done, change its due date, or stop a repeat. `restore_today_item` undoes that. `move_today_item_to_day` is Tomorrow when `day` is the day after `local_today`, and Move to today when `day` is `local_today`. Ticked lines stay where they were ticked. Lines taken off a day are omitted from `list_today`.
 
 `check_today_item` ticks a line on its current day. `complete_task` defaults to true, so a linked task is marked done. Pass `complete_task: false` to tick the line and leave the task in progress. The due date stays.
 
-`list_today_suggestions` is the Suggestions card. It offers at most three open actions assigned to the person that are not already on today. Overdue and due-soon actions come first, then In progress, then manual order. The first non-empty set is stored for that local day. Adding one with `add_today_item`, or hiding it with `dismiss_today_suggestion`, does not pull in a replacement. Tomorrow has no suggestions. The first call prepares today, the same way `list_today` does, so it is safe to retry but it is not a pure read.
+`list_today_suggestions` offers at most three open actions assigned to the person that are not already on today. They are the top of that person's Mine list, in Mine's own order: rank first, then due date. Nothing is scored ahead of that. The first non-empty set is stored for that local day. Adding one with `add_today_item`, or hiding it with `dismiss_today_suggestion`, does not pull in a replacement. Yesterday and tomorrow have no suggestions. The first call prepares today, the same way `list_today` does, so it is safe to retry but it is not a pure read.
 
 `convert_today_item_to_task` is Make it an action. Pass a plain line id and one circle (`circle_id`, `circle_name`, or `personal: true`). It creates a to-do in that circle, assigned to the caller, and links the existing line. The line keeps its day, its place, and its tick. A line that is already an action, or a repeating line, is refused. A viewer of the circle cannot do this.
 
@@ -365,7 +365,7 @@ supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256
 supabase functions deploy mcp --no-verify-jwt
 ```
 
-`server.json` and the initialize response both advertise version `1.8.0`.
+`server.json` and the initialize response both advertise version `1.8.1`.
 
 `--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. The gateway must let the unauthenticated discovery request through. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
 
