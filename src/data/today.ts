@@ -8,6 +8,7 @@ import {
   dayMatches,
   insertTodayLine,
   localToday,
+  shiftDay,
   preferFreshTodayLines,
   previewRoutineIds,
   replaceTodayLineId,
@@ -498,13 +499,14 @@ function mapSuggestion(row: SuggestionRow): TodaySuggestion {
   };
 }
 
-/** Mine actions offered on the current day. Tomorrow does not ask. */
+/** Mine actions offered on today or tomorrow. Yesterday does not ask. */
 export function useTodaySuggestions(day: string, enabled: boolean) {
   const { userId } = useAuth();
   const asOf = localToday();
+  const offered = day === asOf || day === shiftDay(asOf, 1);
   return useQuery({
     queryKey: qk.todaySuggestions(userId ?? '', day),
-    enabled: !!userId && enabled && day === asOf,
+    enabled: !!userId && enabled && offered,
     refetchOnWindowFocus: false,
     queryFn: async (): Promise<TodaySuggestion[]> => {
       const { data, error } = await supabase.rpc('list_today_suggestions', {
@@ -633,8 +635,12 @@ export function useAddTodayTask(day: string) {
     onMutate: async (input) => {
       if (!userId) return { snapshot: undefined, tempId: undefined, suggestions: undefined, editing: false };
       const tempId = nextPendingLineId();
-      const suggestionKey = qk.todaySuggestions(userId, asOf);
-      const suggestions = day === asOf ? qc.getQueryData<TodaySuggestion[]>(suggestionKey) : undefined;
+      // Adding to today also takes the action off tomorrow's suggestions.
+      const suggestionDays = day === asOf ? [asOf, shiftDay(asOf, 1)] : [day];
+      const suggestions = suggestionDays.flatMap((suggestionDay) => {
+        const items = qc.getQueryData<TodaySuggestion[]>(qk.todaySuggestions(userId, suggestionDay));
+        return items ? [{ day: suggestionDay, items }] : [];
+      });
       const snapshot = await beginTodayEdit(qc, userId, () => {
         const current = qc.getQueryData<TodayLine[]>(dayQueryKey(userId, day, asOf)) ?? [];
         placeOptimisticLine(qc, userId, day, asOf, {
@@ -645,16 +651,20 @@ export function useAddTodayTask(day: string) {
           spaceName: input.spaceName,
           spaceColor: input.spaceColor,
         });
-        if (day === asOf && suggestions) {
-          qc.setQueryData(suggestionKey, withoutSuggestion(suggestions, input.taskId));
+        for (const saved of suggestions) {
+          qc.setQueryData(
+            qk.todaySuggestions(userId, saved.day),
+            withoutSuggestion(saved.items, input.taskId),
+          );
         }
       });
       return { snapshot, tempId, suggestions, editing: true };
     },
     onError: (_error, _input, context) => {
       restoreTodayLists(qc, context?.snapshot);
-      if (userId && context?.suggestions) {
-        qc.setQueryData(qk.todaySuggestions(userId, asOf), context.suggestions);
+      if (!userId || !context?.suggestions) return;
+      for (const saved of context.suggestions) {
+        qc.setQueryData(qk.todaySuggestions(userId, saved.day), saved.items);
       }
     },
     onSuccess: (id, _input, context) => {

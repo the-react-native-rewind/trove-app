@@ -12,7 +12,7 @@ import { fullBleedMediaCorners, TaskMediaStrip } from '@/components/TaskMediaStr
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { SpaceTag } from '@/components/ui/Indicators';
-import { FadeSheet } from '@/components/ui/FadeSheet';
+import { FadeSheet, SheetBottom } from '@/components/ui/FadeSheet';
 import { StackScreen } from '@/components/ui/StackScreen';
 import { Text } from '@/components/ui/Text';
 import { useTaskAttachments } from '@/data/attachments';
@@ -449,8 +449,8 @@ function MoveSheet({
   }
 
   return (
-    <FadeSheet visible={visible} onClose={onClose}>
-      <View style={styles.moveSheet}>
+    <FadeSheet visible={visible} onClose={onClose} scroll>
+      <SheetBottom style={styles.moveSheet}>
         <Text variant="sectionHeading">Move</Text>
         {destinations.length === 0 ? (
           <Text variant="body" color={colors.inkSoft}>
@@ -460,7 +460,7 @@ function MoveSheet({
           <CirclePicker circles={destinations} value={null} onChange={(id) => void onChoose(id)} />
         )}
         {move.isPending ? <ActivityIndicator color={colors.brand} /> : null}
-      </View>
+      </SheetBottom>
     </FadeSheet>
   );
 }

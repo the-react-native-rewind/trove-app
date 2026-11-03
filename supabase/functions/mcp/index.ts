@@ -633,7 +633,7 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
         day: z
           .string()
           .optional()
-          .describe('Date as YYYY-MM-DD. Defaults to local_today. Only that day has suggestions.'),
+          .describe('Date as YYYY-MM-DD. Defaults to local_today. Today or the next day. Yesterday returns nothing.'),
         local_today: z
           .string()
           .optional()
@@ -649,6 +649,10 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
       ...described('dismiss_today_suggestion'),
       inputSchema: z.object({
         task_id: z.string().uuid().describe('Action id from list_today_suggestions.'),
+        day: z
+          .string()
+          .optional()
+          .describe('The suggestion day as YYYY-MM-DD. Defaults to local_today. Use the next day to hide a tomorrow suggestion only.'),
         local_today: z
           .string()
           .optional()

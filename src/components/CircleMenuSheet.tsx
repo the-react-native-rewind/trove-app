@@ -1,11 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { hapticLight } from '@/lib/haptics';
 import { colors, radii, spacing } from '@/theme/tokens';
-import { FadeSheet } from './ui/FadeSheet';
+import { FadeSheet, SheetBottom } from './ui/FadeSheet';
 import { Text } from './ui/Text';
 
 type MenuItem = {
@@ -48,13 +47,12 @@ export function CircleMenuSheet({
   spaceId: string;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const items = circleMenuItems(spaceId);
 
   return (
-    <FadeSheet visible={visible} onClose={onClose}>
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+    <FadeSheet visible={visible} onClose={onClose} scroll>
+      <SheetBottom style={styles.sheet}>
         <Text variant="sectionHeading">Circle</Text>
         {items.map((item) => (
           <Pressable
@@ -75,7 +73,7 @@ export function CircleMenuSheet({
             <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
           </Pressable>
         ))}
-      </View>
+      </SheetBottom>
     </FadeSheet>
   );
 }

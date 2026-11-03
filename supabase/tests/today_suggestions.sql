@@ -61,10 +61,37 @@ begin
     raise exception 'dismissing one should not backfill, got %', titles;
   end if;
 
-  select array_agg(title) into titles
+  perform public.add_today_item(day, null, doing_id, day);
+
+  select array_agg(title order by slot) into titles
   from public.list_today_suggestions(day + 1, day);
+  if titles[1] <> 'Top of Mine' or array_length(titles, 1) <> 3 or 'In progress lower' = any (titles) then
+    raise exception 'tomorrow should skip actions already on today, got %', titles;
+  end if;
+
+  perform public.dismiss_today_suggestion(day + 1, top_id);
+  select array_agg(title order by slot) into titles
+  from public.list_today_suggestions(day + 1, day);
+  if array_length(titles, 1) <> 2 or 'Top of Mine' = any (titles) or 'In progress lower' = any (titles) then
+    raise exception 'dismissing tomorrow should not backfill or touch today, got %', titles;
+  end if;
+
+  select array_agg(title order by slot) into titles
+  from public.list_today_suggestions(day, day);
+  if titles <> array['Overdue lower']::text[] then
+    raise exception 'today suggestions should stay independent, got %', titles;
+  end if;
+
+  select array_agg(title) into titles
+  from public.list_today_suggestions(day - 1, day);
   if titles is not null then
-    raise exception 'tomorrow should have no suggestions, got %', titles;
+    raise exception 'yesterday should have no suggestions, got %', titles;
+  end if;
+
+  select array_agg(title) into titles
+  from public.list_today_suggestions(day + 2, day);
+  if titles is not null then
+    raise exception 'the day after tomorrow should have no suggestions, got %', titles;
   end if;
 end $$;
 

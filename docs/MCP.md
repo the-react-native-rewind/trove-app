@@ -188,8 +188,8 @@ Send the OAuth access token, or `Authorization: Bearer trove_…`. The public ho
 | `move_today_item_to_day` | Move a line to today or tomorrow. Tomorrow is stored without preparing the day. The task's due date stays. Also how a yesterday-review line moves to today. |
 | `list_open_past_today` | Open one-off lines from before today. They are not moved on their own. Routines are left out. |
 | `check_today_item` | Tick a line on the day it is already on. By default a linked task is marked done. |
-| `list_today_suggestions` | Up to three open Mine actions, in Mine's order, for today. The first set stays frozen for that day. |
-| `dismiss_today_suggestion` | Hide one of those suggestions for the rest of the day. The action is unchanged. |
+| `list_today_suggestions` | Up to three open Mine actions, in Mine's order, for today or tomorrow. Each day keeps its own frozen set. |
+| `dismiss_today_suggestion` | Hide one of those suggestions for the rest of that day. The action is unchanged. |
 | `convert_today_item_to_task` | Turn a plain Today line into an action in a circle. The line stays where it is. |
 
 Each tool has a human title and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` values. Reads are not destructive. Completing a task is not destructive, because it can be undone. Updating, assigning, and moving can remove data, so those are marked destructive. Inviting someone and attaching a file from a URL reach outside Trove, so those are marked open-world. `list_today` prepares a day the first time you ask for it, so it is safe to retry but it is not a pure read.
@@ -220,7 +220,7 @@ The first request for today, or any earlier date, prepares it. Routines are inse
 
 `check_today_item` ticks a line on its current day. `complete_task` defaults to true, so a linked task is marked done. Pass `complete_task: false` to tick the line and leave the task in progress. The due date stays.
 
-`list_today_suggestions` offers at most three open actions assigned to the person that are not already on today. They are the top of that person's Mine list, in Mine's own order: rank first, then due date. Nothing is scored ahead of that. The first non-empty set is stored for that local day. Adding one with `add_today_item`, or hiding it with `dismiss_today_suggestion`, does not pull in a replacement. Yesterday and tomorrow have no suggestions. The first call prepares today, the same way `list_today` does, so it is safe to retry but it is not a pure read.
+`list_today_suggestions` offers at most three open actions assigned to the person. They are the top of that person's Mine list, in Mine's own order: rank first, then due date. Nothing is scored ahead of that. Pass `day` as `YYYY-MM-DD`; it defaults to `local_today`. Today and the next day each store their own set. Tomorrow skips actions already on today or tomorrow, including a routine that would show there. Yesterday, and any later day, return nothing. The first non-empty set for a day stays frozen: adding one with `add_today_item`, or hiding it with `dismiss_today_suggestion` for that same `day`, does not pull in a replacement. `dismiss_today_suggestion` takes an optional `day` (default today) so hiding one on tomorrow leaves today's set alone. The first call for today prepares that day, the same way `list_today` does. Tomorrow is not prepared. It is safe to retry but it is not a pure read.
 
 `convert_today_item_to_task` is Make it an action. Pass a plain line id and one circle (`circle_id`, `circle_name`, or `personal: true`). It creates a to-do in that circle, assigned to the caller, and links the existing line. The line keeps its day, its place, and its tick. A line that is already an action, or a repeating line, is refused. A viewer of the circle cannot do this.
 
@@ -365,7 +365,7 @@ supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256
 supabase functions deploy mcp --no-verify-jwt
 ```
 
-`server.json` and the initialize response both advertise version `1.8.1`.
+`server.json` and the initialize response both advertise version `1.8.2`.
 
 `--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. The gateway must let the unauthenticated discovery request through. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
 

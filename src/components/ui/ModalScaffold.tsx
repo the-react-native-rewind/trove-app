@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  KeyboardAvoidingView,
+  Dimensions,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +13,7 @@ import {
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { sheetChrome } from '@/lib/sheetLayout';
 import { useIsWide } from '@/hooks/useIsWide';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Text } from './Text';
@@ -34,7 +36,11 @@ export function ModalScaffold({
   const insets = useSafeAreaInsets();
   const isWide = useIsWide();
   const progress = useSharedValue(0);
+  const keyboardLift = useSharedValue(0);
   const [leaving, setLeaving] = useState(false);
+  const [frameHeight, setFrameHeight] = useState(() => Dimensions.get('screen').height);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const screen = Dimensions.get('screen');
 
   useEffect(() => {
     const finishClose = () => {
@@ -46,14 +52,55 @@ export function ModalScaffold({
     });
   }, [leaving, onClose, progress, router]);
 
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const apply = (height: number, duration: number) => {
+      const screenHeight = Dimensions.get('screen').height;
+      const coversScreen = frameHeight >= screenHeight - 1;
+      const outside = isWide || coversScreen ? 0 : insets.bottom;
+      const lift = height > 0 ? Math.max(0, height - outside) : 0;
+      keyboardLift.value = withTiming(lift, { duration });
+      setKeyboardHeight(height);
+    };
+    const visibleKeyboard = Keyboard.metrics();
+    if (visibleKeyboard) apply(visibleKeyboard.height, 0);
+    const show = Keyboard.addListener(showEvent, (event) => {
+      apply(event.endCoordinates.height, Platform.OS === 'ios' ? event.duration : 180);
+    });
+    const hide = Keyboard.addListener(hideEvent, (event) => {
+      apply(0, Platform.OS === 'ios' ? event.duration : 160);
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [frameHeight, insets.bottom, isWide, keyboardLift]);
+
   function close() {
     setLeaving(true);
   }
 
+  const chrome = sheetChrome({
+    screenHeight: screen.height,
+    frameHeight,
+    topInset: insets.top,
+    bottomInset: insets.bottom,
+    leftInset: insets.left,
+    rightInset: insets.right,
+    keyboardHeight,
+    wide: isWide,
+    contentGap: spacing.md,
+  });
+
   const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - progress.value) * (isWide ? 28 : 72) }],
-  }));
+    marginBottom: keyboardLift.value,
+  }), [isWide]);
+
+  const footerBottom = keyboardHeight > 0 ? spacing.md : isWide ? spacing.md : insets.bottom + spacing.md;
 
   const body = (
     <>
@@ -64,12 +111,9 @@ export function ModalScaffold({
         </Pressable>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex}
-        keyboardVerticalOffset={spacing.md}
-      >
+      <View style={styles.flex}>
         <ScrollView
+          style={styles.flex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -77,23 +121,37 @@ export function ModalScaffold({
           {children}
         </ScrollView>
         {footer ? (
-          <View
-            style={[
-              styles.footer,
-              { paddingBottom: (isWide ? spacing.md : insets.bottom) + spacing.md },
-            ]}
-          >
+          <View style={[styles.footer, { paddingBottom: footerBottom }]}>
             {footer}
           </View>
         ) : null}
-      </KeyboardAvoidingView>
+      </View>
     </>
   );
 
   // The route is a transparent overlay. The dim fades. Only the sheet moves.
+  // Phone sheets are full-height pages: the header starts below the status bar,
+  // the same way a pushed screen does. The dim still covers that strip.
   return (
-    <View style={styles.fill}>
-      <Animated.View style={[styles.backdrop, backdropStyle]}>
+    <View
+      style={styles.fill}
+      onLayout={(event) => {
+        const next = event.nativeEvent.layout.height;
+        setFrameHeight((current) => (Math.abs(current - next) < 1 ? current : next));
+      }}
+    >
+      <Animated.View
+        style={[
+          styles.backdrop,
+          backdropStyle,
+          {
+            top: -chrome.bleedTop,
+            bottom: -chrome.bleedBottom,
+            left: -chrome.bleedLeft,
+            right: -chrome.bleedRight,
+          },
+        ]}
+      >
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={close}
@@ -103,7 +161,10 @@ export function ModalScaffold({
       </Animated.View>
       <View style={[styles.host, !isWide && styles.hostPhone]} pointerEvents="box-none">
         <Animated.View
-          style={[isWide ? styles.card : [styles.container, { paddingTop: spacing.md }], sheetStyle]}
+          style={[
+            isWide ? styles.card : [styles.container, { paddingTop: insets.top }],
+            sheetStyle,
+          ]}
         >
           {body}
         </Animated.View>
@@ -113,17 +174,13 @@ export function ModalScaffold({
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1 },
+  fill: { flex: 1, overflow: 'visible' },
   container: { flex: 1, backgroundColor: colors.paper },
   flex: { flex: 1 },
   host: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   hostPhone: { padding: 0, justifyContent: 'flex-end' },
   backdrop: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
     backgroundColor: 'rgba(43, 38, 32, 0.45)',
   },
   card: {
