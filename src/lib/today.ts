@@ -580,7 +580,7 @@ export function eligibleMineSuggestions(
 }
 
 /**
- * What Today offers under Suggested, and which offers to store the first time.
+ * What Today offers under Suggested from Mine, and which offers to store the first time.
  * A day other than `asOf` shows nothing and stores nothing.
  * An empty offer list is not frozen, so the first actions of the day can
  * still appear. Once any offer is stored, later actions are not added.
