@@ -415,7 +415,68 @@ function useRefreshToday() {
     void qc.invalidateQueries({ queryKey: ['today', userId] });
     void qc.invalidateQueries({ queryKey: ['tomorrow', userId] });
     void qc.invalidateQueries({ queryKey: ['today-review', userId] });
+    void qc.invalidateQueries({ queryKey: ['today-suggestions', userId] });
   };
+}
+
+export type TodaySuggestion = {
+  taskId: string;
+  title: string;
+  status: string;
+  dueDate: string | null;
+  rank: string;
+  spaceId: string;
+  spaceName: string;
+  spaceColor: string;
+};
+
+type SuggestionRow = {
+  task_id: string;
+  title: string;
+  status: string;
+  due_date: string | null;
+  rank: string;
+  space_id: string;
+  space_name: string;
+  space_color: string;
+  slot: number;
+};
+
+function mapSuggestion(row: SuggestionRow): TodaySuggestion {
+  return {
+    taskId: row.task_id,
+    title: row.title,
+    status: row.status,
+    dueDate: row.due_date,
+    rank: row.rank,
+    spaceId: row.space_id,
+    spaceName: row.space_name,
+    spaceColor: row.space_color,
+  };
+}
+
+/** Mine actions offered on the current day. Tomorrow does not ask. */
+export function useTodaySuggestions(day: string, enabled: boolean) {
+  const { userId } = useAuth();
+  const asOf = localToday();
+  return useQuery({
+    queryKey: qk.todaySuggestions(userId ?? '', day),
+    enabled: !!userId && enabled && day === asOf,
+    refetchOnWindowFocus: false,
+    queryFn: async (): Promise<TodaySuggestion[]> => {
+      const { data, error } = await supabase.rpc('list_today_suggestions', {
+        p_day: day,
+        p_as_of: asOf,
+      });
+      if (error) throw error;
+      return ((data ?? []) as SuggestionRow[]).map(mapSuggestion);
+    },
+  });
+}
+
+function withoutSuggestion(items: readonly TodaySuggestion[], taskId: string): TodaySuggestion[] {
+  if (!items.some((item) => item.taskId === taskId)) return items as TodaySuggestion[];
+  return items.filter((item) => item.taskId !== taskId);
 }
 
 function blankLine(day: string, id: string, rank: string, createdAt: string): TodayLine {
@@ -527,21 +588,32 @@ export function useAddTodayTask(day: string) {
       return data;
     },
     onMutate: async (input) => {
-      if (!userId) return { snapshot: undefined, tempId: undefined, editing: false };
+      if (!userId) return { snapshot: undefined, tempId: undefined, suggestions: undefined, editing: false };
       const tempId = nextPendingLineId();
+      const suggestionKey = qk.todaySuggestions(userId, asOf);
+      const suggestions = day === asOf ? qc.getQueryData<TodaySuggestion[]>(suggestionKey) : undefined;
       const snapshot = await beginTodayEdit(qc, userId, () => {
         const current = qc.getQueryData<TodayLine[]>(dayQueryKey(userId, day, asOf)) ?? [];
         placeOptimisticLine(qc, userId, day, asOf, {
           ...blankLine(day, tempId, bottomTodayRank(current), new Date().toISOString()),
           taskId: input.taskId,
           taskTitle: input.title,
+          spaceId: null,
           spaceName: input.spaceName,
           spaceColor: input.spaceColor,
         });
+        if (day === asOf && suggestions) {
+          qc.setQueryData(suggestionKey, withoutSuggestion(suggestions, input.taskId));
+        }
       });
-      return { snapshot, tempId, editing: true };
+      return { snapshot, tempId, suggestions, editing: true };
     },
-    onError: (_error, _input, context) => restoreTodayLists(qc, context?.snapshot),
+    onError: (_error, _input, context) => {
+      restoreTodayLists(qc, context?.snapshot);
+      if (userId && context?.suggestions) {
+        qc.setQueryData(qk.todaySuggestions(userId, asOf), context.suggestions);
+      }
+    },
     onSuccess: (id, _input, context) => {
       if (!userId || !context?.tempId || !id) return;
       mapTodayLists(qc, userId, (lines) => replaceTodayLineId(lines, context.tempId!, id));
@@ -918,6 +990,86 @@ export function useDeleteTodayItem() {
       return { snapshot, editing: true };
     },
     onError: (_error, _id, context) => restoreTodayLists(qc, context?.snapshot),
+    onSettled: (_result, _error, _variables, context) => refresh(context?.editing === true),
+  });
+}
+
+export function useDismissTodaySuggestion(day: string) {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  const refresh = useRefreshToday();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const { error } = await supabase.rpc('dismiss_today_suggestion', {
+        p_day: day,
+        p_task_id: taskId,
+      });
+      if (error) throw error;
+    },
+    onMutate: async (taskId) => {
+      if (!userId) return { previous: undefined };
+      const key = qk.todaySuggestions(userId, day);
+      const previous = qc.getQueryData<TodaySuggestion[]>(key);
+      if (previous) qc.setQueryData(key, withoutSuggestion(previous, taskId));
+      return { previous };
+    },
+    onError: (_error, _taskId, context) => {
+      if (!userId || !context?.previous) return;
+      qc.setQueryData(qk.todaySuggestions(userId, day), context.previous);
+    },
+    onSettled: () => refresh(false),
+  });
+}
+
+export type TodayActionDraft = {
+  id: string;
+  spaceId: string;
+  spaceName: string;
+  spaceColor: string;
+  title: string;
+};
+
+/** Turn a plain line into a circle action and keep the line where it is. */
+export function useConvertTodayItem() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  const refresh = useRefreshToday();
+  return useMutation({
+    mutationFn: async (input: TodayActionDraft) => {
+      const { data, error } = await supabase.rpc('convert_today_item_to_task', {
+        p_item_id: input.id,
+        p_space_id: input.spaceId,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onMutate: async (input) => {
+      if (!userId) return { snapshot: undefined, pendingTaskId: undefined, editing: false };
+      const pendingTaskId = `pending-task:${input.id}`;
+      const snapshot = await beginTodayEdit(qc, userId, () => {
+        mapTodayLists(qc, userId, (lines) =>
+          withLinePatch(lines, input.id, {
+            taskId: pendingTaskId,
+            taskTitle: input.title,
+            text: null,
+            spaceId: input.spaceId,
+            spaceName: input.spaceName,
+            spaceColor: input.spaceColor,
+          }),
+        );
+      });
+      return { snapshot, pendingTaskId, editing: true };
+    },
+    onError: (_error, _input, context) => restoreTodayLists(qc, context?.snapshot),
+    onSuccess: (taskId, _input, context) => {
+      if (!userId || !context?.pendingTaskId || !taskId) return;
+      mapTodayLists(qc, userId, (lines) =>
+        lines.map((line) => (line.taskId === context.pendingTaskId ? { ...line, taskId } : line)),
+      );
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['week-tasks'] });
+      qc.invalidateQueries({ queryKey: qk.spaces });
+    },
     onSettled: (_result, _error, _variables, context) => refresh(context?.editing === true),
   });
 }

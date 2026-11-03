@@ -101,6 +101,9 @@ export const MCP_TOOL_NAMES = [
   'move_today_item_to_day',
   'list_open_past_today',
   'check_today_item',
+  'list_today_suggestions',
+  'dismiss_today_suggestion',
+  'convert_today_item_to_task',
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
@@ -164,6 +167,12 @@ export const toolDescriptions: Record<McpToolName, string> = {
     'List open one-off lines from before the person\'s local today. These are the Yesterday review: lines that were not ticked and were not taken off their day. They are not moved automatically. Routines are omitted, because a missed routine lapses. Pass local_today as YYYY-MM-DD (defaults to the UTC date). Results are newest day first, then rank (higher first), and stop after 40 lines. Each item includes its original day. Resolve one with check_today_item (done), move_today_item_to_day (move to today), or dismiss_today_item (drop).',
   check_today_item:
     'Mark one Today line done on the day it is already on. Sets checked_at. Does not move the line. complete_task defaults to true: when the line is linked to a task, that task is marked done, which is the Finished choice in the app. Pass complete_task false to tick the line only and leave the task in progress (Done for today). Does not change the due date. Pass the line id from list_today or list_open_past_today, not a preview id. Idempotent when the line is already ticked.',
+  list_today_suggestions:
+    'List up to three suggestions for the signed-in person\'s Today. Each one is an open action assigned to them (their Mine list) that is not already on today. Overdue and due-soon actions come first, then In progress, then their manual order. The first non-empty set is frozen for that local day: adding one with add_today_item, or dismissing it with dismiss_today_suggestion, does not replace it with another. Pass local_today as the person\'s local date (YYYY-MM-DD). Suggestions exist only for that day, not for tomorrow. The app calls these actions, and shows them on a Suggestions card.',
+  dismiss_today_suggestion:
+    'Hide one suggestion from Today for the rest of that local day. Does not change the action, its due date, or its status. Pass task_id from list_today_suggestions. Idempotent when that suggestion is already hidden. Does not offer a replacement.',
+  convert_today_item_to_task:
+    'Turn one plain Today line into an action. The app calls this Make it an action. Pass the line id and a circle (circle_id, circle_name, or personal: true). Creates a to-do in that circle, assigned to the caller, and links the existing line to it. The line keeps its day, its place, and whether it is ticked. Task lines and repeating lines are refused. Viewers cannot add an action. A title longer than 300 characters is refused.',
 };
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
@@ -381,6 +390,17 @@ export type AttachmentRecord = {
 };
 
 /** One private Today line. repeat_days is set only while the routine is active. */
+export type TodaySuggestion = {
+  task_id: string;
+  title: string;
+  status: string;
+  due_date: string | null;
+  circle_id: string;
+  circle_name: string;
+  circle_color: string;
+  rank: string;
+};
+
 export type TodayEntry = {
   id: string;
   day: string;
@@ -492,6 +512,18 @@ export interface TroveStore {
    * has a task, that task becomes done. Does not change the due date.
    */
   checkTodayItem(input: { itemId: string; completeTask: boolean }): Promise<TodayEntry>;
+  /**
+   * Suggestions for local today. A day other than asOf returns nothing.
+   * The first non-empty set is stored. Later calls do not add replacements.
+   */
+  listTodaySuggestions(input: { day: string; asOf: string }): Promise<TodaySuggestion[]>;
+  /** Hide one offered suggestion. Does not change the task. */
+  dismissTodaySuggestion(input: { day: string; taskId: string }): Promise<void>;
+  /**
+   * Create a to-do in the circle, assigned to the caller, and link this plain
+   * line to it. The line keeps its day, rank, and tick.
+   */
+  convertTodayItem(input: { itemId: string; circleId: string }): Promise<{ task: TaskRecord; item: TodayEntry }>;
 }
 
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -1935,6 +1967,59 @@ export async function checkTodayItem(
       completeTask: input.complete_task !== false,
     });
     return { ok: true, data: { item } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function listTodaySuggestions(
+  store: TroveStore,
+  input: { day?: string; local_today?: string },
+): Promise<ToolResult<{ day: string; suggestions: TodaySuggestion[] }>> {
+  const asOf = resolveLocalToday(input.local_today);
+  if (typeof asOf !== 'string') return { ok: false, error: asOf.error };
+  const day = input.day === undefined || input.day.trim() === '' ? asOf : resolveTodayDay(input.day);
+  if (typeof day !== 'string') return { ok: false, error: day.error };
+  try {
+    const suggestions = await store.listTodaySuggestions({ day, asOf });
+    return { ok: true, data: { day, suggestions } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function dismissTodaySuggestion(
+  store: TroveStore,
+  input: { task_id?: string; local_today?: string },
+): Promise<ToolResult<{ day: string; task_id: string }>> {
+  const taskId = input.task_id?.trim() ?? '';
+  if (!taskId) return { ok: false, error: 'task_id is required.' };
+  const day = resolveLocalToday(input.local_today);
+  if (typeof day !== 'string') return { ok: false, error: day.error };
+  try {
+    await store.dismissTodaySuggestion({ day, taskId });
+    return { ok: true, data: { day, task_id: taskId } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function convertTodayItemToTask(
+  store: TroveStore,
+  input: { item_id?: string; circle_id?: string; circle_name?: string; personal?: boolean },
+): Promise<ToolResult<{ task: TaskRecord; item: TodayEntry }>> {
+  const itemId = input.item_id?.trim() ?? '';
+  if (!itemId) return { ok: false, error: 'item_id is required.' };
+  if (itemId.startsWith('preview:')) {
+    return { ok: false, error: 'That line is a preview. Make the stored line an action.' };
+  }
+  try {
+    const circles = await store.listCircles();
+    const circle = resolveCircle(circles, input, 'required');
+    if (isFieldError(circle)) return { ok: false, error: circle.error };
+    if (circle.role === 'viewer') return { ok: false, error: 'You cannot add an action in that circle.' };
+    const result = await store.convertTodayItem({ itemId, circleId: circle.id });
+    return { ok: true, data: result };
   } catch (error) {
     return fail(error);
   }

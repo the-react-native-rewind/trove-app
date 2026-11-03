@@ -50,10 +50,13 @@ import {
   listMembers,
   addTodayItem,
   checkTodayItem,
+  convertTodayItemToTask,
   dismissTodayItem,
+  dismissTodaySuggestion,
   listMyTasks,
   listOpenPastToday,
   listToday,
+  listTodaySuggestions,
   moveTask,
   moveTodayItem,
   restoreTodayItem,
@@ -620,6 +623,51 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
       }),
     },
     async (args) => asTool(await checkTodayItem(store, args)),
+  );
+
+  server.registerTool(
+    'list_today_suggestions',
+    {
+      ...described('list_today_suggestions'),
+      inputSchema: z.object({
+        day: z
+          .string()
+          .optional()
+          .describe('Date as YYYY-MM-DD. Defaults to local_today. Only that day has suggestions.'),
+        local_today: z
+          .string()
+          .optional()
+          .describe('The person\'s local today as YYYY-MM-DD. Defaults to the UTC date.'),
+      }),
+    },
+    async (args) => asTool(await listTodaySuggestions(store, args)),
+  );
+
+  server.registerTool(
+    'dismiss_today_suggestion',
+    {
+      ...described('dismiss_today_suggestion'),
+      inputSchema: z.object({
+        task_id: z.string().uuid().describe('Action id from list_today_suggestions.'),
+        local_today: z
+          .string()
+          .optional()
+          .describe('The person\'s local today as YYYY-MM-DD. Defaults to the UTC date.'),
+      }),
+    },
+    async (args) => asTool(await dismissTodaySuggestion(store, args)),
+  );
+
+  server.registerTool(
+    'convert_today_item_to_task',
+    {
+      ...described('convert_today_item_to_task'),
+      inputSchema: z.object({
+        item_id: z.string().describe('Plain Today line id from list_today. Not a preview id.'),
+        ...circleTarget,
+      }),
+    },
+    async (args) => asTool(await convertTodayItemToTask(store, args)),
   );
 
   server.registerTool(

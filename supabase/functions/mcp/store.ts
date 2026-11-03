@@ -29,6 +29,7 @@ import {
   type ProjectRecord,
   type ProjectWrite,
   type TodayEntry,
+  type TodaySuggestion,
   type TroveStore,
   weekdayOfDate,
   taskMediaPath,
@@ -121,6 +122,9 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     moveTodayItem: (input) => moveTodayItem(db, input),
     listOpenPast: (day) => listOpenPast(db, userId, day),
     checkTodayItem: (input) => checkTodayItem(db, input),
+    listTodaySuggestions: (input) => listTodaySuggestions(db, input),
+    dismissTodaySuggestion: (input) => dismissTodaySuggestion(db, input),
+    convertTodayItem: (input) => convertTodayItem(db, input),
   };
 }
 
@@ -972,6 +976,72 @@ async function checkTodayItem(
   if (!fresh) throw new TroveError('Line not found');
   return mapTodayRow(fresh as TodayRow);
 }
+
+async function listTodaySuggestions(
+  db: SupabaseClient,
+  input: { day: string; asOf: string },
+): Promise<TodaySuggestion[]> {
+  const { data, error } = await db.rpc('list_today_suggestions', {
+    p_day: input.day,
+    p_as_of: input.asOf,
+  });
+  throwIf(error);
+  return ((data ?? []) as SuggestionRow[]).map((row) => ({
+    task_id: row.task_id,
+    title: row.title,
+    status: row.status,
+    due_date: row.due_date,
+    circle_id: row.space_id,
+    circle_name: row.space_name,
+    circle_color: row.space_color,
+    rank: row.rank,
+  }));
+}
+
+async function dismissTodaySuggestion(
+  db: SupabaseClient,
+  input: { day: string; taskId: string },
+): Promise<void> {
+  const { error } = await db.rpc('dismiss_today_suggestion', {
+    p_day: input.day,
+    p_task_id: input.taskId,
+  });
+  throwIf(error);
+}
+
+async function convertTodayItem(
+  db: SupabaseClient,
+  input: { itemId: string; circleId: string },
+): Promise<{ task: TaskRecord; item: TodayEntry }> {
+  const { data, error } = await db.rpc('convert_today_item_to_task', {
+    p_item_id: input.itemId,
+    p_space_id: input.circleId,
+  });
+  throwIf(error);
+  const taskId = data as string;
+  const task = await getTask(db, taskId);
+  if (!task) throw new TroveError('Task not found');
+  const { data: row, error: readError } = await db
+    .from('today_items')
+    .select(TODAY_SELECT)
+    .eq('id', input.itemId)
+    .maybeSingle();
+  throwIf(readError);
+  if (!row) throw new TroveError('Line not found');
+  return { task, item: mapTodayRow(row as TodayRow) };
+}
+
+type SuggestionRow = {
+  task_id: string;
+  title: string;
+  status: string;
+  due_date: string | null;
+  rank: string;
+  space_id: string;
+  space_name: string;
+  space_color: string;
+  slot: number;
+};
 
 async function dismissTodayItem(db: SupabaseClient, itemId: string): Promise<void> {
   const { error } = await db.rpc('dismiss_today_item', { p_item_id: itemId });

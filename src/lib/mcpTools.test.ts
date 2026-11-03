@@ -34,8 +34,11 @@ import {
   listAgentLog,
   addTodayItem,
   checkTodayItem,
+  convertTodayItemToTask,
   dismissTodayItem,
+  dismissTodaySuggestion,
   listOpenPastToday,
+  listTodaySuggestions,
   listCircles,
   listCircleTasks,
   listMyTasks,
@@ -55,7 +58,7 @@ import {
 } from './mcpTools';
 import { inviteUrl } from './links';
 import { compareRank, rankAtBottom } from './rank';
-import { dayMatches, planTodayMaterialisation, shiftDay } from './today';
+import { dayMatches, planTodayMaterialisation, resolveTodaySuggestions, shiftDay, type MineAction } from './today';
 
 const ME = 'user-me';
 const SAM = 'user-sam';
@@ -93,6 +96,9 @@ test('the tool catalog matches the handlers we ship', () => {
     'move_today_item_to_day',
     'list_open_past_today',
     'check_today_item',
+    'list_today_suggestions',
+    'dismiss_today_suggestion',
+    'convert_today_item_to_task',
   ]);
   assert.deepEqual(TASK_STATUSES, ['todo', 'in_progress', 'done']);
   assert.equal(/use handoff_task/.test(toolDescriptions.assign_task), true);
@@ -1226,6 +1232,115 @@ test('open past lines stay put until they are done, moved, or dropped', async ()
   assert.equal(preview.ok, false);
 });
 
+test('today suggestions freeze the first set and do not backfill', async () => {
+  const store = memoryStore();
+  const day = '2026-11-03';
+  const asOf = { local_today: day };
+  async function mine(title: string, patch: Partial<TaskRecord>) {
+    const created = await createTask(store, { title, circle_id: HOUSE });
+    assert.equal(created.ok, true);
+    if (!created.ok) throw new Error(created.error);
+    Object.assign(store.tasks.find((task) => task.id === created.data.task.id)!, patch);
+    return created.data.task.id;
+  }
+  const overdue = await mine('File the VAT', { due_date: '2026-11-01', rank: 'm' });
+  const soon = await mine('Renew the domain', { due_date: '2026-11-05', rank: 'a' });
+  const later = await mine('Reply to José', { status: 'in_progress', due_date: '2026-11-06', rank: 'z' });
+  await mine('Sort the drawer', { rank: 'c' });
+  const finished = await mine('Already done', { status: 'done', due_date: '2026-11-01', rank: 'zz' });
+  const sam = await createTask(store, { title: 'Sam’s errand', circle_id: HOUSE, assignees: ['Sam'] });
+  assert.equal(sam.ok, true);
+  const onToday = await mine('Already planned', { rank: 'y' });
+  const added = await addTodayItem(store, { day, task_id: onToday, ...asOf });
+  assert.equal(added.ok, true);
+
+  const first = await listTodaySuggestions(store, { day, ...asOf });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.deepEqual(
+    first.data.suggestions.map((item) => item.task_id),
+    [overdue, soon, later],
+  );
+  assert.equal(first.data.suggestions.some((item) => item.task_id === finished), false);
+
+  const dismissed = await dismissTodaySuggestion(store, { task_id: overdue, ...asOf });
+  assert.equal(dismissed.ok, true);
+  const again = await listTodaySuggestions(store, { day, ...asOf });
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.deepEqual(
+    again.data.suggestions.map((item) => item.task_id),
+    [soon, later],
+  );
+
+  const linked = await addTodayItem(store, { day, task_id: soon, ...asOf });
+  assert.equal(linked.ok, true);
+  await mine('Brand new overdue', { due_date: '2026-10-01', rank: 'zz' });
+  const afterAdd = await listTodaySuggestions(store, { day, ...asOf });
+  assert.equal(afterAdd.ok, true);
+  if (!afterAdd.ok) return;
+  assert.deepEqual(
+    afterAdd.data.suggestions.map((item) => item.task_id),
+    [later],
+  );
+
+  const tomorrow = await listTodaySuggestions(store, { day: '2026-11-04', ...asOf });
+  assert.equal(tomorrow.ok, true);
+  if (!tomorrow.ok) return;
+  assert.deepEqual(tomorrow.data.suggestions, []);
+  assert.equal(/frozen/.test(toolDescriptions.list_today_suggestions), true);
+});
+
+test('a plain today line becomes an action in place', async () => {
+  const store = memoryStore();
+  const day = '2026-11-03';
+  const added = await addTodayItem(store, { day, text: '  Call the bank  ', local_today: day });
+  assert.equal(added.ok, true);
+  if (!added.ok) return;
+  const rank = added.data.item.rank;
+  const converted = await convertTodayItemToTask(store, {
+    item_id: added.data.item.id,
+    circle_id: HOUSE,
+  });
+  assert.equal(converted.ok, true);
+  if (!converted.ok) return;
+  assert.equal(converted.data.task.title, 'Call the bank');
+  assert.equal(converted.data.task.status, 'todo');
+  assert.equal(converted.data.task.circle_id, HOUSE);
+  assert.equal(converted.data.task.assignee_id, ME);
+  assert.equal(converted.data.item.id, added.data.item.id);
+  assert.equal(converted.data.item.day, day);
+  assert.equal(converted.data.item.rank, rank);
+  assert.equal(converted.data.item.checked_at, null);
+  assert.equal(converted.data.item.task_id, converted.data.task.id);
+  assert.equal(converted.data.item.text, null);
+
+  const again = await convertTodayItemToTask(store, { item_id: added.data.item.id, personal: true });
+  assert.equal(again.ok, false);
+  if (again.ok) return;
+  assert.equal(/already an action/.test(again.error), true);
+
+  const viewer = memoryStore({ houseRole: 'viewer' });
+  const note = await addTodayItem(viewer, { day, text: 'Buy stamps', local_today: day });
+  assert.equal(note.ok, true);
+  if (!note.ok) return;
+  const refused = await convertTodayItemToTask(viewer, { item_id: note.data.item.id, circle_name: 'House' });
+  assert.equal(refused.ok, false);
+  if (refused.ok) return;
+  assert.equal(/cannot add an action/.test(refused.error), true);
+
+  const routine = memoryStore();
+  routine.addRoutine({ id: 'stretch', text: 'Stretch', taskId: null, days: 127, rank: 'a0' });
+  await routine.ensureToday(day);
+  const lines = await listToday(routine, { day, local_today: day });
+  assert.equal(lines.ok, true);
+  if (!lines.ok) return;
+  const repeating = lines.data.items.find((item) => item.routine_id === 'stretch');
+  assert.ok(repeating);
+  const kept = await convertTodayItemToTask(routine, { item_id: repeating!.id, personal: true });
+  assert.equal(kept.ok, false);
+});
+
 function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): TroveStore & {
   tasks: TaskRecord[];
   attachments: AttachmentRecord[];
@@ -1316,7 +1431,33 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     createdAt: string;
   }[] = [];
   const preparedDays = new Set<string>();
+  const suggestionOffers: { day: string; taskId: string; position: number; dismissed: boolean }[] = [];
   let todayCounter = 0;
+
+  function mineActions(): MineAction[] {
+    return tasks
+      .filter((task) => task.assignees.some((person) => person.user_id === ME))
+      .map((task) => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        dueDate: task.due_date,
+        rank: task.rank,
+        spaceId: task.circle_id,
+        spaceName: task.circle_name,
+        spaceColor: circles.find((circle) => circle.id === task.circle_id)?.color ?? 'sage',
+      }));
+  }
+
+  function onDayTaskIds(day: string): Set<string> {
+    return new Set(todayItems.flatMap((item) => (item.day === day && item.taskId ? [item.taskId] : [])));
+  }
+
+  function resolveSuggestion(day: string, taskId: string | null) {
+    if (!taskId) return;
+    const offer = suggestionOffers.find((item) => item.day === day && item.taskId === taskId);
+    if (offer) offer.dismissed = true;
+  }
 
   function todayEntry(item: (typeof todayItems)[number]) {
     const task = tasks.find((row) => row.id === item.taskId);
@@ -1732,6 +1873,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
         );
         if (hidden) {
           hidden.dismissedAt = null;
+          resolveSuggestion(input.day, input.taskId);
           return todayEntry(hidden);
         }
         if (todayItems.some((item) => item.day === input.day && item.taskId === input.taskId && !item.dismissedAt)) {
@@ -1775,6 +1917,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
         createdAt: new Date(Date.UTC(2026, 9, 27, 0, 0, todayCounter)).toISOString(),
       };
       todayItems.push(item);
+      resolveSuggestion(input.day, input.taskId);
       return todayEntry(item);
     },
     async dismissTodayItem(itemId) {
@@ -1842,6 +1985,70 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
         item.checkedAt = '2026-10-27T21:00:00.000Z';
       }
       return todayEntry(item);
+    },
+    async listTodaySuggestions(input) {
+      if (input.day !== input.asOf) return [];
+      await this.ensureToday(input.day);
+      const existing = suggestionOffers.filter((offer) => offer.day === input.day);
+      const resolved = resolveTodaySuggestions({
+        day: input.day,
+        asOf: input.asOf,
+        offers: existing,
+        actions: mineActions(),
+        onDayTaskIds: onDayTaskIds(input.day),
+      });
+      if (resolved.insert) {
+        for (const offer of resolved.insert) suggestionOffers.push({ ...offer, day: input.day });
+      }
+      return resolved.visible.map((action) => ({
+        task_id: action.id,
+        title: action.title,
+        status: action.status,
+        due_date: action.dueDate,
+        circle_id: action.spaceId,
+        circle_name: action.spaceName,
+        circle_color: action.spaceColor,
+        rank: action.rank,
+      }));
+    },
+    async dismissTodaySuggestion(input) {
+      const offer = suggestionOffers.find((item) => item.day === input.day && item.taskId === input.taskId);
+      if (!offer) throw new TroveError('Suggestion not found');
+      offer.dismissed = true;
+    },
+    async convertTodayItem(input) {
+      const item = todayItems.find((row) => row.id === input.itemId);
+      if (!item) throw new TroveError('Line not found');
+      if (item.dismissedAt) throw new TroveError('That line is not on this day');
+      if (item.taskId) throw new TroveError('That line is already an action');
+      if (item.routineId) throw new TroveError('A repeating line stays as it is');
+      const title = (item.text ?? '').replace(/\s+/g, ' ').trim();
+      if (!title) throw new TroveError('Write the line before making it an action');
+      if ([...title].length > 300) throw new TroveError('That line is too long to be an action title');
+      const circle = circles.find((row) => row.id === input.circleId);
+      if (!circle || (circle.role !== 'owner' && circle.role !== 'admin' && circle.role !== 'member')) {
+        throw new TroveError('You cannot add an action in that circle');
+      }
+      const task = await this.insertTask({
+        circleId: input.circleId,
+        title,
+        notes: null,
+        status: 'todo',
+        priority: null,
+        dueDate: null,
+        assigneeIds: [ME],
+        externalId: null,
+        tags: [],
+        position: 1,
+        projectId: null,
+        repeatUnit: null,
+        repeatInterval: 1,
+        repeatWeekday: null,
+      });
+      item.text = null;
+      item.taskId = task.id;
+      resolveSuggestion(item.day, task.id);
+      return { task, item: todayEntry(item) };
     },
     markTodayChecked(itemId: string) {
       const item = todayItems.find((row) => row.id === itemId);

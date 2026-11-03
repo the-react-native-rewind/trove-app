@@ -64,6 +64,9 @@ function stubStore(): TroveStore {
     moveTodayItem: unused,
     listOpenPast: unused,
     checkTodayItem: unused,
+    listTodaySuggestions: unused,
+    dismissTodaySuggestion: unused,
+    convertTodayItem: unused,
   };
 }
 
@@ -228,7 +231,7 @@ Deno.test('initialize returns the server card', async () => {
   const { json } = await readBody(response);
   const result = json.result as { serverInfo?: Record<string, unknown>; instructions?: string };
   assertEquals(result.serverInfo?.title, 'Trove');
-  assertEquals(result.serverInfo?.version, '1.7.0');
+  assertEquals(result.serverInfo?.version, '1.8.0');
   assert(String(result.instructions).includes('How to work with Trove'), String(result.instructions).slice(0, 80));
   assertEquals(result.serverInfo?.websiteUrl, 'https://troving.app');
   const icons = result.serverInfo?.icons as Array<{ src?: string }> | undefined;
