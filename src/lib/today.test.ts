@@ -12,11 +12,10 @@ import {
   planTodayMaterialisation,
   bottomTodayRank,
   ACTION_TITLE_MAX,
-  TODAY_DUE_SOON_DAYS,
   TODAY_SUGGESTION_LIMIT,
   canMakeTodayAction,
   canRescheduleTodayLine,
-  compareMineSuggestions,
+  compareMineOrder,
   eligibleMineSuggestions,
   insertTodayLine,
   openPastReview,
@@ -469,6 +468,20 @@ test('the migration keeps Today private and prepares a day in SQL', () => {
   assert.ok(/v_role not in \('owner', 'admin', 'member'\)/.test(convertBody));
   assert.ok(/v_item\.routine_id is not null/.test(convertBody));
   assert.ok(/today_suggestions_resolve_on_add/.test(suggestions));
+
+  const mineOrder = readFileSync(
+    new URL('../../supabase/migrations/0033_today_suggestions_mine_order.sql', import.meta.url),
+    'utf8',
+  );
+  assert.ok(/candidate\.rank collate "C" desc/.test(mineOrder));
+  assert.ok(/candidate\.due_date asc nulls last/.test(mineOrder));
+  assert.ok(/candidate\.task_position asc/.test(mineOrder));
+  assert.ok(/t\.status <> 'done'/.test(mineOrder));
+  assert.ok(/can_see_task/.test(mineOrder));
+  assert.equal(/tier/.test(mineOrder), false);
+  assert.equal(/p_day \+ 2/.test(mineOrder), false);
+  assert.equal(/returns table \([\s\S]*\bposition smallint/.test(mineOrder), false);
+  assert.ok(/slot smallint/.test(mineOrder));
 });
 
 function action(partial: Partial<MineAction> & Pick<MineAction, 'id'>): MineAction {
@@ -486,9 +499,8 @@ function action(partial: Partial<MineAction> & Pick<MineAction, 'id'>): MineActi
 
 const SUGGESTION_DAY = '2026-11-03';
 
-test('suggestions put overdue and due soon ahead of in progress, then rank', () => {
+test('suggestions follow Mine order, rank first, and skip finished work', () => {
   assert.equal(TODAY_SUGGESTION_LIMIT, 3);
-  assert.equal(TODAY_DUE_SOON_DAYS, 2);
   assert.equal(ACTION_TITLE_MAX, 300);
   const actions = [
     action({ id: 'later', dueDate: '2026-11-06', status: 'in_progress', rank: 'z' }),
@@ -498,12 +510,22 @@ test('suggestions put overdue and due soon ahead of in progress, then rank', () 
     action({ id: 'plain', rank: 'y' }),
     action({ id: 'finished', status: 'done', dueDate: '2026-11-01', rank: 'zz' }),
   ];
-  const ranked = eligibleMineSuggestions(SUGGESTION_DAY, actions, new Set());
+  const ranked = eligibleMineSuggestions(actions, new Set());
   assert.deepEqual(
     ranked.map((item) => item.id),
-    ['overdue', 'soon', 'later', 'doing', 'plain'],
+    ['later', 'plain', 'overdue', 'doing', 'soon'],
   );
-  assert.ok(compareMineSuggestions(SUGGESTION_DAY, actions[2]!, actions[1]!) < 0);
+  assert.ok(compareMineOrder(actions[4]!, actions[2]!) < 0);
+
+  const tied = [
+    action({ id: 'undated', dueDate: null, rank: 'a2', position: 1, createdAt: '2026-01-01T00:00:00.000Z' }),
+    action({ id: 'later-date', dueDate: '2026-12-01', rank: 'a2', position: 1, createdAt: '2026-01-01T00:00:00.000Z' }),
+    action({ id: 'sooner', dueDate: '2026-11-01', rank: 'a2', position: 2, createdAt: '2026-02-01T00:00:00.000Z' }),
+  ];
+  assert.deepEqual(
+    eligibleMineSuggestions(tied, new Set()).map((item) => item.id),
+    ['sooner', 'later-date', 'undated'],
+  );
 });
 
 test('the first suggestion set is frozen, and an empty day is not', () => {
@@ -522,11 +544,11 @@ test('the first suggestion set is frozen, and an empty day is not', () => {
   });
   assert.deepEqual(
     first.visible.map((item) => item.id),
-    ['overdue', 'soon', 'later'],
+    ['later', 'overdue', 'soon'],
   );
   assert.deepEqual(
     first.insert?.map((offer) => offer.taskId),
-    ['overdue', 'soon', 'later'],
+    ['later', 'overdue', 'soon'],
   );
 
   const afterDismiss = resolveTodaySuggestions({
@@ -541,7 +563,7 @@ test('the first suggestion set is frozen, and an empty day is not', () => {
   assert.equal(afterDismiss.insert, null);
   assert.deepEqual(
     afterDismiss.visible.map((item) => item.id),
-    ['soon', 'later'],
+    ['later', 'soon'],
   );
 
   const cleared = resolveTodaySuggestions({
