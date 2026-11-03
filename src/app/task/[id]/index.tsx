@@ -12,7 +12,8 @@ import { fullBleedMediaCorners, TaskMediaStrip } from '@/components/TaskMediaStr
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { SpaceTag } from '@/components/ui/Indicators';
-import { ModalScaffold } from '@/components/ui/ModalScaffold';
+import { FadeSheet } from '@/components/ui/FadeSheet';
+import { StackScreen } from '@/components/ui/StackScreen';
 import { Text } from '@/components/ui/Text';
 import { useTaskAttachments } from '@/data/attachments';
 import { useRoster } from '@/data/members';
@@ -28,6 +29,7 @@ import {
   useSetTaskWeekPlan,
   useTaskWeekPlan,
 } from '@/data/weekPlans';
+import { nextTaskStatus } from '@/lib/board';
 import { formatDueDate, isOverdue } from '@/lib/format';
 import {
   nextRecurrenceDate,
@@ -48,6 +50,7 @@ export default function TaskView() {
   const { data: roster = [] } = useRoster(task?.space_id ?? 'all');
   const handoffTask = useHandoffTask();
   const [handingOff, setHandingOff] = useState(false);
+  const [moving, setMoving] = useState(false);
   const { data: spaces = [] } = useSpaces();
   const myWeekEnabled = useMyWeekEnabled();
   const { data: weekPlan, isLoading: isWeekPlanLoading } = useTaskWeekPlan(id, myWeekEnabled);
@@ -65,21 +68,21 @@ export default function TaskView() {
 
   if (isLoading) {
     return (
-      <ModalScaffold title="Task">
+      <StackScreen title="Task">
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand} />
         </View>
-      </ModalScaffold>
+      </StackScreen>
     );
   }
 
   if (!task) {
     return (
-      <ModalScaffold title="Task">
+      <StackScreen title="Task">
         <Text variant="body" color={colors.inkSoft}>
           This task is no longer here. It may have been deleted.
         </Text>
-      </ModalScaffold>
+      </StackScreen>
     );
   }
 
@@ -106,7 +109,7 @@ export default function TaskView() {
   );
 
   return (
-    <ModalScaffold
+    <StackScreen
       title="Task"
       footer={
         writable ? (
@@ -126,11 +129,6 @@ export default function TaskView() {
       {task.space ? (
         <View style={styles.tagRow}>
           <SpaceTag name={task.space.name} color={task.space.color} />
-          <View style={styles.statusPill}>
-            <Text variant="meta" color={colors.brandDeep}>
-              {statusLabel}
-            </Text>
-          </View>
         </View>
       ) : null}
 
@@ -169,14 +167,11 @@ export default function TaskView() {
 
       <TaskHandoffBlock taskId={task.id} userId={userId} fallback={task.latest_handoff} />
 
-      {writable && task.status !== 'done' ? (
-        <Button
-          label={task.status === 'in_progress' ? 'Back to to do' : 'Mark in progress'}
-          variant="secondary"
-          size="md"
-          loading={updateStatus.isPending}
+      <View style={styles.statusRow}>
+        <Pressable
           onPress={() => {
-            const next = task.status === 'in_progress' ? 'todo' : 'in_progress';
+            if (!writable || updateStatus.isPending) return;
+            const next = nextTaskStatus(task.status);
             updateStatus.mutate(
               { id: task.id, status: next },
               {
@@ -189,8 +184,35 @@ export default function TaskView() {
               },
             );
           }}
-        />
-      ) : null}
+          disabled={!writable || updateStatus.isPending}
+          accessibilityRole="button"
+          accessibilityLabel={`Status ${statusLabel}. Tap to change.`}
+          style={[styles.statusControl, (!writable || updateStatus.isPending) && styles.disabled]}
+        >
+          {updateStatus.isPending ? (
+            <ActivityIndicator color={colors.brandDeep} />
+          ) : (
+            <>
+              <Ionicons name="ellipse" size={12} color={statusDot(task.status)} />
+              <Text variant="bodyMedium" numberOfLines={1}>
+                {statusLabel}
+              </Text>
+            </>
+          )}
+        </Pressable>
+        <Pressable
+          onPress={() => setMoving(true)}
+          disabled={!writable || destinations.length === 0}
+          accessibilityRole="button"
+          accessibilityLabel="Move to another circle"
+          style={[
+            styles.moveButton,
+            (!writable || destinations.length === 0) && styles.disabled,
+          ]}
+        >
+          <Text variant="bodyMedium">Move</Text>
+        </Pressable>
+      </View>
 
       {offerHandoff ? (
         <Button
@@ -228,9 +250,12 @@ export default function TaskView() {
         />
       ) : null}
 
-      {writable && destinations.length > 0 ? (
-        <MoveToCircle taskId={task.id} destinations={destinations} />
-      ) : null}
+      <MoveSheet
+        visible={moving}
+        taskId={task.id}
+        destinations={destinations}
+        onClose={() => setMoving(false)}
+      />
 
       {task.description?.trim() ? (
         <MarkdownNotes markdown={task.description} />
@@ -373,18 +398,27 @@ export default function TaskView() {
       ) : null}
 
       <TaskMedia taskId={task.id} spaceId={task.space_id} canWrite={writable} />
-    </ModalScaffold>
+    </StackScreen>
   );
 }
 
-function MoveToCircle({
+function statusDot(status: string) {
+  if (status === 'in_progress') return colors.honey;
+  if (status === 'done') return colors.brand;
+  return colors.inkFaint;
+}
+
+function MoveSheet({
+  visible,
   taskId,
   destinations,
+  onClose,
 }: {
+  visible: boolean;
   taskId: string;
   destinations: { id: string; name: string; color: string }[];
+  onClose: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const move = useMoveTask();
 
   async function onChoose(circleId: string) {
@@ -393,7 +427,7 @@ function MoveToCircle({
     const confirmed = await confirmDialog({
       title: `Move to ${circle.name}?`,
       message:
-        'People who are not in that circle will be unassigned. Photos and videos stay in the current circle.',
+        'People who are not in that circle will be unassigned. Photos and videos stay in the current circle. The project is cleared.',
       confirmLabel: 'Move',
       cancelLabel: 'Cancel',
     });
@@ -407,7 +441,7 @@ function MoveToCircle({
           ? 'People who are not in this circle were unassigned.'
           : undefined,
       });
-      setOpen(false);
+      onClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Please try again.';
       Toast.show({ type: 'error', text1: 'Could not move', text2: message });
@@ -415,16 +449,19 @@ function MoveToCircle({
   }
 
   return (
-    <View style={styles.move}>
-      <Button
-        label={open ? 'Hide circles' : 'Move to…'}
-        variant="secondary"
-        size="md"
-        loading={move.isPending}
-        onPress={() => setOpen((value) => !value)}
-      />
-      {open ? <CirclePicker circles={destinations} value={null} onChange={onChoose} /> : null}
-    </View>
+    <FadeSheet visible={visible} onClose={onClose}>
+      <View style={styles.moveSheet}>
+        <Text variant="sectionHeading">Move</Text>
+        {destinations.length === 0 ? (
+          <Text variant="body" color={colors.inkSoft}>
+            This action is already in the only circle you belong to.
+          </Text>
+        ) : (
+          <CirclePicker circles={destinations} value={null} onChange={(id) => void onChoose(id)} />
+        )}
+        {move.isPending ? <ActivityIndicator color={colors.brand} /> : null}
+      </View>
+    </FadeSheet>
   );
 }
 
@@ -437,11 +474,37 @@ const styles = StyleSheet.create({
     ...fullBleedMediaCorners,
   },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  statusPill: {
-    backgroundColor: colors.brandSoft,
-    borderRadius: radii.pill,
+  statusRow: { flexDirection: 'row', gap: spacing.sm },
+  statusControl: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radii.button,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    backgroundColor: colors.surfaceAlt,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: 4,
+  },
+  moveButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radii.button,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabled: { opacity: 0.45 },
+  moveSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   meta: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
@@ -458,7 +521,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
   },
-  move: { gap: spacing.md },
   weekShiftButton: {
     width: 36,
     height: 36,

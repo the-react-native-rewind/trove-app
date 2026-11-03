@@ -162,11 +162,11 @@ Send the OAuth access token, or `Authorization: Bearer trove_…`. The public ho
 | `list_circles` | Circles you belong to, your role, whether one is your personal circle, and how many tasks are not done. |
 | `get_circle` | One circle by id or name. |
 | `create_circle` | Create a circle you own. Optional accent colour. Returns the circle id. |
-| `list_my_tasks` | Tasks assigned to you (Mine), across circles. Filter by circle, status, or due date. |
-| `list_circle_tasks` | Every task in one circle, including ones assigned to other people. |
-| `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. Optional repeat rule. |
+| `list_my_tasks` | Tasks assigned to you (Mine), across circles. Filter by circle, project, status, or due date. |
+| `list_circle_tasks` | Every task in one circle, including ones assigned to other people. Optional `project_id`. |
+| `create_task` | Create a task. Omit the circle and it goes in your personal circle, assigned to you. Optional repeat rule and `project_id`. |
 | `create_tasks_bulk` | Create up to 100 tasks. Safe to retry when each item has an `external_id`. Each item can repeat. |
-| `update_task` | Change title, notes, status, priority, due date, assignees, tags, or the repeat rule. An owner or admin's priority also sets the task's rank. A member can set priority but cannot change rank. Can clear notes, tags, or assignees. Does not change the circle. |
+| `update_task` | Change title, notes, status, priority, due date, assignees, tags, the repeat rule, or `project_id` (null clears it). An owner or admin's priority also sets the task's rank. A member can set priority but cannot change rank. Can clear notes, tags, or assignees. Does not change the circle. |
 | `complete_task` | Mark a task done. You can set it back to to do. A repeating task stays done, and the database adds the next occurrence. |
 | `assign_task` | Replace the people assigned to a task. Passing null or an empty list clears everyone. Each person must already be in that circle. This does not record a note. |
 | `handoff_task` | Pass a task you are assigned to someone else. You are removed, they take your place, rank stays, and an optional note is saved. |
@@ -176,7 +176,11 @@ Send the OAuth access token, or `Authorization: Bearer trove_…`. The public ho
 | `move_task` | Move a task to another circle. Tags from the old circle are removed, and people who are not in the new circle are unassigned. |
 | `add_task_attachment` | Attach an image or video to a task you can edit. A URL is downloaded by the server. Returns the attachment id. |
 | `list_members` | People in a circle: user id, display name, role, and whether they joined as an agent. No email addresses. |
-| `invite_to_circle` | Invite someone by email. Owners and admins only. **This sends an email** to that address. Limited to 25 invites in 24 hours. Optional `agent` marks the invite as a bot. |
+| `invite_to_circle` | Invite someone by email. Owners and admins only. **This sends an email** to that address. Limited to 25 invites in 24 hours. Optional `agent` marks the invite as a bot. Optional `project_ids` limits them when they accept. |
+| `list_projects` | Projects in one circle. Archived projects are hidden unless `include_archived` is true. |
+| `create_project` | Create a project in a circle you can edit. Name, optional colour, optional description. |
+| `update_project` | Rename a project, change its colour or description, or archive it. |
+| `set_member_projects` | Replace one member's project allow-list. An empty list restores the whole circle. Owners and admins only. |
 | `list_today` | The signed-in person's private Today list for one date. A task is here because of a plan line, not its due date. Today is prepared on first read. A later day is a plan and is not prepared. |
 | `add_today_item` | Append a private Today line, either text or a task they can see. Tomorrow is stored without preparing the day. |
 | `dismiss_today_item` | Take a line off its day. The task stays in its circle, with the same due date and status. A routine keeps repeating later. |
@@ -186,6 +190,14 @@ Send the OAuth access token, or `Authorization: Bearer trove_…`. The public ho
 | `check_today_item` | Tick a line on the day it is already on. By default a linked task is marked done. |
 
 Each tool has a human title and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` values. Reads are not destructive. Completing a task is not destructive, because it can be undone. Updating, assigning, and moving can remove data, so those are marked destructive. Inviting someone and attaching a file from a URL reach outside Trove, so those are marked open-world. `list_today` prepares a day the first time you ask for it, so it is safe to retry but it is not a pure read.
+
+## Projects
+
+A project belongs to one circle and groups actions. An action has at most one `project_id`. Null means it sits in the circle list.
+
+People still join the circle. `project_members` is an optional allow-list. A member with no rows sees every project and every action in the circle. One or more rows limit them to those projects and the actions in them. Owners and admins always see everything. Agent members follow the same rule. The database enforces this, so a filtered client cannot see more than the signed-in person can.
+
+`set_member_projects` replaces that list. Pass `[]` to clear it. `invite_to_circle` can pass `project_ids`; they are applied when the invite is accepted.
 
 ## Today
 
@@ -346,7 +358,7 @@ supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256
 supabase functions deploy mcp --no-verify-jwt
 ```
 
-`server.json` and the initialize response both advertise version `1.6.0`.
+`server.json` and the initialize response both advertise version `1.7.0`.
 
 `--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. The gateway must let the unauthenticated discovery request through. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
 

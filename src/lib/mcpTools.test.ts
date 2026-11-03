@@ -24,6 +24,7 @@ import {
   checkAttachmentSize,
   completeTask,
   createCircle,
+  createProject,
   createTask,
   createTasksBulk,
   getCircle,
@@ -38,6 +39,7 @@ import {
   listCircles,
   listCircleTasks,
   listMyTasks,
+  listProjects,
   listToday,
   moveTask,
   moveTodayItem,
@@ -46,6 +48,8 @@ import {
   toolDescriptions,
   planMove,
   resolveRepeat,
+  setMemberProjects,
+  updateProject,
   updateTask,
   weekdayOfDate,
 } from './mcpTools';
@@ -78,6 +82,10 @@ test('the tool catalog matches the handlers we ship', () => {
     'add_task_attachment',
     'list_members',
     'invite_to_circle',
+    'list_projects',
+    'create_project',
+    'update_project',
+    'set_member_projects',
     'list_today',
     'add_today_item',
     'dismiss_today_item',
@@ -93,6 +101,44 @@ test('the tool catalog matches the handlers we ship', () => {
   for (const name of ['create_task', 'update_task', 'list_my_tasks', 'list_circle_tasks'] as const) {
     assert.equal(toolDescriptions[name].includes('in_progress'), true, name);
   }
+});
+
+test('projects group actions and a limited member only sees those projects', async () => {
+  const store = memoryStore({ houseRole: 'admin' });
+  const created = await createProject(store, { name: 'Greenhouse', circle_id: HOUSE, color: 'moss' });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const projectId = created.data.project.id;
+  const task = await createTask(store, { title: 'Water seedlings', circle_id: HOUSE, project_id: projectId });
+  assert.equal(task.ok, true);
+  if (!task.ok) return;
+  assert.equal(task.data.task.project_id, projectId);
+
+  const listed = await listCircleTasks(store, { circle_id: HOUSE, project_id: projectId });
+  assert.equal(listed.ok, true);
+  if (!listed.ok) return;
+  assert.deepEqual(listed.data.tasks.map((item) => item.id), [task.data.task.id]);
+
+  const cleared = await updateTask(store, { task_id: task.data.task.id, project_id: null });
+  assert.equal(cleared.ok, true);
+  if (!cleared.ok) return;
+  assert.equal(cleared.data.task.project_id, null);
+
+  await setMemberProjects(store, { circle_id: HOUSE, user: 'Sam', project_ids: [projectId] });
+  const projects = await listProjects(store, { circle_id: HOUSE });
+  assert.equal(projects.ok, true);
+  if (!projects.ok) return;
+  assert.equal(projects.data.projects[0]?.member_ids.includes(SAM), true);
+
+  const archived = await updateProject(store, { project_id: projectId, archived: true, name: 'Glasshouse' });
+  assert.equal(archived.ok, true);
+  if (!archived.ok) return;
+  assert.equal(archived.data.project.name, 'Glasshouse');
+  assert.equal(archived.data.project.archived_at !== null, true);
+  const hidden = await listProjects(store, { circle_id: HOUSE });
+  assert.equal(hidden.ok, true);
+  if (!hidden.ok) return;
+  assert.equal(hidden.data.projects.length, 0);
 });
 
 test('handoff_task replaces the caller, keeps rank, and records the note', async () => {
@@ -1228,6 +1274,19 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     task.assignee_name = task.assignees[0]?.display_name ?? null;
   }
   const tasks: TaskRecord[] = [];
+  const projects: {
+    id: string;
+    circle_id: string;
+    name: string;
+    color: string;
+    description: string | null;
+    rank: string;
+    archived_at: string | null;
+    created_at: string;
+    updated_at: string;
+    member_ids: string[];
+  }[] = [];
+  const projectMembers: { project_id: string; user_id: string }[] = [];
   const agentLogs: {
     id: string;
     task_id: string;
@@ -1314,6 +1373,67 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
     async listMembers(circleId) {
       return (members[circleId] ?? []).map((member) => ({ ...member }));
     },
+    async listProjects(filter) {
+      return projects
+        .filter((project) => (filter?.circleId ? project.circle_id === filter.circleId : true))
+        .filter((project) => (filter?.includeArchived ? true : project.archived_at === null))
+        .map((project) => ({
+          ...project,
+          member_ids: projectMembers
+            .filter((row) => row.project_id === project.id)
+            .map((row) => row.user_id),
+        }));
+    },
+    async createProject(input) {
+      counter += 1;
+      const project = {
+        id: `00000000-0000-4000-8000-${String(counter).padStart(12, '0')}`,
+        circle_id: input.circleId,
+        name: input.name,
+        color: input.color,
+        description: input.description,
+        rank: 'n',
+        archived_at: null,
+        created_at: '2026-11-03T00:00:00.000Z',
+        updated_at: '2026-11-03T00:00:00.000Z',
+        member_ids: [] as string[],
+      };
+      projects.push(project);
+      const role = circles.find((circle) => circle.id === input.circleId)?.role;
+      const limited = projectMembers.some((row) => row.user_id === ME && projects.some((item) => item.id === row.project_id && item.circle_id === input.circleId));
+      if (role !== 'owner' && role !== 'admin' && limited) {
+        projectMembers.push({ project_id: project.id, user_id: ME });
+      }
+      return {
+        ...project,
+        member_ids: projectMembers.filter((row) => row.project_id === project.id).map((row) => row.user_id),
+      };
+    },
+    async updateProject(id, patch) {
+      const project = projects.find((item) => item.id === id);
+      if (!project) return null;
+      if (patch.name !== undefined) project.name = patch.name;
+      if (patch.color !== undefined) project.color = patch.color;
+      if (patch.description !== undefined) project.description = patch.description;
+      if (patch.archived === true) project.archived_at = '2026-11-03T00:00:00.000Z';
+      if (patch.archived === false) project.archived_at = null;
+      return {
+        ...project,
+        member_ids: projectMembers.filter((row) => row.project_id === project.id).map((row) => row.user_id),
+      };
+    },
+    async setMemberProjects(input) {
+      for (let index = projectMembers.length - 1; index >= 0; index -= 1) {
+        const row = projectMembers[index];
+        const project = projects.find((item) => item.id === row?.project_id);
+        if (row?.user_id === input.userId && project?.circle_id === input.circleId) {
+          projectMembers.splice(index, 1);
+        }
+      }
+      for (const projectId of input.projectIds) {
+        projectMembers.push({ project_id: projectId, user_id: input.userId });
+      }
+    },
     async listTasks(filter) {
       return tasks
         .filter((task) => (filter.circleId ? task.circle_id === filter.circleId : true))
@@ -1324,6 +1444,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
         .filter((task) => (filter.dueOn ? task.due_date === filter.dueOn : true))
         .filter((task) => (filter.dueBefore ? task.due_date !== null && task.due_date <= filter.dueBefore : true))
         .filter((task) => (filter.dueAfter ? task.due_date !== null && task.due_date >= filter.dueAfter : true))
+        .filter((task) => (filter.projectId ? task.project_id === filter.projectId : true))
         .slice(0, filter.limit);
     },
     async getTask(id) {
@@ -1420,6 +1541,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
         assignees: [],
         tags: input.tags,
         external_id: input.externalId,
+        project_id: input.projectId,
         repeat_unit: input.repeatUnit,
         repeat_interval: input.repeatInterval,
         repeat_weekday: input.repeatWeekday,
@@ -1441,6 +1563,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
       if (patch.status !== undefined) task.status = patch.status;
       if (patch.priority !== undefined) task.priority = patch.priority;
       if (patch.dueDate !== undefined) task.due_date = patch.dueDate;
+      if (patch.projectId !== undefined) task.project_id = patch.projectId;
       if (patch.assigneeIds !== undefined) applyAssignees(task, patch.assigneeIds);
       if (patch.tags !== undefined) task.tags = patch.tags;
       if (patch.repeatUnit !== undefined) {
@@ -1472,6 +1595,7 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
       if (!plan.alreadyThere) {
         task.circle_id = targetCircleId;
         task.circle_name = target?.name ?? '';
+        task.project_id = null;
         applyAssignees(task, plan.nextAssigneeIds);
         task.tags = [];
       }

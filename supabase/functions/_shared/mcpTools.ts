@@ -90,6 +90,10 @@ export const MCP_TOOL_NAMES = [
   'add_task_attachment',
   'list_members',
   'invite_to_circle',
+  'list_projects',
+  'create_project',
+  'update_project',
+  'set_member_projects',
   'list_today',
   'add_today_item',
   'dismiss_today_item',
@@ -109,11 +113,11 @@ export const toolDescriptions: Record<McpToolName, string> = {
   create_circle:
     'Create a circle owned by the signed-in person. name is required (for example Home or Garden). color is an optional accent: sage, brand, moss, teal, dusk, lilac, plum, rose, terracotta, clay, ochre, honey, or a #rrggbb hex. It defaults to sage. Circles do not have an emoji or a description. The creator becomes the owner, the same way creating a circle in the app does. This does not create a second personal circle. Returns the circle, including its id.',
   list_my_tasks:
-    'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). A task is included when they are any of its assignees. Optional filters: circle, status (todo, in_progress, or done), and due date (due_on, due_before, due_after as YYYY-MM-DD). A status filter is exact: todo does not include in_progress. This is not limited to the personal circle. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned. rank is the fractional ordering key shared with the circle.',
+    'List tasks assigned to the signed-in person across every circle they belong to (their Mine list). A task is included when they are any of its assignees. Optional filters: circle, project_id, status (todo, in_progress, or done), and due date (due_on, due_before, due_after as YYYY-MM-DD). A status filter is exact: todo does not include in_progress. This is not limited to the personal circle. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes project_id, rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned. rank is the fractional ordering key shared with the circle. A member limited to projects only receives tasks in those projects.',
   list_circle_tasks:
-    'List every task in one circle, not only tasks assigned to the caller. Viewers can read. Optional filters: status (todo, in_progress, or done) and due date. A status filter is exact: todo does not include in_progress. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned.',
+    'List every task in one circle, not only tasks assigned to the caller. Viewers can read. Optional filters: project_id, status (todo, in_progress, or done), and due date. A status filter is exact: todo does not include in_progress. Results are ordered by rank (higher first), then due date (earliest first, no date last). Each task includes project_id, rank, repeat_unit, repeat_interval, repeat_weekday, and recurrence_series_id. recurrence_source_id is not returned. A member limited to projects only receives tasks in those projects.',
   create_task:
-    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is one member id, display name, "me", or null. assignees is a list of those same values and replaces the whole set. Pass assignee or assignees, not both. Omitting both assigns the caller. priority is low, medium, high, or null and chooses a starting rank in the overall order of that circle: high above the current top, medium in the middle, low or null at the bottom. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat. status is todo, in_progress, or done. Agents: assign yourself and set in_progress when you start.',
+    'Create a task. Put it in a circle with circle_id or circle_name, or set personal to true for the private personal circle. If you name no circle, it goes in the personal circle and is assigned to the caller, which is how a new capture shows up on Mine. notes is the description. tags are label names in that circle (created if needed). assignee is one member id, display name, "me", or null. assignees is a list of those same values and replaces the whole set. Pass assignee or assignees, not both. Omitting both assigns the caller. priority is low, medium, high, or null and chooses a starting rank in the overall order of that circle: high above the current top, medium in the middle, low or null at the bottom. external_id is an optional stable id from Notion, Trello, or another export; repeating it returns the existing task instead of creating a duplicate. Optional repeat_unit is day, week, month, never, or null. repeat_interval is 1 to 99 (default 1). repeat_weekday is 0 (Sunday) through 6 (Saturday) and is only stored for week. Omit the repeat fields and the task does not repeat. status is todo, in_progress, or done. Agents: assign yourself and set in_progress when you start. Optional project_id puts the task in one project in that circle. Omit it to leave the task on the circle list. A member who is limited to projects must pass one of those projects.',
   create_tasks_bulk:
     'Create up to 100 tasks in one call, for importing a list. Each item has the same fields as create_task, including the optional repeat fields. A circle set on the call is the default; an item can override it. external_id makes the import safe to retry: a task the caller already created with that id is returned as existing and is not changed. Items that fail are reported; earlier items in the batch are kept.',
   update_task:
@@ -137,7 +141,15 @@ export const toolDescriptions: Record<McpToolName, string> = {
   list_members:
     'List the people in a circle: user id, display name, role (owner, admin, member, viewer), and whether the membership was created from an agent invite. Email addresses are not included.',
   invite_to_circle:
-    'Invite someone to a circle by email. Only an owner or admin can invite. This sends an email to that address as soon as the invite is created (database trigger invites_send_email). You can create 25 invites in 24 hours; over that, the invite is not created and no email is sent. role is admin, member, or viewer (default member). agent true marks the invite as a bot; the flag is copied onto the membership when they join. It defaults to false, a human invite. Returns the invite token and an https link. The link opens Trove, or offers the download if they do not have the app yet. The invite expires in 14 days. One pending invite per email per circle.',
+    'Invite someone to a circle by email. Only an owner or admin can invite. This sends an email to that address as soon as the invite is created (database trigger invites_send_email). You can create 25 invites in 24 hours; over that, the invite is not created and no email is sent. role is admin, member, or viewer (default member). agent true marks the invite as a bot; the flag is copied onto the membership when they join. It defaults to false, a human invite. Optional project_ids limits the new member to those projects when they accept. Omit it, or pass an empty list, and they see the whole circle. Returns the invite token and an https link. The link opens Trove, or offers the download if they do not have the app yet. The invite expires in 14 days. One pending invite per email per circle.',
+  list_projects:
+    'List the projects in one circle. A project groups actions. Archived projects are omitted unless include_archived is true. member_ids is the allow-list: people (including agents) limited to that project. Someone with no project assignments is not listed and can see the whole circle. Owners and admins see every project and every member id they are allowed to read. Other members only see projects they can access.',
+  create_project:
+    'Create a project in a circle the caller can edit (owner, admin, or member). name is required, up to 80 characters. color is an optional accent, the same set as a circle, default sage. description is optional. The creator who is already limited to some projects is added to this project so they can see it. A member who can see the whole circle is not added, because a row would hide the rest of the circle.',
+  update_project:
+    'Rename a project, change its colour or description, or archive it. Pass project_id. name, color, and description are optional. archived true sets archived_at and hides it from the projects list. archived false clears that. The caller must be able to edit the project. Archiving does not delete its actions.',
+  set_member_projects:
+    'Replace one circle member\'s project allow-list. Only an owner or admin. user is a member id or display name. project_ids is the full list. An empty list removes the limit so they see the whole circle again. One or more ids limit them to actions in those projects, and to the projects themselves. Owners and admins still see everything even if they have rows. Agent members use the same rule. The person must already be in the circle.',
   list_today:
     'List the signed-in person\'s private Today checklist for one date. Today is not a circle and is never shared. A task is on Today only when this person has a line for it on that date, not because of its due date. day is YYYY-MM-DD and defaults to the current UTC date. local_today is the person\'s local date and defaults to the UTC date; pass both to match the app. A day after local_today is a plan: it is not prepared, and routines due that weekday are included as previews (id starts with preview:). Today and earlier dates are prepared on the first read: routines are added at their saved ranks. Unticked lines from earlier days stay on those days. They are not moved here. Use list_open_past_today to see them. Lines taken off a day (Not today) stay off. Ticked lines stay on the day they were ticked. Repeating lines from a past day lapse and are not listed again. Lines are ordered by rank (higher first). repeat_days is a Sunday-based bitmask (bit 0 = Sunday) when the line will come back; otherwise null. checked_at is null when the line is unticked.',
   add_today_item:
@@ -243,6 +255,8 @@ export type TaskRecord = {
   latest_handoff: HandoffRecord | null;
   /** How many agent log entries the task has. The entries themselves come from get_task or list_agent_log. */
   agent_log_count: number;
+  /** Null when the action is in the circle list and not in a project. */
+  project_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -250,11 +264,40 @@ export type TaskRecord = {
 export type TaskFilter = {
   circleId?: string;
   assigneeId?: string;
+  projectId?: string;
   status?: Status;
   dueOn?: string;
   dueBefore?: string;
   dueAfter?: string;
   limit: number;
+};
+
+export type ProjectRecord = {
+  id: string;
+  circle_id: string;
+  name: string;
+  color: string;
+  description: string | null;
+  rank: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  /** People limited to this project. Empty does not mean the project is private. */
+  member_ids: string[];
+};
+
+export type ProjectWrite = {
+  circleId: string;
+  name: string;
+  color: string;
+  description: string | null;
+};
+
+export type ProjectPatch = {
+  name?: string;
+  color?: string;
+  description?: string | null;
+  archived?: boolean;
 };
 
 export type TaskWrite = {
@@ -268,6 +311,7 @@ export type TaskWrite = {
   externalId: string | null;
   tags: string[];
   position: number;
+  projectId: string | null;
   repeatUnit: RepeatUnit | null;
   repeatInterval: number;
   repeatWeekday: number | null;
@@ -284,6 +328,8 @@ export type TaskPatch = {
   repeatUnit?: RepeatUnit | null;
   repeatInterval?: number;
   repeatWeekday?: number | null;
+  /** Undefined leaves the project. Null clears it. */
+  projectId?: string | null;
 };
 
 export type MoveResult = {
@@ -359,6 +405,10 @@ export interface TroveStore {
    */
   listCircles(options?: { includeOpenCounts?: boolean }): Promise<Circle[]>;
   listMembers(circleId: string): Promise<Member[]>;
+  listProjects(filter?: { circleId?: string; includeArchived?: boolean }): Promise<ProjectRecord[]>;
+  createProject(input: ProjectWrite): Promise<ProjectRecord>;
+  updateProject(id: string, patch: ProjectPatch): Promise<ProjectRecord | null>;
+  setMemberProjects(input: { circleId: string; userId: string; projectIds: string[] }): Promise<void>;
   listTasks(filter: TaskFilter): Promise<TaskRecord[]>;
   getTask(id: string): Promise<TaskRecord | null>;
   /**
@@ -387,6 +437,7 @@ export interface TroveStore {
     email: string;
     role: 'admin' | 'member' | 'viewer';
     isAgent?: boolean;
+    projectIds?: string[];
   }): Promise<InviteResult>;
   /** Invites this person created in the last 24 hours, including ones that were later revoked. */
   countRecentInvites(): Promise<number>;
@@ -641,6 +692,7 @@ type ListInput = {
   due_on?: string;
   due_before?: string;
   due_after?: string;
+  project_id?: string;
   limit?: number;
 };
 
@@ -666,9 +718,23 @@ async function listFiltered(
       circleId = circle.id;
     }
 
+    let projectId: string | undefined;
+    if (input.project_id !== undefined && input.project_id !== null) {
+      if (!isUuid(input.project_id)) return { ok: false, error: 'project_id must be a uuid.' };
+      const projects = await store.listProjects({ circleId, includeArchived: true });
+      const project = projects.find((item) => item.id === input.project_id);
+      if (!project) return { ok: false, error: 'Project not found' };
+      if (circleId && project.circle_id !== circleId) {
+        return { ok: false, error: 'That project is not in this circle' };
+      }
+      if (!circleId) circleId = project.circle_id;
+      projectId = project.id;
+    }
+
     const tasks = await store.listTasks({
       circleId,
       assigneeId: options.assigneeId,
+      projectId,
       status,
       dueOn: due.dueOn,
       dueBefore: due.dueBefore,
@@ -697,6 +763,7 @@ export type CreateTaskInput = {
   repeat_unit?: string | null;
   repeat_interval?: number | null;
   repeat_weekday?: number | null;
+  project_id?: string | null;
 };
 
 export async function createTask(
@@ -780,6 +847,7 @@ export async function updateTask(
     repeat_unit?: string | null;
     repeat_interval?: number | null;
     repeat_weekday?: number | null;
+    project_id?: string | null;
   },
 ): Promise<ToolResult<{ task: TaskRecord }>> {
   try {
@@ -995,6 +1063,7 @@ export async function inviteToCircle(
     email: string;
     role?: 'admin' | 'member' | 'viewer' | 'owner';
     agent?: boolean;
+    project_ids?: string[];
   },
 ): Promise<ToolResult<{ invite: InviteResult }>> {
   try {
@@ -1022,13 +1091,183 @@ export async function inviteToCircle(
         error: `You can send ${INVITE_LIMIT_PER_DAY} invites in 24 hours. This one was not created, and no email was sent. Try again later.`,
       };
     }
+    const projectIds = await resolveInviteProjects(store, circle.id, input.project_ids);
+    if ('error' in projectIds) return { ok: false, error: projectIds.error };
     const invite = await store.createInvite({
       circleId: circle.id,
       email,
       role,
       isAgent: input.agent === true,
+      projectIds,
     });
     return { ok: true, data: { invite } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function resolveTaskProject(
+  store: TroveStore,
+  circleId: string,
+  role: Role,
+  projectId: string | null | undefined,
+  mode: 'create' | 'update',
+): Promise<string | null | { error: string }> {
+  const projects = await store.listProjects({ circleId, includeArchived: true });
+  const restricted =
+    !canManage(role) && projects.some((project) => project.member_ids.includes(store.userId));
+  if (projectId === undefined || projectId === null) {
+    if (restricted) {
+      return { error: 'Choose a project. This membership can only see some projects in the circle.' };
+    }
+    return null;
+  }
+  if (!isUuid(projectId)) return { error: 'project_id must be a uuid.' };
+  const project = projects.find((item) => item.id === projectId);
+  if (!project || project.circle_id !== circleId) return { error: 'Project not found' };
+  if (project.archived_at && mode === 'create') return { error: 'That project is archived.' };
+  if (restricted && !project.member_ids.includes(store.userId)) {
+    return { error: 'That project is not available to you.' };
+  }
+  return project.id;
+}
+
+async function resolveInviteProjects(
+  store: TroveStore,
+  circleId: string,
+  projectIds: string[] | undefined,
+): Promise<string[] | { error: string }> {
+  if (!projectIds || projectIds.length === 0) return [];
+  const projects = await store.listProjects({ circleId, includeArchived: false });
+  const ids: string[] = [];
+  for (const id of projectIds) {
+    if (!isUuid(id)) return { error: 'project_ids must be uuids.' };
+    if (!projects.some((project) => project.id === id)) return { error: 'Project not found' };
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+export async function listProjects(
+  store: TroveStore,
+  input: CircleTarget & { include_archived?: boolean },
+): Promise<ToolResult<{ projects: ProjectRecord[] }>> {
+  try {
+    const circles = await store.listCircles();
+    const circle = resolveCircle(circles, input, 'required');
+    if ('error' in circle) return { ok: false, error: circle.error };
+    const projects = await store.listProjects({
+      circleId: circle.id,
+      includeArchived: input.include_archived === true,
+    });
+    return { ok: true, data: { projects } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function createProject(
+  store: TroveStore,
+  input: CircleTarget & { name?: string; color?: string | null; description?: string | null },
+): Promise<ToolResult<{ project: ProjectRecord }>> {
+  try {
+    const circles = await store.listCircles();
+    const circle = resolveCircle(circles, input, 'required');
+    if ('error' in circle) return { ok: false, error: circle.error };
+    if (!canWrite(circle.role)) return { ok: false, error: 'You cannot add a project in this circle' };
+    if (!input.name?.trim()) return { ok: false, error: 'Give the project a name.' };
+    const name = validateCircleName(input.name);
+    if (isFieldError(name)) return { ok: false, error: name.error };
+    if (name.length > 80) return { ok: false, error: 'Project name must be 80 characters or fewer.' };
+    const color = normalizeCircleColor(input.color);
+    if (isFieldError(color)) return { ok: false, error: color.error };
+    const description = input.description?.trim() || null;
+    if (description && description.length > 2000) {
+      return { ok: false, error: 'Description must be 2000 characters or fewer.' };
+    }
+    const project = await store.createProject({
+      circleId: circle.id,
+      name,
+      color,
+      description,
+    });
+    return { ok: true, data: { project } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateProject(
+  store: TroveStore,
+  input: {
+    project_id: string;
+    name?: string;
+    color?: string | null;
+    description?: string | null;
+    archived?: boolean;
+  },
+): Promise<ToolResult<{ project: ProjectRecord }>> {
+  try {
+    if (!isUuid(input.project_id)) return { ok: false, error: 'project_id must be a uuid.' };
+    const patch: ProjectPatch = {};
+    if (input.name !== undefined) {
+      const name = validateCircleName(input.name);
+      if (isFieldError(name)) return { ok: false, error: name.error };
+      if (name.length > 80) return { ok: false, error: 'Project name must be 80 characters or fewer.' };
+      patch.name = name;
+    }
+    if (input.color !== undefined) {
+      const color = normalizeCircleColor(input.color);
+      if (isFieldError(color)) return { ok: false, error: color.error };
+      patch.color = color;
+    }
+    if (input.description !== undefined) {
+      const description = input.description?.trim() || null;
+      if (description && description.length > 2000) {
+        return { ok: false, error: 'Description must be 2000 characters or fewer.' };
+      }
+      patch.description = description;
+    }
+    if (input.archived !== undefined) patch.archived = input.archived;
+    if (Object.keys(patch).length === 0) return { ok: false, error: 'Nothing to update' };
+    const project = await store.updateProject(input.project_id, patch);
+    if (!project) return { ok: false, error: 'Project not found' };
+    return { ok: true, data: { project } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function setMemberProjects(
+  store: TroveStore,
+  input: CircleTarget & { user?: string; project_ids?: string[] },
+): Promise<ToolResult<{ user_id: string; project_ids: string[] }>> {
+  try {
+    const circles = await store.listCircles();
+    const circle = resolveCircle(circles, input, 'required');
+    if ('error' in circle) return { ok: false, error: circle.error };
+    if (!canManage(circle.role)) {
+      return { ok: false, error: 'Only an owner or admin can change project access' };
+    }
+    const members = await store.listMembers(circle.id);
+    const user = (input.user ?? '').trim();
+    if (!user) return { ok: false, error: 'Pass the member id or display name.' };
+    const member =
+      members.find((item) => item.user_id === user) ??
+      members.find((item) => item.display_name?.toLowerCase() === user.toLowerCase());
+    if (!member) return { ok: false, error: 'That person is not a member of this circle' };
+    const projectIds = await resolveInviteProjects(store, circle.id, input.project_ids ?? []);
+    if ('error' in projectIds) return { ok: false, error: projectIds.error };
+    await store.setMemberProjects({
+      circleId: circle.id,
+      userId: member.user_id,
+      projectIds,
+    });
+    return { ok: true, data: { user_id: member.user_id, project_ids: projectIds } };
   } catch (error) {
     return fail(error);
   }
@@ -1142,6 +1381,9 @@ async function prepareCreate(store: TroveStore, input: CreateTaskInput): Promise
     return { ok: false, error: assignees && 'error' in assignees ? assignees.error : 'Choose who to assign.' };
   }
 
+  const projectId = await resolveTaskProject(store, circle.id, circle.role, input.project_id, 'create');
+  if (typeof projectId !== 'string' && projectId !== null) return { ok: false, error: projectId.error };
+
   return {
     ok: true,
     existing: null,
@@ -1156,6 +1398,7 @@ async function prepareCreate(store: TroveStore, input: CreateTaskInput): Promise
       externalId,
       tags,
       position: Date.now(),
+      projectId,
       repeatUnit: repeat.repeat_unit,
       repeatInterval: repeat.repeat_interval,
       repeatWeekday: repeat.repeat_weekday,
@@ -1178,6 +1421,7 @@ function unusedWrite(): TaskWrite {
     repeatUnit: null,
     repeatInterval: 1,
     repeatWeekday: null,
+    projectId: null,
   };
 }
 
@@ -1209,6 +1453,7 @@ async function buildPatch(
     repeat_unit?: string | null;
     repeat_interval?: number | null;
     repeat_weekday?: number | null;
+    project_id?: string | null;
   },
 ): Promise<{ ok: true; patch: TaskPatch } | { ok: false; error: string }> {
   const patch: TaskPatch = {};
@@ -1255,6 +1500,14 @@ async function buildPatch(
     const tags = validateTags(input.tags);
     if (isFieldError(tags)) return { ok: false, error: tags.error };
     patch.tags = tags;
+  }
+  if (input.project_id !== undefined) {
+    const circles = await store.listCircles();
+    const circle = circles.find((item) => item.id === task.circle_id);
+    if (!circle) return { ok: false, error: 'Task not found' };
+    const projectId = await resolveTaskProject(store, task.circle_id, circle.role, input.project_id, 'update');
+    if (typeof projectId !== 'string' && projectId !== null) return { ok: false, error: projectId.error };
+    patch.projectId = projectId;
   }
   const repeat = resolveRepeat({
     input,

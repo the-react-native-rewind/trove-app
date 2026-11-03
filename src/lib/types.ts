@@ -11,6 +11,7 @@ export type SpaceMember = Tables['space_members']['Row'];
 export type Task = Tables['tasks']['Row'];
 export type Label = Tables['labels']['Row'];
 export type Invite = Tables['invites']['Row'];
+export type Project = Tables['projects']['Row'];
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 /** Phone and other narrow lists. In progress stays inside To do. */
