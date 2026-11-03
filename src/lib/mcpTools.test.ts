@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   MCP_TOOL_NAMES,
   TASK_MEDIA_MAX_BYTES,
+  OPEN_PAST_LIMIT,
   TroveError,
   type AttachmentRecord,
   type Circle,
@@ -31,7 +32,9 @@ import {
   inviteToCircle,
   listAgentLog,
   addTodayItem,
+  checkTodayItem,
   dismissTodayItem,
+  listOpenPastToday,
   listCircles,
   listCircleTasks,
   listMyTasks,
@@ -48,7 +51,7 @@ import {
 } from './mcpTools';
 import { inviteUrl } from './links';
 import { compareRank, rankAtBottom } from './rank';
-import { dayMatches, planTodayMaterialisation, rolloverRanks, shiftDay } from './today';
+import { dayMatches, planTodayMaterialisation, shiftDay } from './today';
 
 const ME = 'user-me';
 const SAM = 'user-sam';
@@ -80,6 +83,8 @@ test('the tool catalog matches the handlers we ship', () => {
     'dismiss_today_item',
     'restore_today_item',
     'move_today_item_to_day',
+    'list_open_past_today',
+    'check_today_item',
   ]);
   assert.deepEqual(TASK_STATUSES, ['todo', 'in_progress', 'done']);
   assert.equal(/use handoff_task/.test(toolDescriptions.assign_task), true);
@@ -886,7 +891,7 @@ test('update_task replaces tags and does not take a circle id', async () => {
   assert.equal(updated.data.task.circle_id, HOUSE);
 });
 
-test('list_today moves an unticked line forward once, and add_today_item appends text or a task', async () => {
+test('list_today leaves an unticked line on its day, and add_today_item appends text or a task', async () => {
   const store = memoryStore();
   const asToday = { local_today: '2026-10-27' };
   const monday = await addTodayItem(store, { day: '2026-10-26', text: '  Buy milk  ', ...asToday });
@@ -898,30 +903,32 @@ test('list_today moves an unticked line forward once, and add_today_item appends
   const tuesday = await listToday(store, { day: '2026-10-27', ...asToday });
   assert.equal(tuesday.ok, true);
   if (!tuesday.ok) return;
-  assert.deepEqual(
-    tuesday.data.items.map((item) => item.text),
-    ['Buy milk'],
-  );
+  assert.deepEqual(tuesday.data.items, []);
   const again = await listToday(store, { day: '2026-10-27', ...asToday });
   assert.equal(again.ok, true);
   if (!again.ok) return;
-  assert.equal(again.data.items.length, 1);
-  assert.equal(again.data.items[0]?.id, tuesday.data.items[0]?.id);
+  assert.equal(again.data.items.length, 0);
 
   const mondayAfter = await listToday(store, { day: '2026-10-26', ...asToday });
   assert.equal(mondayAfter.ok, true);
   if (!mondayAfter.ok) return;
-  assert.deepEqual(mondayAfter.data.items, []);
+  assert.deepEqual(
+    mondayAfter.data.items.map((item) => item.text),
+    ['Buy milk'],
+  );
 
   const created = await createTask(store, { title: 'Water the herbs' });
   assert.equal(created.ok, true);
   if (!created.ok) return;
+  const note = await addTodayItem(store, { day: '2026-10-27', text: 'Pack bag', ...asToday });
+  assert.equal(note.ok, true);
+  if (!note.ok) return;
   const linked = await addTodayItem(store, { day: '2026-10-27', task_id: created.data.task.id, ...asToday });
   assert.equal(linked.ok, true);
   if (!linked.ok) return;
   assert.equal(linked.data.item.task_title, 'Water the herbs');
   assert.equal(linked.data.item.circle_name, 'Personal');
-  assert.ok(compareRank(tuesday.data.items[0]?.rank ?? '', linked.data.item.rank) < 0);
+  assert.ok(compareRank(note.data.item.rank, linked.data.item.rank) < 0);
 
   const duplicate = await addTodayItem(store, { day: '2026-10-27', task_id: created.data.task.id, ...asToday });
   assert.deepEqual(duplicate, { ok: false, error: 'That task is already on this day' });
@@ -935,7 +942,7 @@ test('list_today moves an unticked line forward once, and add_today_item appends
   assert.equal(badDay.ok, false);
 });
 
-test('planning tomorrow does not prepare it, and the next morning rolls one-offs underneath', async () => {
+test('planning tomorrow does not prepare it, and the next morning leaves yesterday open', async () => {
   const store = memoryStore();
   store.addRoutine({ id: 'stretch', text: 'Stretch', taskId: null, days: 127, rank: 'a2' });
   const monday = await addTodayItem(store, {
@@ -974,12 +981,13 @@ test('planning tomorrow does not prepare it, and the next morning rolls one-offs
   if (!morning.ok) return;
   assert.deepEqual(
     morning.data.items.map((item) => item.text),
-    ['Stretch', 'Pack bag', 'Buy milk'],
+    ['Stretch', 'Pack bag'],
   );
   assert.equal(store.prepared('2026-10-27'), true);
-  const milk = morning.data.items.find((item) => item.text === 'Buy milk');
-  const bag = morning.data.items.find((item) => item.text === 'Pack bag');
-  assert.ok(milk && bag && compareRank(bag.rank, milk.rank) < 0);
+  const mondayLeft = await listToday(store, { day: '2026-10-26', local_today: '2026-10-27' });
+  assert.equal(mondayLeft.ok, true);
+  if (!mondayLeft.ok) return;
+  assert.equal(mondayLeft.data.items.some((item) => item.text === 'Buy milk'), true);
 });
 
 test('not today leaves the task alone, and tomorrow only moves the plan line', async () => {
@@ -1089,6 +1097,86 @@ test('not today leaves the task alone, and tomorrow only moves the plan line', a
     day: '2026-10-27',
     local_today: '2026-10-26',
   });
+  assert.equal(preview.ok, false);
+});
+
+test('open past lines stay put until they are done, moved, or dropped', async () => {
+  const store = memoryStore();
+  store.addRoutine({ id: 'stretch', text: 'Stretch', taskId: null, days: 127, rank: 'a9' });
+  const created = await createTask(store, { title: 'Call the plumber' });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const taskLine = await addTodayItem(store, {
+    day: '2026-10-26',
+    local_today: '2026-10-26',
+    task_id: created.data.task.id,
+  });
+  assert.equal(taskLine.ok, true);
+  if (!taskLine.ok) return;
+  const milk = await addTodayItem(store, {
+    day: '2026-10-25',
+    local_today: '2026-10-26',
+    text: 'Buy milk',
+  });
+  assert.equal(milk.ok, true);
+  if (!milk.ok) return;
+  await listToday(store, { day: '2026-10-26', local_today: '2026-10-26' });
+
+  const review = await listOpenPastToday(store, { local_today: '2026-10-27' });
+  assert.equal(review.ok, true);
+  if (!review.ok) return;
+  assert.deepEqual(
+    review.data.items.map((item) => item.text ?? item.task_title),
+    ['Call the plumber', 'Buy milk'],
+  );
+  assert.equal(review.data.items.some((item) => item.routine_id === 'stretch'), false);
+
+  const done = await checkTodayItem(store, { item_id: taskLine.data.item.id });
+  assert.equal(done.ok, true);
+  if (!done.ok) return;
+  assert.ok(done.data.item.checked_at);
+  const task = await getTask(store, { task_id: created.data.task.id });
+  assert.equal(task.ok, true);
+  if (!task.ok) return;
+  assert.equal(task.data.task.status, 'done');
+  assert.equal(task.data.task.due_date, null);
+
+  const kept = await checkTodayItem(store, { item_id: milk.data.item.id, complete_task: false });
+  assert.equal(kept.ok, true);
+  const movedBack = await listOpenPastToday(store, { local_today: '2026-10-27' });
+  assert.equal(movedBack.ok, true);
+  if (!movedBack.ok) return;
+  assert.deepEqual(movedBack.data.items, []);
+
+  const fresh = await addTodayItem(store, {
+    day: '2026-10-24',
+    local_today: '2026-10-27',
+    text: 'Write the note',
+  });
+  assert.equal(fresh.ok, true);
+  if (!fresh.ok) return;
+  const brought = await moveTodayItem(store, {
+    item_id: fresh.data.item.id,
+    day: '2026-10-27',
+    local_today: '2026-10-27',
+  });
+  assert.equal(brought.ok, true);
+  if (!brought.ok) return;
+  assert.equal(brought.data.item.day, '2026-10-27');
+  const dropped = await addTodayItem(store, {
+    day: '2026-10-23',
+    local_today: '2026-10-27',
+    text: 'Old errand',
+  });
+  assert.equal(dropped.ok, true);
+  if (!dropped.ok) return;
+  const off = await dismissTodayItem(store, { item_id: dropped.data.item.id });
+  assert.equal(off.ok, true);
+  const clear = await listOpenPastToday(store, { local_today: '2026-10-27' });
+  assert.equal(clear.ok, true);
+  if (!clear.ok) return;
+  assert.deepEqual(clear.data.items, []);
+  const preview = await checkTodayItem(store, { item_id: 'preview:stretch' });
   assert.equal(preview.ok, false);
 });
 
@@ -1479,19 +1567,6 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
           createdAt: new Date(Date.UTC(2026, 9, 27, 0, 0, todayCounter)).toISOString(),
         });
       }
-      const lowest = todayItems
-        .filter((item) => item.day === day)
-        .map((item) => item.rank)
-        .sort((a, b) => (a < b ? -1 : 1))[0] ?? null;
-      const moving = plan.moveIds
-        .map((id) => todayItems.find((item) => item.id === id))
-        .filter((item): item is (typeof todayItems)[number] => item !== undefined);
-      for (const next of rolloverRanks(lowest, moving)) {
-        const item = todayItems.find((row) => row.id === next.id);
-        if (!item) continue;
-        item.day = day;
-        item.rank = next.rank;
-      }
       preparedDays.add(day);
     },
     async listToday(day) {
@@ -1620,6 +1695,27 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
       if (item.routineId) {
         const routine = routineRows.find((row) => row.id === item.routineId && row.active);
         if (routine) routine.rank = item.rank;
+      }
+      return todayEntry(item);
+    },
+    async listOpenPast(day) {
+      return todayItems
+        .filter(
+          (item) => item.day < day && item.routineId === null && item.checkedAt === null && item.dismissedAt === null,
+        )
+        .sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : compareRank(a.rank, b.rank)))
+        .slice(0, OPEN_PAST_LIMIT)
+        .map(todayEntry);
+    },
+    async checkTodayItem(input) {
+      const item = todayItems.find((row) => row.id === input.itemId);
+      if (!item) throw new TroveError('Line not found');
+      if (!item.checkedAt) {
+        if (input.completeTask && item.taskId) {
+          const task = tasks.find((row) => row.id === item.taskId);
+          if (task) task.status = 'done';
+        }
+        item.checkedAt = '2026-10-27T21:00:00.000Z';
       }
       return todayEntry(item);
     },

@@ -185,25 +185,20 @@ export type PlannedRoutineLine = {
 
 export type PlannedToday = {
   /**
-   * Unticked one-off rows that move onto this day. Repeating lines and ticked
-   * lines stay where they are. Empty when a later day is already prepared, so
-   * reading an earlier date cannot pull lines backward.
+   * Always empty. Opening a day no longer moves unticked lines forward.
+   * They stay on the day they were written until someone reviews them.
    */
   moveIds: string[];
   routines: PlannedRoutineLine[];
 };
 
 /**
- * What ensure_today inserts or moves the first time a day is opened.
+ * What ensure_today inserts the first time a day is opened.
  * Returns null when that day was already prepared.
  *
- * One-offs move (they do not stay behind as a second copy) from the most
- * recent earlier day that already has rows. moveIds are that group's previous
- * top-to-bottom order; they are placed under lines already on the day.
- * A later prepared day blocks that move. A line taken off its day
- * (dismissed) stays there and does not roll. Active routines scheduled for
- * this weekday are added at their saved ranks. A routine already stored,
- * including one that was taken off, is skipped.
+ * Active routines scheduled for this weekday are added at their saved ranks.
+ * A routine already stored, including one that was taken off, is skipped.
+ * Unticked one-offs from earlier days are left where they are.
  */
 export function planTodayMaterialisation(input: {
   day: string;
@@ -213,20 +208,6 @@ export function planTodayMaterialisation(input: {
   routines: readonly TodayRoutinePlan[];
 }): PlannedToday | null {
   if (input.alreadyMaterialised) return null;
-  const sourceDay = input.earlierItems.reduce<string | null>((latest, item) => {
-    if (item.day >= input.day) return latest;
-    if (latest === null || item.day > latest) return item.day;
-    return latest;
-  }, null);
-  const moveIds =
-    input.laterDayMaterialised || sourceDay === null
-      ? []
-      : input.earlierItems
-          .filter(
-            (item) => item.day === sourceDay && item.routineId === null && !item.checked && !item.dismissed,
-          )
-          .sort((a, b) => compareRank(a.rank, b.rank) || a.id.localeCompare(b.id))
-          .map((item) => item.id);
   const routines = input.routines
     .filter((routine) => routine.active && dayMatches(routine.days, input.day))
     .map((routine) => ({
@@ -235,7 +216,37 @@ export function planTodayMaterialisation(input: {
       routineId: routine.id,
       rank: routine.rank,
     }));
-  return { moveIds, routines };
+  return { moveIds: [], routines };
+}
+
+/** How many open past lines the Yesterday review shows. Newest days win. */
+export const OPEN_PAST_REVIEW_LIMIT = 40;
+
+export type OpenPastGroup = {
+  day: string;
+  ids: string[];
+};
+
+/**
+ * Open one-off lines from before `today`, newest day first.
+ * Routines are left out: a missed routine lapses. Ticked and dismissed
+ * lines stay on their own day and are not reviewed. Older days are included
+ * in the same list, capped so a long gap does not fill the screen.
+ */
+export function openPastReview(input: {
+  today: string;
+  items: readonly TodaySourceItem[];
+}): OpenPastGroup[] {
+  const open = input.items
+    .filter((item) => item.day < input.today && item.routineId === null && !item.checked && !item.dismissed)
+    .sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : compareRank(a.rank, b.rank) || a.id.localeCompare(b.id)));
+  const groups: OpenPastGroup[] = [];
+  for (const item of open.slice(0, OPEN_PAST_REVIEW_LIMIT)) {
+    const last = groups[groups.length - 1];
+    if (last && last.day === item.day) last.ids.push(item.id);
+    else groups.push({ day: item.day, ids: [item.id] });
+  }
+  return groups;
 }
 
 export type TodayLine = {

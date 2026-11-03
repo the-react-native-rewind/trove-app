@@ -181,7 +181,9 @@ Send the OAuth access token, or `Authorization: Bearer trove_…`. The public ho
 | `add_today_item` | Append a private Today line, either text or a task they can see. Tomorrow is stored without preparing the day. |
 | `dismiss_today_item` | Take a line off its day. The task stays in its circle, with the same due date and status. A routine keeps repeating later. |
 | `restore_today_item` | Put a line back on the day it was taken off. |
-| `move_today_item_to_day` | Move a line to today or tomorrow. Tomorrow is stored without preparing the day. The task's due date stays. |
+| `move_today_item_to_day` | Move a line to today or tomorrow. Tomorrow is stored without preparing the day. The task's due date stays. Also how a yesterday-review line moves to today. |
+| `list_open_past_today` | Open one-off lines from before today. They are not moved on their own. Routines are left out. |
+| `check_today_item` | Tick a line on the day it is already on. By default a linked task is marked done. |
 
 Each tool has a human title and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` values. Reads are not destructive. Completing a task is not destructive, because it can be undone. Updating, assigning, and moving can remove data, so those are marked destructive. Inviting someone and attaching a file from a URL reach outside Trove, so those are marked open-world. `list_today` prepares a day the first time you ask for it, so it is safe to retry but it is not a pure read.
 
@@ -193,11 +195,15 @@ Each tool has a human title and explicit `readOnlyHint`, `destructiveHint`, `ide
 
 Planning tomorrow does not prepare that day. Unticked lines stay on today, and no marker is written, so ticking them off today still counts. Routines due tomorrow are included in `list_today` as previews. Their ids start with `preview:`. They are not stored rows yet.
 
-The first request for today, or any earlier date, prepares it. Routines are inserted at the ranks they were left in. A routine already stored on that date is kept. Unticked one-off lines then move forward from the most recent earlier day, under every line already there, keeping their own order. Ticked lines stay where they were ticked. Preparing an earlier date after a later one does not pull lines backward.
+The first request for today, or any earlier date, prepares it. Routines are inserted at the ranks they were left in. A routine already stored on that date is kept. Unticked one-off lines stay on the day they were written. They are not moved forward. Ticked lines stay where they were ticked. A routine from a past day is not carried into today; it lapses.
+
+`list_open_past_today` is the yesterday review. It lists open one-off lines from before `local_today`, newest day first, up to 40. It does not prepare a day and does not move anything. Resolve a line with `check_today_item` (done on that day), `move_today_item_to_day` with `day` set to `local_today` (move to today), or `dismiss_today_item` (drop). When nothing is left open, the list is empty.
 
 `add_today_item` takes `text` or `task_id`, not both, and appends the line. The same task cannot be on the day twice, including when a routine already shows it. A task that was taken off that day is put back instead of inserted twice. Pass `local_today` when `day` is tomorrow so the line is saved without preparing the day.
 
-`dismiss_today_item` is Not today. It hides that line and keeps it from rolling onto the next day. It does not delete the task, mark it done, change its due date, or stop a repeat. `restore_today_item` undoes that. `move_today_item_to_day` is Tomorrow: pass `day` as the day after `local_today`. Ticked lines stay where they were ticked. Lines taken off a day are omitted from `list_today`.
+`dismiss_today_item` is Not today, and Drop on the yesterday review. It hides that line and keeps it from being carried forward. It does not delete the task, mark it done, change its due date, or stop a repeat. `restore_today_item` undoes that. `move_today_item_to_day` is Tomorrow when `day` is the day after `local_today`, and Move to today when `day` is `local_today`. Ticked lines stay where they were ticked. Lines taken off a day are omitted from `list_today`.
+
+`check_today_item` ticks a line on its current day. `complete_task` defaults to true, so a linked task is marked done. Pass `complete_task: false` to tick the line and leave the task in progress. The due date stays.
 
 A routine's `repeat_days` is a bitmask, bit 0 = Sunday through bit 6 = Saturday (127 is every day, 62 is weekdays).
 
@@ -340,7 +346,7 @@ supabase secrets set TROVE_JWT_SIGNING_KEY='{"kty":"EC","kid":"…","crv":"P-256
 supabase functions deploy mcp --no-verify-jwt
 ```
 
-`server.json` and the initialize response both advertise version `1.5.0`.
+`server.json` and the initialize response both advertise version `1.6.0`.
 
 `--no-verify-jwt` is required even though `config.toml` sets `verify_jwt = false`. The gateway must let the unauthenticated discovery request through. If the gateway answers `Invalid JWT` before the function logs anything, verification is still on.
 

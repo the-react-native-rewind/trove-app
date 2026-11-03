@@ -27,6 +27,7 @@ export const qk = {
   agentLog: (taskId: string) => ['agent-log', taskId] as const,
   today: (userId: string, day: string) => ['today', userId, day] as const,
   tomorrow: (userId: string, day: string) => ['tomorrow', userId, day] as const,
+  todayReview: (userId: string, day: string) => ['today-review', userId, day] as const,
   todayTaskChoices: (search: string) => ['today-task-choices', search] as const,
   weekTasks: (userId: string, weekStart: string) => ['week-tasks', userId, weekStart] as const,
   taskWeekPlan: (userId: string, taskId: string) => ['task-week-plan', userId, taskId] as const,
