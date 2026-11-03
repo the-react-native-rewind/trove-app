@@ -78,7 +78,7 @@ import { CollapsingScreenHeader, useCollapsingHeader } from './CollapsingHeader'
 import { MomentumBadge } from './MomentumBadge';
 import { showUndoToast } from './ui/AppToast';
 import { EmptyState } from './ui/EmptyState';
-import { FadeSheet } from './ui/FadeSheet';
+import { FadeSheet, SheetBottom } from './ui/FadeSheet';
 import { AccentDot } from './ui/Indicators';
 import { Text } from './ui/Text';
 
@@ -151,7 +151,8 @@ export function TodayView() {
   const yesterdayQuery = useYesterdayList(yesterday);
   const todayQuery = useTodayList(today);
   const tomorrowQuery = useTomorrowPlan(tomorrow);
-  const suggestionsQuery = useTodaySuggestions(today, viewingToday);
+  const suggestionDay = viewingTomorrow ? tomorrow : today;
+  const suggestionsQuery = useTodaySuggestions(suggestionDay, !viewingYesterday);
   const { data: spaces = [] } = useSpaces();
   const activeQuery = viewingYesterday ? yesterdayQuery : viewingTomorrow ? tomorrowQuery : todayQuery;
   const lines = activeQuery.data ?? EMPTY_TODAY_LINES;
@@ -169,7 +170,7 @@ export function TodayView() {
   const dismiss = useDismissTodayItem();
   const restore = useRestoreTodayItem();
   const skipRoutine = useSkipTodayRoutine();
-  const dismissSuggestion = useDismissTodaySuggestion(today);
+  const dismissSuggestion = useDismissTodaySuggestion(suggestionDay);
   const convertLine = useConvertTodayItem();
   const pickerOpen = sheet === 'picker';
   const taskChoices = useOpenTaskChoices(taskSearch, pickerOpen);
@@ -178,7 +179,7 @@ export function TodayView() {
 
   const takenTaskIds = new Set(lines.flatMap((line) => (line.taskId ? [line.taskId] : [])));
   const choices = (taskChoices.data ?? []).filter((choice) => !takenTaskIds.has(choice.id));
-  const suggestions = viewingToday ? (suggestionsQuery.data ?? []) : [];
+  const suggestions = viewingYesterday ? [] : (suggestionsQuery.data ?? []);
   const writableCircles = spaces.filter((space) => canWrite(space.role));
   const stepDay = useCallback((delta: number) => {
     hapticLight();
@@ -614,7 +615,7 @@ export function TodayView() {
         setRefreshing(true);
         void Promise.all([
           activeQuery.refetch(),
-          viewingToday ? suggestionsQuery.refetch() : Promise.resolve(),
+          viewingYesterday ? Promise.resolve() : suggestionsQuery.refetch(),
         ]).finally(() => setRefreshing(false));
       }}
       tintColor={colors.brand}
@@ -717,6 +718,7 @@ export function TodayView() {
               suggestions.length === 0 ? null : (
                 <SuggestionsSection
                   items={suggestions}
+                  dayLabel={viewingTomorrow ? 'tomorrow' : 'today'}
                   onAdd={addSuggestion}
                   onDismiss={hideSuggestion}
                 />
@@ -772,6 +774,7 @@ export function TodayView() {
       <FadeSheet
         visible={sheet !== null}
         wide={isWide}
+        scroll
         onClose={() => closeSheet()}
         onClosed={() => {
           const next = afterClose.current;
@@ -779,13 +782,7 @@ export function TodayView() {
           next?.();
         }}
       >
-        <View
-          style={[
-            styles.sheet,
-            isWide && styles.sheetWide,
-            { paddingBottom: Math.max(insets.bottom, spacing.lg) },
-          ]}
-        >
+        <SheetBottom style={[styles.sheet, isWide && styles.sheetWide]}>
           <View style={styles.sheetHeader}>
             <Text variant="sectionHeading" numberOfLines={2} style={styles.sheetTitle}>
               {shown === 'edit'
@@ -1035,7 +1032,7 @@ export function TodayView() {
               ) : null}
             </>
           ) : null}
-        </View>
+        </SheetBottom>
       </FadeSheet>
     </KeyboardAvoidingView>
   );
@@ -1338,10 +1335,12 @@ function TodayLineRow({
 
 function SuggestionsSection({
   items,
+  dayLabel,
   onAdd,
   onDismiss,
 }: {
   items: readonly TodaySuggestion[];
+  dayLabel: string;
   onAdd: (item: TodaySuggestion) => void;
   onDismiss: (item: TodaySuggestion) => void;
 }) {
@@ -1372,7 +1371,7 @@ function SuggestionsSection({
           <Pressable
             onPress={() => onAdd(item)}
             accessibilityRole="button"
-            accessibilityLabel={`Add ${item.title} to today`}
+            accessibilityLabel={`Add ${item.title} to ${dayLabel}`}
             hitSlop={6}
             style={styles.suggestionAdd}
           >
@@ -1577,7 +1576,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     gap: spacing.md,
-    maxHeight: '80%',
   },
   sheetWide: {
     width: '100%',
@@ -1614,8 +1612,8 @@ const styles = StyleSheet.create({
   },
   choiceOn: { backgroundColor: colors.brandSoft },
   choiceTitle: { flex: 1 },
-  choiceList: { flexGrow: 0 },
-  taskChoices: { gap: spacing.sm },
+  choiceList: { flexGrow: 0, maxHeight: 280 },
+  taskChoices: { gap: spacing.sm, flexGrow: 0 },
   dayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   dayChip: {
     paddingHorizontal: spacing.md,

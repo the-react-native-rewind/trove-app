@@ -58,7 +58,14 @@ import {
 } from './mcpTools';
 import { inviteUrl } from './links';
 import { compareRank, rankAtBottom } from './rank';
-import { dayMatches, planTodayMaterialisation, resolveTodaySuggestions, shiftDay, type MineAction } from './today';
+import {
+  dayMatches,
+  isSuggestionDay,
+  planTodayMaterialisation,
+  resolveTodaySuggestions,
+  shiftDay,
+  type MineAction,
+} from './today';
 
 const ME = 'user-me';
 const SAM = 'user-sam';
@@ -1275,7 +1282,7 @@ test('today suggestions freeze the first set and do not backfill', async () => {
 
   const linked = await addTodayItem(store, { day, task_id: soon, ...asOf });
   assert.equal(linked.ok, true);
-  await mine('Brand new top', { due_date: '2026-10-01', rank: 'zz' });
+  const brandNew = await mine('Brand new top', { due_date: '2026-10-01', rank: 'zz' });
   const afterAdd = await listTodaySuggestions(store, { day, ...asOf });
   assert.equal(afterAdd.ok, true);
   if (!afterAdd.ok) return;
@@ -1284,11 +1291,44 @@ test('today suggestions freeze the first set and do not backfill', async () => {
     [later, drawer],
   );
 
-  const tomorrow = await listTodaySuggestions(store, { day: '2026-11-04', ...asOf });
+  const tomorrowDay = '2026-11-04';
+  const tomorrow = await listTodaySuggestions(store, { day: tomorrowDay, ...asOf });
   assert.equal(tomorrow.ok, true);
   if (!tomorrow.ok) return;
-  assert.deepEqual(tomorrow.data.suggestions, []);
+  assert.deepEqual(
+    tomorrow.data.suggestions.map((item) => item.task_id),
+    [brandNew, later, overdue],
+  );
+  assert.equal(tomorrow.data.suggestions.some((item) => item.task_id === onToday), false);
+  assert.equal(tomorrow.data.suggestions.some((item) => item.task_id === soon), false);
+
+  const dismissedTomorrow = await dismissTodaySuggestion(store, {
+    task_id: overdue,
+    day: tomorrowDay,
+    ...asOf,
+  });
+  assert.equal(dismissedTomorrow.ok, true);
+  const tomorrowAgain = await listTodaySuggestions(store, { day: tomorrowDay, ...asOf });
+  assert.equal(tomorrowAgain.ok, true);
+  if (!tomorrowAgain.ok) return;
+  assert.deepEqual(
+    tomorrowAgain.data.suggestions.map((item) => item.task_id),
+    [brandNew, later],
+  );
+  const todayUnchanged = await listTodaySuggestions(store, { day, ...asOf });
+  assert.equal(todayUnchanged.ok, true);
+  if (!todayUnchanged.ok) return;
+  assert.deepEqual(
+    todayUnchanged.data.suggestions.map((item) => item.task_id),
+    [later, drawer],
+  );
+
+  const yesterday = await listTodaySuggestions(store, { day: '2026-11-02', ...asOf });
+  assert.equal(yesterday.ok, true);
+  if (!yesterday.ok) return;
+  assert.deepEqual(yesterday.data.suggestions, []);
   assert.equal(/frozen/.test(toolDescriptions.list_today_suggestions), true);
+  assert.equal(/tomorrow/.test(toolDescriptions.list_today_suggestions), true);
 });
 
 test('a plain today line becomes an action in place', async () => {
@@ -1451,6 +1491,25 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
 
   function onDayTaskIds(day: string): Set<string> {
     return new Set(todayItems.flatMap((item) => (item.day === day && item.taskId ? [item.taskId] : [])));
+  }
+
+  function blockedSuggestionIds(day: string, asOf: string): Set<string> {
+    const ids = onDayTaskIds(day);
+    if (day !== shiftDay(asOf, 1)) return ids;
+    for (const item of todayItems) {
+      if (item.day === asOf && item.taskId && !item.dismissedAt) ids.add(item.taskId);
+    }
+    for (const routine of routineRows) {
+      if (!routine.active || !routine.taskId) continue;
+      for (const candidate of [asOf, day]) {
+        if (!dayMatches(routine.days, candidate)) continue;
+        const skipped = todayItems.some(
+          (row) => row.day === candidate && row.routineId === routine.id && row.dismissedAt,
+        );
+        if (!skipped) ids.add(routine.taskId);
+      }
+    }
+    return ids;
   }
 
   function resolveSuggestion(day: string, taskId: string | null) {
@@ -1987,15 +2046,15 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
       return todayEntry(item);
     },
     async listTodaySuggestions(input) {
-      if (input.day !== input.asOf) return [];
-      await this.ensureToday(input.day);
+      if (!isSuggestionDay(input.day, input.asOf)) return [];
+      if (input.day <= input.asOf) await this.ensureToday(input.day);
       const existing = suggestionOffers.filter((offer) => offer.day === input.day);
       const resolved = resolveTodaySuggestions({
         day: input.day,
         asOf: input.asOf,
         offers: existing,
         actions: mineActions(),
-        onDayTaskIds: onDayTaskIds(input.day),
+        onDayTaskIds: blockedSuggestionIds(input.day, input.asOf),
       });
       if (resolved.insert) {
         for (const offer of resolved.insert) suggestionOffers.push({ ...offer, day: input.day });

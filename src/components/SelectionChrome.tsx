@@ -13,7 +13,7 @@ import type { RosterMember, TaskWithRefs } from '@/lib/types';
 import { useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { Avatar } from './ui/Avatar';
-import { FadeSheet } from './ui/FadeSheet';
+import { FadeSheet, SheetBottom } from './ui/FadeSheet';
 import { AccentDot } from './ui/Indicators';
 import { Text } from './ui/Text';
 
@@ -213,7 +213,6 @@ function ProjectSheet({
   onClose: () => void;
   onApply: (projectId: string | null) => void;
 }) {
-  const insets = useSafeAreaInsets();
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
   const [wasOpen, setWasOpen] = useState(visible);
   if (visible && !wasOpen) {
@@ -227,7 +226,7 @@ function ProjectSheet({
 
   return (
     <FadeSheet visible={visible} onClose={onClose}>
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      <SheetBottom style={styles.sheet}>
         <View style={styles.sheetHeader}>
           <Text variant="sectionHeading">Project</Text>
           <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
@@ -290,7 +289,7 @@ function ProjectSheet({
             </Text>
           )}
         </Pressable>
-      </View>
+      </SheetBottom>
     </FadeSheet>
   );
 }
@@ -308,7 +307,6 @@ function AssignSheet({
   onClose: () => void;
   onApply: (people: AssignablePerson[]) => void;
 }) {
-  const insets = useSafeAreaInsets();
   const spaceIds = uniqueSpaceIds(tasks);
   const rosters = useQueries({
     queries: spaceIds.map((spaceId) => ({
@@ -346,7 +344,7 @@ function AssignSheet({
 
   return (
     <FadeSheet visible={visible} onClose={onClose}>
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      <SheetBottom style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <Text variant="sectionHeading">Assign</Text>
             <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
@@ -414,7 +412,7 @@ function AssignSheet({
               </Text>
             )}
           </Pressable>
-      </View>
+      </SheetBottom>
     </FadeSheet>
   );
 }
@@ -534,11 +532,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     gap: spacing.md,
-    maxHeight: '70%',
   },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  roster: { flexGrow: 0 },
-  rosterContent: { gap: spacing.sm, paddingBottom: spacing.sm },
+  roster: { flexGrow: 0, maxHeight: 320 },
+  rosterContent: { gap: spacing.sm, paddingBottom: spacing.sm, flexGrow: 0 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

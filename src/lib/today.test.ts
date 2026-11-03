@@ -17,6 +17,7 @@ import {
   canRescheduleTodayLine,
   compareMineOrder,
   eligibleMineSuggestions,
+  isSuggestionDay,
   insertTodayLine,
   openPastReview,
   resolveTodaySuggestions,
@@ -482,6 +483,20 @@ test('the migration keeps Today private and prepares a day in SQL', () => {
   assert.equal(/p_day \+ 2/.test(mineOrder), false);
   assert.equal(/returns table \([\s\S]*\bposition smallint/.test(mineOrder), false);
   assert.ok(/slot smallint/.test(mineOrder));
+
+  const perDay = readFileSync(
+    new URL('../../supabase/migrations/0034_today_suggestions_tomorrow.sql', import.meta.url),
+    'utf8',
+  );
+  assert.ok(/p_day <> v_as_of and p_day <> \(v_as_of \+ 1\)/.test(perDay));
+  assert.ok(/if p_day <= v_as_of then/.test(perDay));
+  assert.ok(/perform public\.ensure_today\(p_day\)/.test(perDay));
+  assert.equal(/create table/.test(perDay), false);
+  assert.equal(/returns table \([\s\S]*\bposition smallint/.test(perDay), false);
+  assert.ok(/slot smallint/.test(perDay));
+  assert.ok(/p_day = v_as_of \+ 1/.test(perDay));
+  assert.ok(/dismissed_at is null/.test(perDay));
+  assert.ok(/today_routines/.test(perDay));
 });
 
 function action(partial: Partial<MineAction> & Pick<MineAction, 'id'>): MineAction {
@@ -590,10 +605,38 @@ test('the first suggestion set is frozen, and an empty day is not', () => {
     asOf: SUGGESTION_DAY,
     offers: [],
     actions,
+    onDayTaskIds: new Set(['later']),
+  });
+  assert.equal(isSuggestionDay('2026-11-04', SUGGESTION_DAY), true);
+  assert.equal(isSuggestionDay('2026-11-02', SUGGESTION_DAY), false);
+  assert.deepEqual(
+    tomorrow.visible.map((item) => item.id),
+    ['overdue', 'soon', 'fourth'],
+  );
+  assert.deepEqual(
+    tomorrow.insert?.map((offer) => offer.taskId),
+    ['overdue', 'soon', 'fourth'],
+  );
+
+  const yesterday = resolveTodaySuggestions({
+    day: '2026-11-02',
+    asOf: SUGGESTION_DAY,
+    offers: [],
+    actions,
     onDayTaskIds: new Set(),
   });
-  assert.equal(tomorrow.insert, null);
-  assert.deepEqual(tomorrow.visible, []);
+  assert.equal(yesterday.insert, null);
+  assert.deepEqual(yesterday.visible, []);
+
+  const laterDay = resolveTodaySuggestions({
+    day: '2026-11-05',
+    asOf: SUGGESTION_DAY,
+    offers: [],
+    actions,
+    onDayTaskIds: new Set(),
+  });
+  assert.equal(laterDay.insert, null);
+  assert.deepEqual(laterDay.visible, []);
 });
 
 test('a suggestion already on today, finished, or no longer mine drops off without a replacement', () => {

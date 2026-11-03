@@ -100,7 +100,7 @@ export function HandoffSheet({
   }
 
   return (
-    <FadeSheet visible={open} wide onClose={() => setOpen(false)} onClosed={onClose}>
+    <FadeSheet visible={open} wide scroll onClose={() => setOpen(false)} onClosed={onClose}>
         <View style={styles.sheet}>
           <Text variant="bodyMedium">Hand off</Text>
           {step === 'person' ? (

@@ -44,7 +44,7 @@ supabase functions deploy mcp --no-verify-jwt
 
 `0030_today_yesterday_review.sql` stops `ensure_today` from moving unticked lines onto the new day. Those lines stay put. It also makes `delete_today_item` dismiss a repeating line instead of stopping the routine, and adds `skip_today_routine` for a preview that has no row yet. Apply `0030` on the hosted project yourself after merge, before deploying the `mcp` function. This repository does not apply it.
 
-`0033_today_suggestions_mine_order.sql` changes `list_today_suggestions` so the frozen set is the top of Mine, in Mine's order, instead of a due-date score. Apply `0032` and `0033` on the hosted project before deploying the `mcp` function at 1.8.1. This repository does not apply them.
+`0033_today_suggestions_mine_order.sql` changes `list_today_suggestions` so the frozen set is the top of Mine, in Mine's order, instead of a due-date score. `0034_today_suggestions_tomorrow.sql` lets that same function offer tomorrow as well as today. Each day keeps its own frozen set. Tomorrow skips actions already on today or tomorrow, and it does not prepare the day. Apply `0032`, `0033`, and `0034` on the hosted project before deploying the `mcp` function at 1.8.2. This repository does not apply them.
 
 `0014_task_recurrence.sql` adds repeating tasks. It is applied on the hosted project. Completing a repeating task inserts the next occurrence in the database, including when it is completed through the MCP server. `create_task`, `create_tasks_bulk`, and `update_task` accept `repeat_unit`, `repeat_interval`, and `repeat_weekday`. Task results include those fields and `recurrence_series_id`. `recurrence_source_id` stays server-only.
 

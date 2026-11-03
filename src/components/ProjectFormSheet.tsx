@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet } from 'react-native';
 
 import { useCreateProject } from '@/data/projects';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { ColorPicker } from './form';
 import { Button } from './ui/Button';
-import { FadeSheet } from './ui/FadeSheet';
+import { FadeSheet, SheetBottom } from './ui/FadeSheet';
 import { Text } from './ui/Text';
 import { TextField } from './ui/TextField';
 
@@ -19,7 +18,6 @@ export function ProjectFormSheet({
   spaceId: string;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const create = useCreateProject(spaceId);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -56,8 +54,8 @@ export function ProjectFormSheet({
   }
 
   return (
-    <FadeSheet visible={visible} onClose={onClose}>
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+    <FadeSheet visible={visible} onClose={onClose} scroll>
+      <SheetBottom style={styles.sheet}>
         <Text variant="sectionHeading">New project</Text>
         <TextField
           label="Name"
@@ -79,7 +77,7 @@ export function ProjectFormSheet({
           </Text>
         ) : null}
         <Button label="Create project" onPress={() => void onCreate()} loading={create.isPending} />
-      </View>
+      </SheetBottom>
     </FadeSheet>
   );
 }

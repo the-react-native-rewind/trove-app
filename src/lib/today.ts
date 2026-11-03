@@ -579,9 +579,16 @@ export function eligibleMineSuggestions(
     .sort(compareMineOrder);
 }
 
+/** Today and the next day can each freeze a suggestion set. Other days cannot. */
+export function isSuggestionDay(day: string, asOf: string): boolean {
+  return day === asOf || day === shiftDay(asOf, 1);
+}
+
 /**
- * What Today offers under Suggested from Mine, and which offers to store the first time.
- * A day other than `asOf` shows nothing and stores nothing.
+ * What a day offers under Suggested from Mine, and which offers to store the first time.
+ * Only `asOf` and the next day show anything. Each day freezes its own set.
+ * Pass task ids already on today or tomorrow in `onDayTaskIds` when resolving
+ * tomorrow, so those actions are skipped.
  * An empty offer list is not frozen, so the first actions of the day can
  * still appear. Once any offer is stored, later actions are not added.
  * Dismissed offers, actions that landed on the day, and actions that are no
@@ -594,7 +601,7 @@ export function resolveTodaySuggestions(input: {
   actions: readonly MineAction[];
   onDayTaskIds: ReadonlySet<string>;
 }): { insert: SuggestionOffer[] | null; visible: MineAction[] } {
-  if (input.day !== input.asOf) return { insert: null, visible: [] };
+  if (!isSuggestionDay(input.day, input.asOf)) return { insert: null, visible: [] };
   const ranked = eligibleMineSuggestions(input.actions, input.onDayTaskIds);
   const byId = new Map(ranked.map((action) => [action.id, action]));
   if (input.offers.length > 0) {

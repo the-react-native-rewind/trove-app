@@ -168,9 +168,9 @@ export const toolDescriptions: Record<McpToolName, string> = {
   check_today_item:
     'Mark one Today line done on the day it is already on. Sets checked_at. Does not move the line. complete_task defaults to true: when the line is linked to a task, that task is marked done, which is the Finished choice in the app. Pass complete_task false to tick the line only and leave the task in progress (Done for today). Does not change the due date. Pass the line id from list_today or list_open_past_today, not a preview id. Idempotent when the line is already ticked.',
   list_today_suggestions:
-    'List up to three suggestions for the signed-in person\'s Today. They are the first open actions on their Mine list, in that list\'s own order (rank, then due date), that are not already on today and have not been dismissed today. Nothing is scored ahead of that order. The first non-empty set is frozen for that local day: adding one with add_today_item, or dismissing it with dismiss_today_suggestion, does not replace it with another. Pass local_today as the person\'s local date (YYYY-MM-DD). Suggestions exist only for that day, not for yesterday or tomorrow. The app shows them as ordinary Today rows under a Suggested from Mine heading.',
+    'List up to three suggestions for the signed-in person\'s today or tomorrow. They are the first open actions on their Mine list, in that list\'s own order (rank, then due date), that are not already on that day. Tomorrow also skips actions already on today or tomorrow. Nothing is scored ahead of that order. The first non-empty set is frozen for that local day: adding one with add_today_item, or dismissing it with dismiss_today_suggestion, does not replace it with another. Today and tomorrow each keep their own set. Pass day as YYYY-MM-DD (defaults to local_today). Pass local_today as the person\'s local date. Yesterday has no suggestions. The app shows them under a Suggested from Mine heading.',
   dismiss_today_suggestion:
-    'Hide one suggestion from Today for the rest of that local day. Does not change the action, its due date, or its status. Pass task_id from list_today_suggestions. Idempotent when that suggestion is already hidden. Does not offer a replacement.',
+    'Hide one suggestion for the rest of that local day. Does not change the action, its due date, or its status. Pass task_id from list_today_suggestions. Pass day (defaults to local_today) so a tomorrow suggestion is hidden only for tomorrow. Idempotent when that suggestion is already hidden. Does not offer a replacement.',
   convert_today_item_to_task:
     'Turn one plain Today line into an action. The app calls this Make it an action. Pass the line id and a circle (circle_id, circle_name, or personal: true). Creates a to-do in that circle, assigned to the caller, and links the existing line to it. The line keeps its day, its place, and whether it is ticked. Task lines and repeating lines are refused. Viewers cannot add an action. A title longer than 300 characters is refused.',
 };
@@ -1990,12 +1990,17 @@ export async function listTodaySuggestions(
 
 export async function dismissTodaySuggestion(
   store: TroveStore,
-  input: { task_id?: string; local_today?: string },
+  input: { task_id?: string; day?: string; local_today?: string },
 ): Promise<ToolResult<{ day: string; task_id: string }>> {
   const taskId = input.task_id?.trim() ?? '';
   if (!taskId) return { ok: false, error: 'task_id is required.' };
-  const day = resolveLocalToday(input.local_today);
+  const asOf = resolveLocalToday(input.local_today);
+  if (typeof asOf !== 'string') return { ok: false, error: asOf.error };
+  const day = input.day === undefined || input.day.trim() === '' ? asOf : resolveTodayDay(input.day);
   if (typeof day !== 'string') return { ok: false, error: day.error };
+  if (day !== asOf && day !== shiftIsoDay(asOf, 1)) {
+    return { ok: false, error: 'Suggestions are only for today or tomorrow.' };
+  }
   try {
     await store.dismissTodaySuggestion({ day, taskId });
     return { ok: true, data: { day, task_id: taskId } };
