@@ -713,7 +713,7 @@ export function TodayView() {
             onDragBegin={() => hapticLight()}
             onDragEnd={onDragEnd}
             onScrollOffsetChange={collapse.onScrollOffsetChange}
-            ListHeaderComponent={
+            ListFooterComponent={
               suggestions.length === 0 ? null : (
                 <SuggestionsSection
                   items={suggestions}
@@ -1346,9 +1346,14 @@ function SuggestionsSection({
   onDismiss: (item: TodaySuggestion) => void;
 }) {
   return (
-    <View>
-      <Text variant="meta" color={colors.inkFaint} style={styles.suggestionLabel}>
-        Suggested
+    <View style={styles.suggestionSection}>
+      <Text
+        variant="label"
+        color={colors.inkFaint}
+        style={styles.suggestionLabel}
+        accessibilityRole="header"
+      >
+        Suggested from Mine
       </Text>
       {items.map((item) => (
         <View key={item.taskId} style={styles.row}>
@@ -1479,10 +1484,15 @@ const styles = StyleSheet.create({
   },
   rowActive: { backgroundColor: colors.surface, ...shadows.floating },
   rowFocused: { backgroundColor: colors.surfaceAlt },
+  suggestionSection: {
+    marginTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+  },
   suggestionLabel: {
-    paddingLeft: spacing.sm + 44,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    marginLeft: spacing.sm + 44,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
   },
   suggestionAdd: {
     width: 36,
