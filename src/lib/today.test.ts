@@ -11,9 +11,16 @@ import {
   daysFromWeekdays,
   planTodayMaterialisation,
   bottomTodayRank,
+  ACTION_TITLE_MAX,
+  TODAY_DUE_SOON_DAYS,
+  TODAY_SUGGESTION_LIMIT,
+  canMakeTodayAction,
   canRescheduleTodayLine,
+  compareMineSuggestions,
+  eligibleMineSuggestions,
   insertTodayLine,
   openPastReview,
+  resolveTodaySuggestions,
   openTodayLineForTask,
   momentumAppearance,
   momentumCount,
@@ -30,6 +37,7 @@ import {
   weekdayBit,
   weekdayIndex,
   weekdaysFromDays,
+  type MineAction,
   type TodayLine,
   type TodayRoutinePlan,
   type TodaySourceItem,
@@ -437,4 +445,174 @@ test('the migration keeps Today private and prepares a day in SQL', () => {
   assert.ok(/set dismissed_at = now\(\)/.test(deleteBody));
   assert.equal(/set active = false/.test(deleteBody), false);
   assert.ok(/function public\.skip_today_routine/.test(review));
+
+  const suggestions = readFileSync(
+    new URL('../../supabase/migrations/0031_today_suggestions.sql', import.meta.url),
+    'utf8',
+  );
+  assert.ok(/create table public\.today_suggestions/.test(suggestions));
+  assert.ok(/user_id = \(select auth\.uid\(\)\)/.test(suggestions));
+  assert.ok(/enable row level security/.test(suggestions));
+  assert.ok(/p_day \+ 2/.test(suggestions));
+  assert.ok(/position <= 3/.test(suggestions));
+  assert.ok(/t\.status <> 'done'/.test(suggestions));
+  assert.ok(/task_assignees/.test(suggestions));
+  assert.ok(/if p_day <> v_as_of then/.test(suggestions));
+  assert.ok(/function public\.dismiss_today_suggestion/.test(suggestions));
+  assert.ok(/function public\.convert_today_item_to_task/.test(suggestions));
+  assert.ok(/set task_id = v_task_id, text = null/.test(suggestions));
+  assert.ok(/char_length\(v_title\) > 300/.test(suggestions));
+  assert.equal(/checked_at = null/.test(suggestions), false);
+  const convertStart = suggestions.indexOf('function public.convert_today_item_to_task');
+  const convertBody = suggestions.slice(convertStart);
+  assert.ok(/v_role not in \('owner', 'admin', 'member'\)/.test(convertBody));
+  assert.ok(/v_item\.routine_id is not null/.test(convertBody));
+  assert.ok(/today_suggestions_resolve_on_add/.test(suggestions));
+});
+
+function action(partial: Partial<MineAction> & Pick<MineAction, 'id'>): MineAction {
+  return {
+    title: partial.id,
+    status: 'todo',
+    dueDate: null,
+    rank: 'm',
+    spaceId: 'circle',
+    spaceName: 'Home',
+    spaceColor: 'sage',
+    ...partial,
+  };
+}
+
+const SUGGESTION_DAY = '2026-11-03';
+
+test('suggestions put overdue and due soon ahead of in progress, then rank', () => {
+  assert.equal(TODAY_SUGGESTION_LIMIT, 3);
+  assert.equal(TODAY_DUE_SOON_DAYS, 2);
+  assert.equal(ACTION_TITLE_MAX, 300);
+  const actions = [
+    action({ id: 'later', dueDate: '2026-11-06', status: 'in_progress', rank: 'z' }),
+    action({ id: 'soon', dueDate: '2026-11-05', rank: 'a' }),
+    action({ id: 'overdue', dueDate: '2026-11-01', rank: 'm' }),
+    action({ id: 'doing', status: 'in_progress', rank: 'b' }),
+    action({ id: 'plain', rank: 'y' }),
+    action({ id: 'finished', status: 'done', dueDate: '2026-11-01', rank: 'zz' }),
+  ];
+  const ranked = eligibleMineSuggestions(SUGGESTION_DAY, actions, new Set());
+  assert.deepEqual(
+    ranked.map((item) => item.id),
+    ['overdue', 'soon', 'later', 'doing', 'plain'],
+  );
+  assert.ok(compareMineSuggestions(SUGGESTION_DAY, actions[2]!, actions[1]!) < 0);
+});
+
+test('the first suggestion set is frozen, and an empty day is not', () => {
+  const actions = [
+    action({ id: 'overdue', dueDate: '2026-11-01' }),
+    action({ id: 'soon', dueDate: '2026-11-05' }),
+    action({ id: 'later', status: 'in_progress', rank: 'z' }),
+    action({ id: 'fourth', rank: 'c' }),
+  ];
+  const first = resolveTodaySuggestions({
+    day: SUGGESTION_DAY,
+    asOf: SUGGESTION_DAY,
+    offers: [],
+    actions,
+    onDayTaskIds: new Set(),
+  });
+  assert.deepEqual(
+    first.visible.map((item) => item.id),
+    ['overdue', 'soon', 'later'],
+  );
+  assert.deepEqual(
+    first.insert?.map((offer) => offer.taskId),
+    ['overdue', 'soon', 'later'],
+  );
+
+  const afterDismiss = resolveTodaySuggestions({
+    day: SUGGESTION_DAY,
+    asOf: SUGGESTION_DAY,
+    offers: (first.insert ?? []).map((offer) =>
+      offer.taskId === 'overdue' ? { ...offer, dismissed: true } : offer,
+    ),
+    actions: [...actions, action({ id: 'brand-new', dueDate: '2026-10-01', rank: 'zz' })],
+    onDayTaskIds: new Set(),
+  });
+  assert.equal(afterDismiss.insert, null);
+  assert.deepEqual(
+    afterDismiss.visible.map((item) => item.id),
+    ['soon', 'later'],
+  );
+
+  const cleared = resolveTodaySuggestions({
+    day: SUGGESTION_DAY,
+    asOf: SUGGESTION_DAY,
+    offers: (first.insert ?? []).map((offer) => ({ ...offer, dismissed: true })),
+    actions,
+    onDayTaskIds: new Set(),
+  });
+  assert.deepEqual(cleared.visible, []);
+
+  const empty = resolveTodaySuggestions({
+    day: SUGGESTION_DAY,
+    asOf: SUGGESTION_DAY,
+    offers: [],
+    actions: [],
+    onDayTaskIds: new Set(),
+  });
+  assert.equal(empty.insert, null);
+  assert.deepEqual(empty.visible, []);
+
+  const tomorrow = resolveTodaySuggestions({
+    day: '2026-11-04',
+    asOf: SUGGESTION_DAY,
+    offers: [],
+    actions,
+    onDayTaskIds: new Set(),
+  });
+  assert.equal(tomorrow.insert, null);
+  assert.deepEqual(tomorrow.visible, []);
+});
+
+test('a suggestion already on today, finished, or no longer mine drops off without a replacement', () => {
+  const offers = [
+    { taskId: 'overdue', position: 0, dismissed: false },
+    { taskId: 'soon', position: 1, dismissed: false },
+    { taskId: 'later', position: 2, dismissed: false },
+  ];
+  const actions = [
+    action({ id: 'overdue', dueDate: '2026-11-01', status: 'done' }),
+    action({ id: 'soon', dueDate: '2026-11-05' }),
+    action({ id: 'spare', rank: 'z' }),
+  ];
+  const next = resolveTodaySuggestions({
+    day: SUGGESTION_DAY,
+    asOf: SUGGESTION_DAY,
+    offers,
+    actions,
+    onDayTaskIds: new Set(['later']),
+  });
+  assert.deepEqual(
+    next.visible.map((item) => item.id),
+    ['soon'],
+  );
+});
+
+test('only a plain line can become an action', () => {
+  assert.equal(
+    canMakeTodayAction({ taskId: null, routineId: null, text: 'Call the bank' }),
+    true,
+  );
+  assert.equal(
+    canMakeTodayAction({ taskId: 'task', routineId: null, text: null }),
+    false,
+  );
+  assert.equal(
+    canMakeTodayAction({ taskId: null, routineId: 'routine', text: 'Stretch' }),
+    false,
+  );
+  assert.equal(
+    canMakeTodayAction({ taskId: null, routineId: null, text: '   ', virtual: true }),
+    false,
+  );
+  assert.equal(canMakeTodayAction({ taskId: null, routineId: null, text: '   ' }), false);
 });

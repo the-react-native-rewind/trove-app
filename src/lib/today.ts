@@ -516,3 +516,115 @@ export function bottomTodayRank(lines: readonly { rank: string }[]): string {
 export function todayLineRepeats(line: Pick<TodayLine, 'routineId' | 'routineActive'>): boolean {
   return line.routineId !== null && line.routineActive;
 }
+
+/**
+ * How many Mine actions Today offers on one day. The first non-empty set is
+ * frozen. Adding or dismissing one does not pull in a replacement.
+ */
+export const TODAY_SUGGESTION_LIMIT = 3;
+
+/**
+ * Due on this day, earlier, or within this many days after it. Those sort
+ * ahead of In progress. The same window is used in list_today_suggestions.
+ */
+export const TODAY_DUE_SOON_DAYS = 2;
+
+/** Task titles stop at 300 characters. A Today line can be longer. */
+export const ACTION_TITLE_MAX = 300;
+
+export type MineAction = {
+  id: string;
+  title: string;
+  status: string;
+  dueDate: string | null;
+  rank: string;
+  spaceId: string;
+  spaceName: string;
+  spaceColor: string;
+};
+
+export type SuggestionOffer = {
+  taskId: string;
+  position: number;
+  dismissed: boolean;
+};
+
+/** 0 = overdue or due soon, 1 = in progress, 2 = everything else still open. */
+export function suggestionTier(action: Pick<MineAction, 'status' | 'dueDate'>, day: string): 0 | 1 | 2 {
+  if (action.dueDate && action.dueDate <= shiftDay(day, TODAY_DUE_SOON_DAYS)) return 0;
+  if (action.status === 'in_progress') return 1;
+  return 2;
+}
+
+/** Overdue and due soon first (earliest date first), then In progress, then rank. */
+export function compareMineSuggestions(day: string, a: MineAction, b: MineAction): number {
+  const tier = suggestionTier(a, day) - suggestionTier(b, day);
+  if (tier !== 0) return tier;
+  if (suggestionTier(a, day) === 0 && a.dueDate !== b.dueDate) {
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return a.dueDate < b.dueDate ? -1 : 1;
+  }
+  return compareRank(a.rank, b.rank) || a.id.localeCompare(b.id);
+}
+
+/**
+ * Open Mine actions that are not already on this day, in suggestion order.
+ * `blockedTaskIds` is every task that already has a Today row that day,
+ * including one that was ticked or taken off.
+ */
+export function eligibleMineSuggestions(
+  day: string,
+  actions: readonly MineAction[],
+  blockedTaskIds: ReadonlySet<string>,
+): MineAction[] {
+  return actions
+    .filter((action) => action.status !== 'done' && !blockedTaskIds.has(action.id))
+    .sort((a, b) => compareMineSuggestions(day, a, b));
+}
+
+/**
+ * What the Suggestions card shows, and which offers to store the first time.
+ * A day other than `asOf` shows nothing and stores nothing.
+ * An empty offer list is not frozen, so the first actions of the day can
+ * still appear. Once any offer is stored, later actions are not added.
+ * Dismissed offers, actions that landed on the day, and actions that are no
+ * longer open Mine work drop off without a replacement.
+ */
+export function resolveTodaySuggestions(input: {
+  day: string;
+  asOf: string;
+  offers: readonly SuggestionOffer[];
+  actions: readonly MineAction[];
+  onDayTaskIds: ReadonlySet<string>;
+}): { insert: SuggestionOffer[] | null; visible: MineAction[] } {
+  if (input.day !== input.asOf) return { insert: null, visible: [] };
+  const ranked = eligibleMineSuggestions(input.day, input.actions, input.onDayTaskIds);
+  const byId = new Map(ranked.map((action) => [action.id, action]));
+  if (input.offers.length > 0) {
+    const visible = [...input.offers]
+      .filter((offer) => !offer.dismissed)
+      .sort((a, b) => a.position - b.position || a.taskId.localeCompare(b.taskId))
+      .flatMap((offer) => {
+        const action = byId.get(offer.taskId);
+        return action ? [action] : [];
+      });
+    return { insert: null, visible };
+  }
+  const picked = ranked.slice(0, TODAY_SUGGESTION_LIMIT);
+  if (picked.length === 0) return { insert: null, visible: [] };
+  return {
+    insert: picked.map((action, position) => ({ taskId: action.id, position, dismissed: false })),
+    visible: picked,
+  };
+}
+
+/** A plain notepad line can become an action. Task lines and routines cannot. */
+export function canMakeTodayAction(line: {
+  taskId: string | null;
+  routineId: string | null;
+  virtual?: boolean;
+  text: string | null;
+}): boolean {
+  return !line.virtual && line.taskId === null && line.routineId === null && Boolean(line.text?.trim());
+}

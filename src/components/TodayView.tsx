@@ -26,8 +26,10 @@ import {
   useAddTodayTask,
   useAddTodayText,
   useCheckTodayItem,
+  useConvertTodayItem,
   useDeleteTodayItem,
   useDismissTodayItem,
+  useDismissTodaySuggestion,
   useMoveTodayItem,
   useMoveTodayItemToDay,
   useOpenPastToday,
@@ -38,9 +40,12 @@ import {
   useSetTodayRepeat,
   useSkipTodayRoutine,
   useTodayList,
+  useTodaySuggestions,
   useTomorrowPlan,
   useUpdateTodayRoutine,
+  type TodaySuggestion,
 } from '@/data/today';
+import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
 import { formatDueDate } from '@/lib/format';
@@ -55,6 +60,7 @@ import {
   dayMatches,
   daysFromWeekdays,
   isRepeatMask,
+  canMakeTodayAction,
   canRescheduleTodayLine,
   localToday,
   momentumCount,
@@ -67,6 +73,7 @@ import {
   withLinePatch,
   type TodayLine,
 } from '@/lib/today';
+import { canWrite } from '@/lib/types';
 import { resolveAccent, colors, radii, shadows, spacing, type as typeScale } from '@/theme/tokens';
 import { CollapsingScreenHeader, useCollapsingHeader } from './CollapsingHeader';
 import { MomentumBadge } from './MomentumBadge';
@@ -95,12 +102,12 @@ export function TodayView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isWide = useIsWide();
-  const collapse = useCollapsingHeader(insets.top, 96);
+  const collapse = useCollapsingHeader(insets.top, 64);
   const today = localToday();
   const tomorrow = shiftDay(today, 1);
   const [when, setWhen] = useState<'today' | 'tomorrow'>('today');
   const [draft, setDraft] = useState('');
-  const [sheet, setSheet] = useState<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | null>(null);
+  const [sheet, setSheet] = useState<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action' | null>(null);
   const [menuLine, setMenuLine] = useState<TodayLine | null>(null);
   const [editLine, setEditLine] = useState<TodayLine | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -108,21 +115,22 @@ export function TodayView() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(true);
   const afterClose = useRef<(() => void) | null>(null);
-  const heldSheet = useRef<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | null>(null);
-  useEffect(() => {
-    if (sheet) heldSheet.current = sheet;
-  }, [sheet]);
-  const shown = sheet ?? heldSheet.current;
+  const [heldSheet, setHeldSheet] = useState<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action' | null>(null);
+  if (sheet && sheet !== heldSheet) setHeldSheet(sheet);
+  const shown = sheet ?? heldSheet;
   const [repeatChoice, setRepeatChoice] = useState<'every' | 'weekdays' | 'custom'>('every');
   const [customDays, setCustomDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [tickLine, setTickLine] = useState<TodayLine | null>(null);
   const [taskSearch, setTaskSearch] = useState('');
+  const [actionLine, setActionLine] = useState<TodayLine | null>(null);
 
   const planningTomorrow = when === 'tomorrow';
   const activeDay = planningTomorrow ? tomorrow : today;
   const todayQuery = useTodayList(today);
   const tomorrowQuery = useTomorrowPlan(tomorrow);
   const pastQuery = useOpenPastToday(today);
+  const suggestionsQuery = useTodaySuggestions(today, true);
+  const { data: spaces = [] } = useSpaces();
   const activeQuery = planningTomorrow ? tomorrowQuery : todayQuery;
   const lines = activeQuery.data ?? EMPTY_TODAY_LINES;
   const [refreshing, setRefreshing] = useState(false);
@@ -139,6 +147,8 @@ export function TodayView() {
   const dismiss = useDismissTodayItem();
   const restore = useRestoreTodayItem();
   const skipRoutine = useSkipTodayRoutine();
+  const dismissSuggestion = useDismissTodaySuggestion(today);
+  const convertLine = useConvertTodayItem();
   const pickerOpen = sheet === 'picker';
   const taskChoices = useOpenTaskChoices(taskSearch, pickerOpen);
   const chime = useMomentumChime();
@@ -159,6 +169,8 @@ export function TodayView() {
 
   const takenTaskIds = new Set(lines.flatMap((line) => (line.taskId ? [line.taskId] : [])));
   const choices = (taskChoices.data ?? []).filter((choice) => !takenTaskIds.has(choice.id));
+  const suggestions = planningTomorrow ? [] : (suggestionsQuery.data ?? []);
+  const writableCircles = spaces.filter((space) => canWrite(space.role));
 
   function openDrawer() {
     (navigation as unknown as { openDrawer: () => void }).openDrawer();
@@ -198,7 +210,7 @@ export function TodayView() {
         spaceName: choice.spaceName,
         spaceColor: choice.spaceColor,
       },
-      { onError: (error) => quietError('Couldn’t add that task', error) },
+      { onError: (error) => quietError('Couldn’t add that action', error) },
     );
   }
 
@@ -263,7 +275,7 @@ export function TodayView() {
       {
         onError: (error) => {
           chime.setStep(momentumCount(lines, today));
-          quietError('Couldn’t update that task', error);
+          quietError('Couldn’t update that action', error);
         },
       },
     );
@@ -467,6 +479,44 @@ export function TodayView() {
     });
   }
 
+  function openMakeAction(line: TodayLine) {
+    if (!canMakeTodayAction(line)) return;
+    setActionLine(line);
+    hapticLight();
+    setSheet('action');
+  }
+
+  function chooseCircle(space: { id: string; name: string; color: string }) {
+    const line = actionLine;
+    if (!line) return;
+    const title = (line.text ?? '').replace(/\s+/g, ' ').trim();
+    closeSheet();
+    convertLine.mutate(
+      { id: line.id, spaceId: space.id, spaceName: space.name, spaceColor: space.color, title },
+      { onError: (error) => quietError('Couldn’t make that an action', error) },
+    );
+  }
+
+  function addSuggestion(item: TodaySuggestion) {
+    hapticMedium();
+    addTask.mutate(
+      {
+        taskId: item.taskId,
+        title: item.title,
+        spaceName: item.spaceName,
+        spaceColor: item.spaceColor,
+      },
+      { onError: (error) => quietError('Couldn’t add that action', error) },
+    );
+  }
+
+  function hideSuggestion(item: TodaySuggestion) {
+    hapticLight();
+    dismissSuggestion.mutate(item.taskId, {
+      onError: (error) => quietError('Couldn’t dismiss that', error),
+    });
+  }
+
   function renderLine(line: TodayLine, drag?: () => void, isActive?: boolean) {
     const title = todayLineTitle(line);
     const checked = line.checkedAt !== null;
@@ -493,6 +543,7 @@ export function TodayView() {
         }}
         onTomorrow={() => planLine(line, 'tomorrow')}
         onNotToday={() => planLine(line, 'not-today')}
+        onMakeAction={() => openMakeAction(line)}
         planningTomorrow={planningTomorrow}
       />
     );
@@ -515,7 +566,7 @@ export function TodayView() {
           ? 'Pull to refresh and try again.'
           : planningTomorrow
             ? 'Write a line for tomorrow. Routines that fall on that day show here too.'
-            : 'Write a line at the bottom. Type @ to pull in a task.'
+            : 'Write a line at the bottom. Type @ to pull in an action.'
       }
     />
   );
@@ -525,14 +576,20 @@ export function TodayView() {
       refreshing={refreshing}
       onRefresh={() => {
         setRefreshing(true);
-        void activeQuery.refetch().finally(() => setRefreshing(false));
+        void Promise.all([
+          activeQuery.refetch(),
+          planningTomorrow ? Promise.resolve() : suggestionsQuery.refetch(),
+          planningTomorrow ? Promise.resolve() : pastQuery.refetch(),
+        ]).finally(() => setRefreshing(false));
       }}
       tintColor={colors.brand}
     />
   );
 
   const removeFromDayRef = useRef(removeFromDay);
-  removeFromDayRef.current = removeFromDay;
+  useEffect(() => {
+    removeFromDayRef.current = removeFromDay;
+  });
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -583,17 +640,26 @@ export function TodayView() {
             </Pressable>
           ) : null}
           <View style={styles.titleBlock}>
-            <Text variant="screenTitle" numberOfLines={1}>
-              {planningTomorrow ? 'Tomorrow' : 'Today'}
-            </Text>
+            <Pressable
+              onPress={() => selectDay(planningTomorrow ? 'today' : 'tomorrow')}
+              accessibilityRole="button"
+              accessibilityLabel={planningTomorrow ? 'Tomorrow, show today' : 'Today, show tomorrow'}
+              hitSlop={8}
+              style={styles.titleToggle}
+            >
+              <Text variant="screenTitle" numberOfLines={1} style={styles.titleLabel}>
+                {planningTomorrow ? 'Tomorrow' : 'Today'}
+              </Text>
+              <Ionicons
+                name={planningTomorrow ? 'chevron-back' : 'chevron-forward'}
+                size={16}
+                color={colors.inkSoft}
+              />
+            </Pressable>
           </View>
           {planningTomorrow ? null : (
             <MomentumBadge count={momentumCount(todayQuery.data ?? [], today)} pulse={tickPulse} />
           )}
-        </View>
-        <View style={[styles.switchRow, isWide && styles.switchWide]}>
-          <DaySwitch label="Today" selected={!planningTomorrow} onPress={() => selectDay('today')} />
-          <DaySwitch label="Tomorrow" selected={planningTomorrow} onPress={() => selectDay('tomorrow')} />
         </View>
       </CollapsingScreenHeader>
 
@@ -614,7 +680,9 @@ export function TodayView() {
             onDragEnd={onDragEnd}
             onScrollOffsetChange={collapse.onScrollOffsetChange}
             ListHeaderComponent={
-              planningTomorrow || pastGroups.length === 0 ? null : (
+              planningTomorrow || (pastGroups.length === 0 && suggestions.length === 0) ? null : (
+                <View>
+                {pastGroups.length === 0 ? null : (
                 <YesterdayReview
                   today={today}
                   groups={pastGroups}
@@ -666,6 +734,15 @@ export function TodayView() {
                     }
                   }}
                 />
+                )}
+                {suggestions.length === 0 ? null : (
+                  <SuggestionsCard
+                    items={suggestions}
+                    onAdd={addSuggestion}
+                    onDismiss={hideSuggestion}
+                  />
+                )}
+                </View>
               )
             }
             ListEmptyComponent={empty}
@@ -685,7 +762,7 @@ export function TodayView() {
             value={draft}
             onChangeText={onDraftChange}
             onSubmitEditing={() => void submitDraft()}
-            placeholder={planningTomorrow ? 'Add a line for tomorrow' : 'Add a line, or @ a task'}
+            placeholder={planningTomorrow ? 'Add a line for tomorrow' : 'Add a line, or @ an action'}
             placeholderTextColor={colors.inkFaint}
             returnKeyType="done"
             blurOnSubmit={false}
@@ -698,12 +775,12 @@ export function TodayView() {
               setSheet('picker');
             }}
             accessibilityRole="button"
-            accessibilityLabel="Add a task"
+            accessibilityLabel="Add an action"
             style={styles.taskButton}
           >
             <Ionicons name="checkbox-outline" size={18} color={colors.brandDeep} />
             <Text variant="meta" color={colors.brandDeep}>
-              Task
+              Action
             </Text>
           </Pressable>
         </View>
@@ -732,12 +809,14 @@ export function TodayView() {
                 : shown === 'repeat'
                   ? 'Repeat'
                   : shown === 'picker'
-                    ? 'Add a task'
-                    : shown === 'tick' && tickLine
-                      ? todayLineTitle(tickLine)
-                      : menuLine
-                        ? todayLineTitle(menuLine)
-                        : ''}
+                    ? 'Add an action'
+                    : shown === 'action'
+                      ? 'Make it an action'
+                      : shown === 'tick' && tickLine
+                        ? todayLineTitle(tickLine)
+                        : menuLine
+                          ? todayLineTitle(menuLine)
+                          : ''}
             </Text>
             <Pressable onPress={() => closeSheet()} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="close" size={24} color={colors.inkSoft} />
@@ -748,12 +827,19 @@ export function TodayView() {
               <SheetAction label="Edit" onPress={() => menuLine && openEditor(menuLine)} />
               {menuLine?.taskId ? (
                 <SheetAction
-                  label="Open task"
+                  label="Open action"
                   onPress={() => {
                     const taskId = menuLine?.taskId;
                     if (!taskId) return;
                     closeSheet(() => router.push(`/task/${taskId}` as never));
                   }}
+                />
+              ) : null}
+              {menuLine && canMakeTodayAction(menuLine) ? (
+                <SheetAction
+                  label="Make it an action"
+                  detail="Pick a circle. This line stays put."
+                  onPress={() => menuLine && openMakeAction(menuLine)}
                 />
               ) : null}
               <SheetAction
@@ -860,15 +946,15 @@ export function TodayView() {
           {shown === 'tick' ? (
             <>
               <Text variant="meta" color={colors.inkSoft}>
-                Ticking this also updates the task. Unticking later only clears the line.
+                Ticking this also updates the action. Unticking later only clears the line.
               </Text>
               <SheetAction
                 label="Done for today"
-                detail="Keep the task in progress"
+                detail="Keep the action in progress"
                 quiet
                 onPress={() => void chooseTick('today')}
               />
-              <SheetAction label="Finished" detail="Mark the task done" quiet onPress={() => void chooseTick('done')} />
+              <SheetAction label="Finished" detail="Mark the action done" quiet onPress={() => void chooseTick('done')} />
             </>
           ) : null}
           {shown === 'picker' ? (
@@ -876,15 +962,15 @@ export function TodayView() {
               <TextInput
                 value={taskSearch}
                 onChangeText={setTaskSearch}
-                placeholder="Search your open tasks"
+                placeholder="Search your open actions"
                 placeholderTextColor={colors.inkFaint}
                 style={styles.sheetInput}
-                accessibilityLabel="Search tasks"
+                accessibilityLabel="Search actions"
               />
               {taskChoices.isLoading ? <ActivityIndicator color={colors.brand} /> : null}
               {taskChoices.isError ? (
                 <Text variant="meta" color={colors.priorityHigh}>
-                  Couldn’t load tasks. Try again.
+                  Couldn’t load actions. Try again.
                 </Text>
               ) : null}
               <ScrollView
@@ -913,10 +999,36 @@ export function TodayView() {
                 ))}
                 {!taskChoices.isLoading && choices.length === 0 ? (
                   <Text variant="meta" color={colors.inkSoft}>
-                    No open tasks match.
+                    No open actions match.
                   </Text>
                 ) : null}
               </ScrollView>
+            </>
+          ) : null}
+          {shown === 'action' ? (
+            <>
+              <Text variant="meta" color={colors.inkSoft}>
+                It stays on this line, in the same place.
+              </Text>
+              {writableCircles.map((space) => (
+                <Pressable
+                  key={space.id}
+                  onPress={() => chooseCircle(space)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add to ${space.name}`}
+                  style={styles.choice}
+                >
+                  <AccentDot color={resolveAccent(space.color)} size={8} />
+                  <Text variant="bodyMedium" style={styles.choiceTitle} numberOfLines={1}>
+                    {space.name}
+                  </Text>
+                </Pressable>
+              ))}
+              {writableCircles.length === 0 ? (
+                <Text variant="meta" color={colors.inkSoft}>
+                  You need a circle you can add to.
+                </Text>
+              ) : null}
             </>
           ) : null}
         </View>
@@ -941,6 +1053,7 @@ function TodayLineRow({
   onOpenMenu,
   onTomorrow,
   onNotToday,
+  onMakeAction,
   focused,
   onFocusLine,
 }: {
@@ -959,6 +1072,7 @@ function TodayLineRow({
   onOpenMenu: () => void;
   onTomorrow: () => void;
   onNotToday: () => void;
+  onMakeAction: () => void;
   focused?: boolean;
   onFocusLine: () => void;
 }) {
@@ -1035,6 +1149,17 @@ function TodayLineRow({
           </View>
         ) : null}
       </Pressable>
+      {canMakeTodayAction(line) && !(showHoverMenu && hovered) ? (
+        <Pressable
+          onPress={onMakeAction}
+          accessibilityRole="button"
+          accessibilityLabel={`Make ${title} an action`}
+          hitSlop={6}
+          style={styles.makeAction}
+        >
+          <Ionicons name="add-circle-outline" size={18} color={colors.inkFaint} />
+        </Pressable>
+      ) : null}
       {showHoverMenu && hovered ? (
         <Pressable
           onPress={onOpenMenu}
@@ -1246,26 +1371,54 @@ function ReviewButton({ label, onPress }: { label: string; onPress: () => void }
   );
 }
 
-function DaySwitch({
-  label,
-  selected,
-  onPress,
+function SuggestionsCard({
+  items,
+  onAdd,
+  onDismiss,
 }: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
+  items: readonly TodaySuggestion[];
+  onAdd: (item: TodaySuggestion) => void;
+  onDismiss: (item: TodaySuggestion) => void;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="tab"
-      accessibilityState={{ selected }}
-      style={[styles.switchItem, selected && styles.switchOn]}
-    >
-      <Text variant="bodyMedium" color={selected ? colors.brandDeep : colors.inkSoft}>
-        {label}
+    <View style={styles.suggestions}>
+      <Text variant="meta" color={colors.inkFaint} style={styles.suggestionLabel}>
+        Suggestions
       </Text>
-    </Pressable>
+      {items.map((item) => (
+        <View key={item.taskId} style={styles.suggestionRow}>
+          <View style={styles.suggestionBody}>
+            <Text variant="body" numberOfLines={2}>
+              {item.title}
+            </Text>
+            <View style={styles.circleBadge}>
+              <AccentDot color={resolveAccent(item.spaceColor)} size={8} />
+              <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
+                {item.spaceName}
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => onAdd(item)}
+            accessibilityRole="button"
+            accessibilityLabel={`Add ${item.title} to today`}
+            hitSlop={6}
+            style={styles.suggestionAdd}
+          >
+            <Ionicons name="add" size={18} color={colors.brandDeep} />
+          </Pressable>
+          <Pressable
+            onPress={() => onDismiss(item)}
+            accessibilityRole="button"
+            accessibilityLabel={`Dismiss ${item.title}`}
+            hitSlop={6}
+            style={styles.suggestionDismiss}
+          >
+            <Ionicons name="close" size={16} color={colors.inkFaint} />
+          </Pressable>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -1342,16 +1495,9 @@ const styles = StyleSheet.create({
   },
   headerWide: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
   iconButton: { padding: spacing.xs },
-  titleBlock: { flex: 1 },
-  switchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  switchWide: { paddingHorizontal: spacing.xl },
-  switchItem: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceAlt,
-  },
-  switchOn: { backgroundColor: colors.brandSoft },
+  titleBlock: { flex: 1, alignItems: 'flex-start', justifyContent: 'center' },
+  titleToggle: { flexDirection: 'row', alignItems: 'center', gap: 2, maxWidth: '100%' },
+  titleLabel: { flexShrink: 1 },
   listFrame: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: spacing.lg },
@@ -1397,6 +1543,46 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.brandSoft,
   },
+  suggestions: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.hairline,
+    overflow: 'hidden',
+  },
+  suggestionLabel: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+  },
+  suggestionBody: { flex: 1, gap: 2 },
+  suggestionAdd: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.pill,
+    backgroundColor: colors.brandSoft,
+  },
+  suggestionDismiss: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  makeAction: { width: 32, height: 44, alignItems: 'center', justifyContent: 'center' },
   checkbox: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   rowBody: { flex: 1, paddingVertical: spacing.sm, gap: 2 },
   checkedText: { textDecorationLine: 'line-through' },

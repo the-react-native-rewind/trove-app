@@ -16,7 +16,7 @@ export type ToolMetadata = {
   openWorldHint: boolean;
 };
 
-export const SERVER_VERSION = '1.6.0';
+export const SERVER_VERSION = '1.7.0';
 
 export const toolMetadata: Record<McpToolName, ToolMetadata> = {
   list_circles: {
@@ -192,6 +192,27 @@ export const toolMetadata: Record<McpToolName, ToolMetadata> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
+    openWorldHint: false,
+  },
+  list_today_suggestions: {
+    title: 'List Today suggestions',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  dismiss_today_suggestion: {
+    title: 'Dismiss a Today suggestion',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  convert_today_item_to_task: {
+    title: 'Make a Today line an action',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
     openWorldHint: false,
   },
 };

@@ -351,6 +351,33 @@ export type Database = {
         Update: { created_at?: string; day?: string; user_id?: string }
         Relationships: []
       }
+      today_suggestions: {
+        Row: {
+          created_at: string
+          day: string
+          dismissed_at: string | null
+          position: number
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          day: string
+          dismissed_at?: string | null
+          position: number
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          day?: string
+          dismissed_at?: string | null
+          position?: number
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       today_items: {
         Row: {
           checked_at: string | null
@@ -537,6 +564,28 @@ export type Database = {
       skip_today_routine: { Args: { p_routine_id: string; p_day: string }; Returns: string }
       dismiss_today_item: { Args: { p_item_id: string }; Returns: undefined }
       restore_today_item: { Args: { p_item_id: string }; Returns: undefined }
+      list_today_suggestions: {
+        Args: { p_day: string; p_as_of?: string | null }
+        Returns: {
+          task_id: string
+          title: string
+          status: string
+          due_date: string | null
+          rank: string
+          space_id: string
+          space_name: string
+          space_color: string
+          position: number
+        }[]
+      }
+      dismiss_today_suggestion: {
+        Args: { p_day: string; p_task_id: string }
+        Returns: undefined
+      }
+      convert_today_item_to_task: {
+        Args: { p_item_id: string; p_space_id: string }
+        Returns: string
+      }
       today_rank_at_bottom: { Args: { p_day: string }; Returns: string }
     }
     Enums: { [_ in never]: never }
