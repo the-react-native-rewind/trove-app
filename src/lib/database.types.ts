@@ -302,6 +302,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          project_id: string | null
         }
         Insert: {
           created_at?: string
@@ -322,6 +323,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          project_id?: string | null
         }
         Update: {
           created_at?: string
@@ -342,6 +344,79 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          project_id?: string | null
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          archived_at: string | null
+          color: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          rank: string
+          space_id: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          rank?: string
+          space_id: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          rank?: string
+          space_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_members: {
+        Row: {
+          created_at: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      invite_projects: {
+        Row: {
+          invite_id: string
+          project_id: string
+        }
+        Insert: {
+          invite_id: string
+          project_id: string
+        }
+        Update: {
+          invite_id?: string
+          project_id?: string
         }
         Relationships: []
       }
@@ -529,9 +604,18 @@ export type Database = {
           p_status?: string | null
           p_assignee_ids?: string[] | null
           p_set_assignee?: boolean
+          p_project_id?: string | null
+          p_set_project?: boolean
         }
         Returns: number
       }
+      set_member_projects: {
+        Args: { p_space_id: string; p_user_id: string; p_project_ids: string[] }
+        Returns: undefined
+      }
+      can_see_project: { Args: { p_project_id: string }; Returns: boolean }
+      can_see_task: { Args: { p_space_id: string; p_project_id: string }; Returns: boolean }
+      sees_full_circle: { Args: { p_space_id: string }; Returns: boolean }
       set_task_assignees: {
         Args: { p_task_id: string; p_user_ids: string[] }
         Returns: undefined

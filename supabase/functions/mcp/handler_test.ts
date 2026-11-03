@@ -38,6 +38,10 @@ function stubStore(): TroveStore {
     userId: USER,
     listCircles: async () => [],
     listMembers: unused,
+    listProjects: async () => [],
+    createProject: unused,
+    updateProject: unused,
+    setMemberProjects: unused,
     listTasks: unused,
     getTask: unused,
     handoffTask: unused,
@@ -144,7 +148,7 @@ Deno.test('tools/list advertises a title and hints, and a personal token still a
   const { json } = await readBody(response);
   const result = json.result as { tools?: Array<Record<string, unknown>> };
   const tools = result.tools ?? [];
-  assertEquals(tools.length, 20);
+  assertEquals(tools.length, 29);
   for (const name of ['handoff_task', 'add_agent_log_entry', 'list_agent_log', 'get_task']) {
     assert(tools.some((tool) => tool.name === name), `${name} missing`);
   }
@@ -227,7 +231,7 @@ Deno.test('initialize returns the server card', async () => {
   const { json } = await readBody(response);
   const result = json.result as { serverInfo?: Record<string, unknown>; instructions?: string };
   assertEquals(result.serverInfo?.title, 'Trove');
-  assertEquals(result.serverInfo?.version, '1.7.0');
+  assertEquals(result.serverInfo?.version, '1.8.0');
   assert(String(result.instructions).includes('How to work with Trove'), String(result.instructions).slice(0, 80));
   assertEquals(result.serverInfo?.websiteUrl, 'https://troving.app');
   const icons = result.serverInfo?.icons as Array<{ src?: string }> | undefined;

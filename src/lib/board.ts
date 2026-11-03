@@ -31,6 +31,15 @@ export function normalizeStatus(status: string): TaskStatus {
   return 'todo';
 }
 
+const STATUS_CYCLE: TaskStatus[] = ['todo', 'in_progress', 'done'];
+
+/** To do, then in progress, then done, then back to to do. */
+export function nextTaskStatus(status: string): TaskStatus {
+  const current = normalizeStatus(status);
+  const index = STATUS_CYCLE.indexOf(current);
+  return STATUS_CYCLE[(index + 1) % STATUS_CYCLE.length] ?? 'todo';
+}
+
 /**
  * Narrow lists have no In progress section. Those tasks stay in To do,
  * in the same order as the other open work.

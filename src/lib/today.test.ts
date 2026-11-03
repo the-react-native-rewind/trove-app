@@ -447,7 +447,7 @@ test('the migration keeps Today private and prepares a day in SQL', () => {
   assert.ok(/function public\.skip_today_routine/.test(review));
 
   const suggestions = readFileSync(
-    new URL('../../supabase/migrations/0031_today_suggestions.sql', import.meta.url),
+    new URL('../../supabase/migrations/0032_today_suggestions.sql', import.meta.url),
     'utf8',
   );
   assert.ok(/create table public\.today_suggestions/.test(suggestions));

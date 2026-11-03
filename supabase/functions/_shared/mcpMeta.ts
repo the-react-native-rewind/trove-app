@@ -16,7 +16,7 @@ export type ToolMetadata = {
   openWorldHint: boolean;
 };
 
-export const SERVER_VERSION = '1.7.0';
+export const SERVER_VERSION = '1.8.0';
 
 export const toolMetadata: Record<McpToolName, ToolMetadata> = {
   list_circles: {
@@ -189,6 +189,34 @@ export const toolMetadata: Record<McpToolName, ToolMetadata> = {
   },
   check_today_item: {
     title: 'Mark a Today line done',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  list_projects: {
+    title: 'List projects',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  create_project: {
+    title: 'Create a project',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  update_project: {
+    title: 'Update a project',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  set_member_projects: {
+    title: 'Set a member’s projects',
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,

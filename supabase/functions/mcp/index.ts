@@ -41,6 +41,10 @@ import {
   handoffTask,
   listAgentLog,
   inviteToCircle,
+  listProjects,
+  createProject,
+  updateProject,
+  setMemberProjects,
   listCircleTasks,
   listCircles,
   listMembers,
@@ -151,6 +155,21 @@ const repeatFields = {
     .describe('0 = Sunday through 6 = Saturday. Used when repeat_unit is week. Omit it and the due date, or today (UTC), is used.'),
 };
 
+const projectFilter = {
+  project_id: z.string().uuid().optional().describe('Only tasks in this project.'),
+};
+
+const projectWrite = {
+  project_id: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .describe(
+      'Project in this circle. On create, omit it to leave the task on the circle list. On update, null clears the project and omitting it leaves the project unchanged.',
+    ),
+};
+
 const taskInput = z.object({
   title: z.string().describe('What needs doing.'),
   notes: z.string().nullable().optional().describe('Longer notes. Stored as the task description.'),
@@ -169,6 +188,7 @@ const taskInput = z.object({
     .optional()
     .describe('Stable id from the source (a Notion page id or Trello card id). Repeating it will not create a duplicate.'),
   ...repeatFields,
+  ...projectWrite,
 });
 
 const handler = createMcpHandler((ctx) => {
@@ -299,7 +319,13 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
     'list_my_tasks',
     {
       ...described('list_my_tasks'),
-      inputSchema: z.object({ ...circleTarget, status: statusField, ...dueFields, limit: limitField }),
+      inputSchema: z.object({
+        ...circleTarget,
+        ...projectFilter,
+        status: statusField,
+        ...dueFields,
+        limit: limitField,
+      }),
     },
     async (args) => asTool(await listMyTasks(store, args)),
   );
@@ -308,7 +334,13 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
     'list_circle_tasks',
     {
       ...described('list_circle_tasks'),
-      inputSchema: z.object({ ...circleTarget, status: statusField, ...dueFields, limit: limitField }),
+      inputSchema: z.object({
+        ...circleTarget,
+        ...projectFilter,
+        status: statusField,
+        ...dueFields,
+        limit: limitField,
+      }),
     },
     async (args) => asTool(await listCircleTasks(store, args)),
   );
@@ -353,6 +385,7 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
         ...assigneeFields,
         tags: z.array(z.string()).optional().describe('Replaces the task\'s tags. An empty array clears them.'),
         ...repeatFields,
+        ...projectWrite,
       }),
     },
     async (args) => asTool(await updateTask(store, args)),
@@ -649,9 +682,72 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
           .boolean()
           .optional()
           .describe('Mark this invite as an agent (a bot). Defaults to false, a human invite. Copied onto the membership when they join.'),
+        project_ids: z
+          .array(z.string().uuid())
+          .optional()
+          .describe('Optional projects to limit this member to when they accept. Omit it and they see the whole circle.'),
       }),
     },
     async (args) => asTool(await inviteToCircle(store, args)),
+  );
+
+  server.registerTool(
+    'list_projects',
+    {
+      ...described('list_projects'),
+      inputSchema: z.object({
+        ...circleTarget,
+        include_archived: z.boolean().optional().describe('Include archived projects. Defaults to false.'),
+      }),
+    },
+    async (args) => asTool(await listProjects(store, args)),
+  );
+
+  server.registerTool(
+    'create_project',
+    {
+      ...described('create_project'),
+      inputSchema: z.object({
+        ...circleTarget,
+        name: z.string().describe('Project name, up to 80 characters.'),
+        color: z
+          .string()
+          .optional()
+          .describe('Accent colour, same set as a circle. Defaults to sage.'),
+        description: z.string().nullable().optional().describe('Optional longer note about the project.'),
+      }),
+    },
+    async (args) => asTool(await createProject(store, args)),
+  );
+
+  server.registerTool(
+    'update_project',
+    {
+      ...described('update_project'),
+      inputSchema: z.object({
+        project_id: z.string().uuid(),
+        name: z.string().optional().describe('New name, up to 80 characters.'),
+        color: z.string().optional().describe('New accent colour.'),
+        description: z.string().nullable().optional().describe('New description. Null clears it.'),
+        archived: z.boolean().optional().describe('True archives the project. False restores it.'),
+      }),
+    },
+    async (args) => asTool(await updateProject(store, args)),
+  );
+
+  server.registerTool(
+    'set_member_projects',
+    {
+      ...described('set_member_projects'),
+      inputSchema: z.object({
+        ...circleTarget,
+        user: z.string().describe('Member id or display name.'),
+        project_ids: z
+          .array(z.string().uuid())
+          .describe('Full allow-list. An empty array lets them see the whole circle.'),
+      }),
+    },
+    async (args) => asTool(await setMemberProjects(store, args)),
   );
 
   return server;

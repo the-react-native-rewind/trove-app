@@ -85,11 +85,13 @@ function RootNavigator() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
       <Stack.Screen name="task-new" options={modalOptions} />
-      <Stack.Screen name="task/[id]/index" options={modalOptions} />
+      <Stack.Screen name="task/[id]/index" />
       <Stack.Screen name="task/[id]/edit" options={modalOptions} />
       <Stack.Screen name="space-new" options={modalOptions} />
       <Stack.Screen name="space/[id]/members" options={modalOptions} />
       <Stack.Screen name="space/[id]/settings" options={modalOptions} />
+      <Stack.Screen name="space/[id]/completed" />
+      <Stack.Screen name="space/[id]/project/[projectId]" />
       <Stack.Screen name="account" options={modalOptions} />
       <Stack.Screen name="connect" options={modalOptions} />
       <Stack.Screen name="oauth/consent" />

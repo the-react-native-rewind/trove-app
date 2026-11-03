@@ -5,12 +5,15 @@ import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CircleMenuSheet } from '@/components/CircleMenuSheet';
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { MyWeekView } from '@/components/MyWeekView';
 import { TodayView } from '@/components/TodayView';
+import { ProjectFormSheet } from '@/components/ProjectFormSheet';
+import { ProjectsPane } from '@/components/ProjectsPane';
 import { SelectionActionBar, SelectionHeader } from '@/components/SelectionChrome';
-import { StatusSegmented } from '@/components/StatusSegmented';
+import { SegmentTabs, StatusSegmented } from '@/components/StatusSegmented';
 import { TaskReorderList } from '@/components/TaskReorderList';
 import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -18,6 +21,7 @@ import { AccentDot } from '@/components/ui/Indicators';
 import { Text } from '@/components/ui/Text';
 import { useTaskMediaForTasks } from '@/data/attachments';
 import { useRoster } from '@/data/members';
+import { useProjects } from '@/data/projects';
 import { useMyWeekEnabled } from '@/data/profile';
 import { useMoveTaskStatus, useTasks, useUpdateTaskRank } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
@@ -91,6 +95,13 @@ function SpaceBoard() {
 
   const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(selectedSpaceId);
   const { data: roster = [] } = useRoster(isMine ? MINE_VIEW_ID : selectedSpaceId);
+  const {
+    data: projects = [],
+    isLoading: projectsLoading,
+    isError: projectsError,
+    refetch: refetchProjects,
+    isRefetching: projectsRefetching,
+  } = useProjects(isMine ? 'all' : selectedSpaceId);
   const selection = useSelection();
   const [reordering, setReordering] = useState(false);
   const reorderActive = reordering && canReorderList && !selection.active;
@@ -99,6 +110,9 @@ function SpaceBoard() {
   const updateRank = useUpdateTaskRank();
 
   const [status, setStatus] = useState<ListStatus>('todo');
+  const [boardTab, setBoardTab] = useState<'actions' | 'projects'>('actions');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set());
   const [showFilter, setShowFilter] = useState(false);
@@ -107,6 +121,9 @@ function SpaceBoard() {
     setFilterSpaceId(selectedSpaceId);
     setAssigneeFilter(new Set());
     setShowFilter(false);
+    setBoardTab('actions');
+    setMenuOpen(false);
+    setProjectFormOpen(false);
   }
 
   const visibleTasks = useMemo(() => {
@@ -127,17 +144,33 @@ function SpaceBoard() {
 
   const counts: Record<ListStatus, number> = { todo: 0, done: 0 };
   for (const t of visibleTasks) counts[listBucket(t.status)]++;
+  const openActions = visibleTasks.filter((task) => task.status !== 'done');
 
-  const items = visibleTasks.filter((t) => listBucket(t.status) === status);
-  const selectableIds = (isWide ? visibleTasks : items)
+  const showingProjects = !isMine && boardTab === 'projects';
+  const items = isMine
+    ? visibleTasks.filter((t) => listBucket(t.status) === status)
+    : openActions;
+  const selectableIds = (isWide && isMine ? visibleTasks : items)
     .filter((task) => canWriteTask(task.space_id))
     .map((task) => task.id);
 
   function openCreate() {
     hapticLight();
-    const params = new URLSearchParams({ status });
+    if (showingProjects) {
+      setProjectFormOpen(true);
+      return;
+    }
+    const params = new URLSearchParams({ status: 'todo' });
     if (!isMine) params.set('spaceId', selectedSpaceId);
     router.push(`/task-new?${params.toString()}` as never);
+  }
+
+  function selectBoardTab(next: 'actions' | 'projects') {
+    if (next === boardTab) return;
+    hapticLight();
+    selection.exit();
+    setReordering(false);
+    setBoardTab(next);
   }
 
   function toggleReorder() {
@@ -192,7 +225,7 @@ function SpaceBoard() {
         </View>
 
         <View style={styles.headerActions}>
-          {isMine ? (
+          {isMine && isWide ? (
             <Pressable
               onPress={() => {
                 hapticLight();
@@ -209,50 +242,58 @@ function SpaceBoard() {
                 color={colors.ink}
               />
             </Pressable>
-          ) : (
+          ) : null}
+          {isMine ? null : (
             <Pressable
               onPress={() => {
                 hapticLight();
-                setShowFilter((v) => !v);
+                setMenuOpen(true);
               }}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel="Filter assignees"
+              accessibilityLabel="Circle settings"
               style={styles.iconBtn}
             >
-              <Ionicons
-                name={assigneeFilter.size ? 'funnel' : 'funnel-outline'}
-                size={20}
-                color={colors.ink}
-              />
+              <Ionicons name="settings-outline" size={22} color={colors.ink} />
             </Pressable>
-          )}
-          {isMine ? null : (
-            <>
-              <Pressable
-                onPress={() => router.push(`/space/${selectedSpaceId}/members` as never)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Members"
-                style={styles.iconBtn}
-              >
-                <Ionicons name="people-outline" size={22} color={colors.ink} />
-              </Pressable>
-              <Pressable
-                onPress={() => router.push(`/space/${selectedSpaceId}/settings` as never)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Circle settings"
-                style={styles.iconBtn}
-              >
-                <Ionicons name="ellipsis-horizontal" size={22} color={colors.ink} />
-              </Pressable>
-            </>
           )}
         </View>
       </View>
 
-      {!isWide ? <StatusSegmented value={status} counts={counts} onChange={setStatus} /> : null}
+      {isMine && isWide ? null : (
+        <View style={styles.segmentRow}>
+          <View style={styles.segmentTabs}>
+            {isMine ? (
+              <StatusSegmented value={status} counts={counts} onChange={setStatus} />
+            ) : (
+              <SegmentTabs
+                options={[
+                  { key: 'actions' as const, label: 'Actions', count: openActions.length },
+                  { key: 'projects' as const, label: 'Projects', count: projects.length },
+                ]}
+                value={boardTab}
+                onChange={selectBoardTab}
+              />
+            )}
+          </View>
+          <Pressable
+            onPress={() => {
+              hapticLight();
+              setShowFilter((value) => !value);
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={isMine ? 'Filter circles' : 'Filter assignees'}
+            style={styles.filterBtn}
+          >
+            <Ionicons
+              name={(isMine ? excluded.size : assigneeFilter.size) ? 'funnel' : 'funnel-outline'}
+              size={20}
+              color={colors.ink}
+            />
+          </Pressable>
+        </View>
+      )}
 
       {isMine && showFilter ? (
         <View style={styles.filterRow}>
@@ -344,7 +385,7 @@ function SpaceBoard() {
   const listContentStyle = [
     styles.listContent,
     reorderActive && styles.reorderContent,
-    !selection.active && { paddingTop: collapse.contentOffset + spacing.sm },
+    !selection.active && !isWide && { paddingTop: collapse.contentOffset + spacing.sm },
   ];
   const listEmpty = isLoading ? null : isError ? (
     <EmptyState
@@ -353,7 +394,7 @@ function SpaceBoard() {
       body="Pull to refresh and try again."
     />
   ) : (
-    <EmptyState {...(isMine ? MINE_EMPTY : EMPTY_COPY)[status]} />
+    <EmptyState {...(isMine ? MINE_EMPTY : EMPTY_COPY)[isMine ? status : 'todo']} />
   );
   const refreshControl = (
     <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brand} />
@@ -376,7 +417,7 @@ function SpaceBoard() {
         </CollapsingScreenHeader>
       )}
 
-      {isWide ? (
+      {isWide && isMine ? (
         <KanbanBoard
           tasks={visibleTasks}
           showSpaceTag={isMine}
@@ -384,6 +425,17 @@ function SpaceBoard() {
           onMove={(id, next, position) => moveStatus.mutate({ id, status: next, position })}
           canWriteTask={canWriteTask}
           mediaByTaskId={mediaByTask}
+        />
+      ) : showingProjects ? (
+        <ProjectsPane
+          projects={projects}
+          isLoading={projectsLoading}
+          isError={projectsError}
+          refreshing={projectsRefetching}
+          onRefresh={() => void refetchProjects()}
+          onOpen={(project) => router.push(`/space/${selectedSpaceId}/project/${project.id}` as never)}
+          onScroll={collapse.onScroll}
+          contentContainerStyle={listContentStyle}
         />
       ) : reorderActive ? (
         <TaskReorderList
@@ -413,9 +465,9 @@ function SpaceBoard() {
         />
       )}
 
-      <SelectionActionBar tasks={tasks} />
+      <SelectionActionBar tasks={tasks} projects={isMine || showingProjects ? [] : projects} />
 
-      {canReorderList && !selection.active ? (
+      {canReorderList && !selection.active && !showingProjects ? (
         <Pressable
           onPress={toggleReorder}
           accessibilityRole="button"
@@ -440,12 +492,27 @@ function SpaceBoard() {
         <Pressable
           onPress={openCreate}
           accessibilityRole="button"
-          accessibilityLabel="Add task"
+          accessibilityLabel={showingProjects ? 'Add project' : 'Add action'}
           style={[styles.fab, styles.fabRight, { bottom: insets.bottom + spacing.lg }]}
         >
           <Ionicons name="add" size={30} color={colors.onBrand} />
         </Pressable>
       ) : null}
+
+      {isMine ? null : (
+        <>
+          <CircleMenuSheet
+            visible={menuOpen}
+            spaceId={selectedSpaceId}
+            onClose={() => setMenuOpen(false)}
+          />
+          <ProjectFormSheet
+            visible={projectFormOpen}
+            spaceId={selectedSpaceId}
+            onClose={() => setProjectFormOpen(false)}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -466,6 +533,9 @@ const styles = StyleSheet.create({
   titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   titleText: { flex: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  segmentRow: { flexDirection: 'row', alignItems: 'center' },
+  segmentTabs: { flex: 1 },
+  filterBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

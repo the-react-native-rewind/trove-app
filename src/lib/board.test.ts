@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { groupByStatus, listBucket, normalizeStatus, sortTasksByUrgency } from './board';
+import { groupByStatus, listBucket, nextTaskStatus, normalizeStatus, sortTasksByUrgency } from './board';
 import { rankAfterDrop } from './rank';
 import { STATUSES, type TaskWithRefs } from './types';
 
@@ -32,6 +32,10 @@ test('known statuses stay themselves and unknown values stay open', () => {
   assert.equal(listBucket('in_progress'), 'todo');
   assert.equal(listBucket('todo'), 'todo');
   assert.equal(listBucket('done'), 'done');
+  assert.equal(nextTaskStatus('todo'), 'in_progress');
+  assert.equal(nextTaskStatus('in_progress'), 'done');
+  assert.equal(nextTaskStatus('done'), 'todo');
+  assert.equal(nextTaskStatus('mystery'), 'in_progress');
   assert.deepEqual(
     STATUSES.map((status) => status.key),
     ['todo', 'in_progress', 'done'],

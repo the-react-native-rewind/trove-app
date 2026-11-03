@@ -323,7 +323,7 @@ export function TodayView() {
 
   function openEditor(line: TodayLine) {
     if (line.taskId) {
-      const href = `/task/${line.taskId}/edit` as never;
+      const href = `/task/${line.taskId}` as never;
       if (sheet) {
         closeSheet(() => router.push(href));
         return;
