@@ -3,6 +3,7 @@ import * as Crypto from 'expo-crypto';
 import * as ImagePicker from 'expo-image-picker';
 import { alertDialog } from '@/lib/dialog';
 import { supabase } from '@/lib/supabase';
+import { toWebSafeJpeg } from '@/lib/webSafeImage';
 import { useAuth } from '@/providers/AuthProvider';
 
 const BUCKET = 'task-media';
@@ -16,7 +17,7 @@ export type Attachment = {
   url: string | null; // signed URL for display
 };
 
-export type PickedMedia = { uri: string; mediaType: MediaType };
+export type PickedMedia = { uri: string; mediaType: MediaType; width?: number; height?: number };
 
 export function taskAttachmentsKey(taskId: string) {
   return ['task-attachments', taskId] as const;
@@ -42,7 +43,12 @@ export async function pickMedia(): Promise<PickedMedia | null> {
   });
   if (result.canceled || !result.assets?.length) return null;
   const asset = result.assets[0];
-  return { uri: asset.uri, mediaType: asset.type === 'video' ? 'video' : 'image' };
+  return {
+    uri: asset.uri,
+    mediaType: asset.type === 'video' ? 'video' : 'image',
+    width: asset.width,
+    height: asset.height,
+  };
 }
 
 /** Upload one file to storage and record it against a task. */
@@ -52,10 +58,22 @@ export async function uploadTaskMedia(params: {
   uri: string;
   mediaType: MediaType;
   userId: string | null;
+  width?: number;
+  height?: number;
 }) {
-  const { taskId, spaceId, uri, mediaType, userId } = params;
-  const extGuess = uri.split('.').pop()?.split('?')[0]?.toLowerCase() || '';
-  const ext = extGuess && extGuess.length <= 4 ? extGuess : mediaType === 'video' ? 'mp4' : 'jpg';
+  const { taskId, spaceId, mediaType, userId } = params;
+  let uri = params.uri;
+  let ext = '';
+  if (mediaType === 'image') {
+    // HEIC from iPhones doesn't render in most browsers; always store JPEG.
+    const safe = await toWebSafeJpeg(uri, { width: params.width, height: params.height });
+    uri = safe.uri;
+    if (safe.converted) ext = 'jpg';
+  }
+  if (!ext) {
+    const extGuess = uri.split('.').pop()?.split('?')[0]?.toLowerCase() || '';
+    ext = extGuess && extGuess.length <= 4 ? extGuess : mediaType === 'video' ? 'mp4' : 'jpg';
+  }
   const path = `${spaceId}/${taskId}/${Crypto.randomUUID()}.${ext}`;
   const contentType =
     mediaType === 'video'
@@ -112,7 +130,15 @@ export function useAddAttachment(taskId: string, spaceId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: PickedMedia) =>
-      uploadTaskMedia({ taskId, spaceId, uri: input.uri, mediaType: input.mediaType, userId }),
+      uploadTaskMedia({
+        taskId,
+        spaceId,
+        uri: input.uri,
+        mediaType: input.mediaType,
+        width: input.width,
+        height: input.height,
+        userId,
+      }),
     onSuccess: () => invalidateTaskMedia(qc, taskId),
   });
 }

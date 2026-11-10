@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { alertDialog } from '@/lib/dialog';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
+import { toWebSafeJpeg } from '@/lib/webSafeImage';
 import type { Profile } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -97,9 +98,12 @@ export async function pickAvatarImage(): Promise<string | null> {
   return result.assets[0].uri;
 }
 
-async function uploadAvatar(userId: string, uri: string): Promise<string> {
+async function uploadAvatar(userId: string, pickedUri: string): Promise<string> {
+  // Store JPEG so iPhone HEIC avatars show up in every browser.
+  const safe = await toWebSafeJpeg(pickedUri);
+  const uri = safe.uri;
   const extGuess = uri.split('.').pop()?.split('?')[0]?.toLowerCase() || '';
-  const ext = extGuess && extGuess.length <= 4 ? extGuess : 'jpg';
+  const ext = safe.converted ? 'jpg' : extGuess && extGuess.length <= 4 ? extGuess : 'jpg';
   const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
   const path = `${userId}/${Crypto.randomUUID()}.${ext}`;
 
