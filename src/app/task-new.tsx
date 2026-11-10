@@ -112,6 +112,8 @@ export default function NewTask() {
             spaceId,
             uri: m.uri,
             mediaType: m.mediaType,
+            width: m.width,
+            height: m.height,
             userId,
           });
         } catch {
