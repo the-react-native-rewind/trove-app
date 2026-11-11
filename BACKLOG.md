@@ -37,12 +37,13 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Mine filter + settings icons moved to the top-right header
 - ✅ Tapping the Today list dismisses the composer keyboard (drag already did)
 - ✅ Circle Analytics (Settings → Analytics): completion %, open/done/members tiles, per-member breakdown
+- ✅ Pull-to-refresh on the Completed-actions screens (Mine + circle)
 
 ---
 
 ## ⬜ Not started
 
-- ⬜ **Pull-to-refresh — remaining:** wide-screen Kanban board and the Completed-actions screen still lack pull-to-refresh (phone lists done).
+- ⬜ **Pull-to-refresh — remaining:** only the wide-screen (tablet/desktop) Kanban board still lacks it; all phone lists now refresh.
 - ⬜ **Circle analytics — refine (first pass shipped).** Consider: completion over time, by-project breakdown, overdue count, agent vs human split.
 
 ---

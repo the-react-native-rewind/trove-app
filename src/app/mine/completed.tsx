@@ -14,7 +14,7 @@ import { colors, spacing } from '@/theme/tokens';
 export default function MineCompleted() {
   const router = useRouter();
   const { data: spaces = [] } = useSpaces();
-  const { data: tasks = [], isLoading, isError } = useTasks(MINE_VIEW_ID);
+  const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(MINE_VIEW_ID);
   const moveStatus = useMoveTaskStatus();
 
   // Most recently completed first (updated_at is the completion for a done task).
@@ -24,7 +24,7 @@ export default function MineCompleted() {
   const media = useTaskMediaForTasks(done.map((task) => task.id));
 
   return (
-    <StackScreen title="Completed actions">
+    <StackScreen title="Completed actions" refreshing={isRefetching} onRefresh={() => void refetch()}>
       {isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand} />

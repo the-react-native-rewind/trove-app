@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme/tokens';
@@ -13,11 +13,15 @@ export function StackScreen({
   children,
   footer,
   onBack,
+  refreshing,
+  onRefresh,
 }: {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   onBack?: () => void;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -42,6 +46,15 @@ export function StackScreen({
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={refreshing ?? false}
+              onRefresh={onRefresh}
+              tintColor={colors.brand}
+            />
+          ) : undefined
+        }
       >
         {children}
       </ScrollView>

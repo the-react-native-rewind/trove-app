@@ -15,7 +15,7 @@ export default function CompletedActions() {
   const { id: spaceId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { data: spaces = [] } = useSpaces();
-  const { data: tasks = [], isLoading, isError } = useTasks(spaceId ?? '');
+  const { data: tasks = [], isLoading, isError, refetch, isRefetching } = useTasks(spaceId ?? '');
   const moveStatus = useMoveTaskStatus();
   const role = spaces.find((space) => space.id === spaceId)?.role;
   const writable = canWrite(role);
@@ -23,7 +23,7 @@ export default function CompletedActions() {
   const media = useTaskMediaForTasks(done.map((task) => task.id));
 
   return (
-    <StackScreen title="Completed actions">
+    <StackScreen title="Completed actions" refreshing={isRefetching} onRefresh={() => void refetch()}>
       {isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand} />
