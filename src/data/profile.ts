@@ -72,12 +72,6 @@ export function useUpdateProfile() {
   });
 }
 
-/** My Week is off until this person turns it on. Missing profile data stays off. */
-export function useMyWeekEnabled(): boolean {
-  const { data: profile } = useProfile();
-  return profile?.my_week_enabled === true;
-}
-
 /** Open the library picker for a square profile photo. Returns null if denied or cancelled. */
 export async function pickAvatarImage(): Promise<string | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();

@@ -17,16 +17,10 @@ import { StackScreen } from '@/components/ui/StackScreen';
 import { Text } from '@/components/ui/Text';
 import { useTaskAttachments } from '@/data/attachments';
 import { useRoster } from '@/data/members';
-import { useMyWeekEnabled } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
 import { useHandoffTask, useMoveTask, useTask, useUpdateTask } from '@/data/tasks';
 import { confirmDialog } from '@/lib/dialog';
 import { canHandOff } from '@/lib/handoff';
-import {
-  useRemoveTaskWeekPlan,
-  useSetTaskWeekPlan,
-  useTaskWeekPlan,
-} from '@/data/weekPlans';
 import { nextTaskStatus } from '@/lib/board';
 import { formatDueDate, isOverdue } from '@/lib/format';
 import {
@@ -36,7 +30,6 @@ import {
 } from '@/lib/recurrence';
 import { canManage, canWrite, STATUSES, type TaskStatus } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
-import { formatWeekRange, getCurrentWeekStart, shiftWeek } from '@/lib/week';
 import { colors, radii, spacing } from '@/theme/tokens';
 
 export default function TaskView() {
@@ -49,13 +42,8 @@ export default function TaskView() {
   const [handingOff, setHandingOff] = useState(false);
   const [moving, setMoving] = useState(false);
   const { data: spaces = [] } = useSpaces();
-  const myWeekEnabled = useMyWeekEnabled();
-  const { data: weekPlan, isLoading: isWeekPlanLoading } = useTaskWeekPlan(id, myWeekEnabled);
   const { data: media = [] } = useTaskAttachments(id ?? '');
-  const setWeekPlan = useSetTaskWeekPlan();
-  const removeWeekPlan = useRemoveTaskWeekPlan();
   const updateStatus = useUpdateTask();
-  const currentWeek = getCurrentWeekStart();
 
   if (isLoading) {
     return (
@@ -257,81 +245,6 @@ export default function TaskView() {
 
       <AgentLogSection taskId={task.id} userId={userId} canModerate={canManage(role)} />
 
-
-      {myWeekEnabled ? (
-      <View style={styles.weekPlan}>
-        <View style={styles.weekPlanCopy}>
-          <Text variant="bodyMedium">
-            {weekPlan?.week_start === currentWeek
-              ? 'Planned for My Week'
-              : weekPlan
-                ? `Planned for ${formatWeekRange(weekPlan.week_start)}`
-                : 'Weekly plan'}
-          </Text>
-          <Text variant="meta" color={colors.inkSoft}>
-            This planning choice is private to you.
-          </Text>
-        </View>
-        <Button
-          label={
-            weekPlan?.week_start === currentWeek
-              ? 'Remove from My Week'
-              : weekPlan
-                ? 'Move to My Week'
-                : 'Add to My Week'
-          }
-          variant="secondary"
-          size="md"
-          loading={isWeekPlanLoading || setWeekPlan.isPending || removeWeekPlan.isPending}
-          onPress={() => {
-            if (weekPlan?.week_start === currentWeek) {
-              removeWeekPlan.mutate(task.id);
-            } else {
-              setWeekPlan.mutate({ taskId: task.id, weekStart: currentWeek });
-            }
-          }}
-        />
-        {weekPlan ? (
-          <View style={styles.weekShift}>
-            <Pressable
-              onPress={() =>
-                setWeekPlan.mutate({
-                  taskId: task.id,
-                  weekStart: shiftWeek(weekPlan.week_start, -1),
-                })
-              }
-              accessibilityRole="button"
-              accessibilityLabel="Move task to previous week"
-              style={styles.weekShiftButton}
-            >
-              <Ionicons name="chevron-back" size={18} color={colors.brandDeep} />
-            </Pressable>
-            <Text variant="meta" color={colors.inkSoft}>
-              Move to another week
-            </Text>
-            <Pressable
-              onPress={() =>
-                setWeekPlan.mutate({
-                  taskId: task.id,
-                  weekStart: shiftWeek(weekPlan.week_start, 1),
-                })
-              }
-              accessibilityRole="button"
-              accessibilityLabel="Move task to next week"
-              style={styles.weekShiftButton}
-            >
-              <Ionicons name="chevron-forward" size={18} color={colors.brandDeep} />
-            </Pressable>
-          </View>
-        ) : null}
-        {setWeekPlan.isError || removeWeekPlan.isError ? (
-          <Text variant="meta" color={colors.priorityHigh} center>
-            Couldn’t update your weekly plan. Please try again.
-          </Text>
-        ) : null}
-      </View>
-      ) : null}
-
       <TaskMedia taskId={task.id} spaceId={task.space_id} canWrite={writable} />
     </StackScreen>
   );
@@ -443,25 +356,4 @@ const styles = StyleSheet.create({
   },
   meta: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
-  weekPlan: {
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.card,
-    backgroundColor: colors.brandSoft,
-  },
-  weekPlanCopy: { gap: spacing.xs },
-  weekShift: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.md,
-  },
-  weekShiftButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-  },
 });

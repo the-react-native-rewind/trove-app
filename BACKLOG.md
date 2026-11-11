@@ -24,12 +24,13 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Add-action sheet: circle name stacked below the (untruncated) title; ordered like the Mine tab (priority first)
 - ✅ Action details: removed the "On today / Tomorrow / Not today" block
 - ✅ Add-action sheet: title + search pinned; only the list scrolls, with a fade between
+- ✅ Drag the Today list to dismiss the keyboard (partial: tap-on-empty-space still TODO)
+- ✅ Removed the My Week feature entirely; Beta section kept with "No new beta features"
 
 ---
 
 ## ⬜ Not started
 
-- ⬜ **Remove the My Week feature entirely.** Keep the "Beta features" section, but with no features in it (e.g. "No new beta features"). Touches: MyWeekView, weekPlans data, the drawer, the task-detail My Week section, the settings toggle.
 - ⬜ **Splash screen animation.** Open with the three circles static in the middle, then expand them in different directions to "fold open" / reveal the page.
 - ⬜ **Mine page header redesign** (take a cue from Circles). Remove the "To do / Done" toggle. Put a **filter** icon on the left and a **settings** icon on the right. The settings icon opens a bottom sheet containing a "Completed actions" button.
 - ⬜ **Mine / actions sort:** sort by most-recently-completed, newest at the top.

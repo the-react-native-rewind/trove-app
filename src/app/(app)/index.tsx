@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CircleMenuSheet } from '@/components/CircleMenuSheet';
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
-import { MyWeekView } from '@/components/MyWeekView';
 import { TodayView } from '@/components/TodayView';
 import { ProjectFormSheet } from '@/components/ProjectFormSheet';
 import { ProjectsPane } from '@/components/ProjectsPane';
@@ -22,7 +21,6 @@ import { Text } from '@/components/ui/Text';
 import { useTaskMediaForTasks } from '@/data/attachments';
 import { useRoster } from '@/data/members';
 import { useProjects } from '@/data/projects';
-import { useMyWeekEnabled } from '@/data/profile';
 import { useMoveTaskStatus, useTasks, useUpdateTaskRank } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
@@ -32,7 +30,6 @@ import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { TODAY_VIEW_ID } from '@/lib/today';
 import { canManage, canWrite, type ListStatus, type TaskWithRefs } from '@/lib/types';
-import { MY_WEEK_VIEW_ID } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { SelectionProvider, useSelection } from '@/providers/SelectionProvider';
 import { colors, heatColor, radii, shadows, spacing } from '@/theme/tokens';
@@ -43,23 +40,13 @@ const EMPTY_COPY: Record<ListStatus, { title: string; body: string }> = {
 };
 
 export default function Board() {
-  const { selectedSpaceId, setSelectedSpaceId } = useSelectedSpace();
-  const myWeekEnabled = useMyWeekEnabled();
+  const { selectedSpaceId } = useSelectedSpace();
 
-  useEffect(() => {
-    if (!myWeekEnabled && selectedSpaceId === MY_WEEK_VIEW_ID) {
-      setSelectedSpaceId(MINE_VIEW_ID);
-    }
-  }, [myWeekEnabled, selectedSpaceId, setSelectedSpaceId]);
-
-  const viewId =
-    !myWeekEnabled && selectedSpaceId === MY_WEEK_VIEW_ID ? MINE_VIEW_ID : selectedSpaceId;
-
-  if (viewId === TODAY_VIEW_ID) return <TodayView />;
+  if (selectedSpaceId === TODAY_VIEW_ID) return <TodayView />;
 
   return (
-    <SelectionProvider key={viewId}>
-      {viewId === MY_WEEK_VIEW_ID ? <MyWeekView /> : <SpaceBoard />}
+    <SelectionProvider key={selectedSpaceId}>
+      <SpaceBoard />
     </SelectionProvider>
   );
 }
