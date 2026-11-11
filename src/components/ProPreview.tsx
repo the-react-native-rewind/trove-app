@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
@@ -22,14 +22,16 @@ export function ProPreview({ title, body }: { title: string; body: string }) {
 
   return (
     <View style={styles.fill}>
-      <View style={[styles.topBar, { paddingTop: insets.top + spacing.xs }]}>
-        <Text
+      <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
+        <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as never))}
+          hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Back"
+          style={styles.backBtn}
         >
-          <Ionicons name="chevron-back" size={26} color={colors.ink} />
-        </Text>
+          <Ionicons name="chevron-back" size={24} color={colors.ink} />
+        </Pressable>
       </View>
 
       {/* The real thing, with sample numbers — faded and not tappable. */}
@@ -87,7 +89,17 @@ export function ProPreview({ title, body }: { title: string; body: string }) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.paper },
-  topBar: { paddingHorizontal: spacing.lg, height: 44 + 8, justifyContent: 'center' },
+  topBar: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   preview: { paddingHorizontal: spacing.xl, gap: spacing.md, opacity: 0.4 },
   hero: { gap: spacing.xs, marginTop: spacing.sm },
   heroPct: { fontFamily: fonts.displayBold, fontSize: 64, lineHeight: 70, color: colors.brand },

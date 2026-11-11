@@ -56,6 +56,7 @@ import {
   useYesterdayList,
   type TodaySuggestion,
 } from '@/data/today';
+import { FREE_TODAY_ITEMS, usePro } from '@/data/pro';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
@@ -183,6 +184,18 @@ export function TodayView() {
   const [refreshing, setRefreshing] = useState(false);
   const addText = useAddTodayText(activeDay);
   const addTask = useAddTodayTask(activeDay);
+  const { isPro } = usePro();
+
+  // Free Trove holds a capped number of things on a day. Adding past it opens
+  // the Pro sheet and leaves the item unadded. Returns true when the cap bites.
+  function todayFull(): boolean {
+    if (isPro || lines.length < FREE_TODAY_ITEMS) return false;
+    const body = `Free Trove holds ${FREE_TODAY_ITEMS} things on a day. Keep going — as many as you like — with Trove Pro.`;
+    router.push(
+      `/pro-sheet?title=${encodeURIComponent('A full day')}&body=${encodeURIComponent(body)}` as never,
+    );
+    return true;
+  }
   const check = useCheckTodayItem();
   const move = useMoveTodayItem();
   const moveDay = useMoveTodayItemToDay();
@@ -259,6 +272,7 @@ export function TodayView() {
   function submitDraft() {
     const text = draft.replace(/\s+/g, ' ').trim();
     if (!text) return;
+    if (todayFull()) return; // keep the draft; nothing added
     setDraft('');
     hapticMedium();
     addText.mutate(text, {
@@ -272,6 +286,7 @@ export function TodayView() {
   function pickTask(choice: { id: string; title: string; spaceName: string; spaceColor: string }) {
     setSheet(null);
     setTaskSearch('');
+    if (todayFull()) return;
     hapticMedium();
     addTask.mutate(
       {
