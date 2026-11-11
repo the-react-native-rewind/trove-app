@@ -19,7 +19,7 @@ import {
   withoutVirtualRoutine,
   type TodayLine,
 } from '@/lib/today';
-import type { TaskStatus } from '@/lib/types';
+import type { TaskStatus, TaskWithRefs } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
 type TaskJoin = {
@@ -710,6 +710,80 @@ export function useAddTodayTask(day: string) {
       mapTodayLists(qc, userId, (lines) => replaceTodayLineId(lines, context.tempId!, id));
     },
     onSettled: (_result, _error, _variables, context) => refresh(context?.editing === true),
+  });
+}
+
+/**
+ * Which of the signed-in person's tasks are already on today, mapped to the
+ * today_items row that puts them there. Lets a list anywhere (Mine, a circle)
+ * show the "Today" toggle in its selected state and pull the action back off.
+ */
+export function useTodayTaskLinks() {
+  const { userId } = useAuth();
+  const day = localToday();
+  return useQuery({
+    queryKey: qk.todayTaskLinks(userId ?? 'anon', day),
+    enabled: Boolean(userId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('today_items')
+        .select('id, task_id')
+        .eq('day', day)
+        .is('dismissed_at', null)
+        .not('task_id', 'is', null);
+      if (error) throw error;
+      const links: Record<string, string> = {};
+      for (const row of (data ?? []) as { id: string; task_id: string | null }[]) {
+        if (row.task_id) links[row.task_id] = row.id;
+      }
+      return links;
+    },
+  });
+}
+
+/**
+ * Toggle whether an action sits on today. Adds it when it is off, removes the
+ * matching today_items row when it is on. `itemId` is that row's id from
+ * {@link useTodayTaskLinks} (undefined means the task is not on today yet).
+ */
+export function useToggleTodayTask() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  const day = localToday();
+  const add = useAddTodayTask(day);
+  const remove = useDeleteTodayItem();
+  const key = qk.todayTaskLinks(userId ?? 'anon', day);
+  return useMutation({
+    mutationFn: async (input: { task: TaskWithRefs; itemId?: string }) => {
+      if (input.itemId) {
+        await remove.mutateAsync(input.itemId);
+      } else {
+        await add.mutateAsync({
+          taskId: input.task.id,
+          title: input.task.title,
+          spaceName: input.task.space?.name ?? '',
+          spaceColor: input.task.space?.color ?? '',
+        });
+      }
+    },
+    onMutate: async (input) => {
+      if (!userId) return { previous: undefined };
+      await qc.cancelQueries({ queryKey: key });
+      const previous = qc.getQueryData<Record<string, string>>(key);
+      qc.setQueryData<Record<string, string>>(key, (current) => {
+        const next = { ...(current ?? {}) };
+        if (input.itemId) delete next[input.task.id];
+        else next[input.task.id] = 'pending';
+        return next;
+      });
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous !== undefined) qc.setQueryData(key, context.previous);
+    },
+    onSettled: () => {
+      if (userId) void qc.invalidateQueries({ queryKey: key });
+    },
   });
 }
 

@@ -40,6 +40,9 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Pull-to-refresh on the Completed-actions screens (Mine + circle)
 - ✅ Today pull-to-refresh spinner now visible (offset below the header)
 - ✅ Project view: done actions stay in the same list, faded and sorted to the bottom
+- ✅ Action rows: tappable checkbox to finish (ring carries the priority colour, replaces the hidden swipe-only done)
+- ✅ Action rows: "Today" toggle chip — one tap adds/removes the action from today (Mine + circles); fills when on today, no "on today" label
+- ✅ Action rows: up/down carets to re-rank without dragging (shown where the user can reorder; disabled at top/bottom of a group)
 
 ---
 

@@ -32,6 +32,11 @@ export function TaskRow({
   onMove,
   media,
   showProgressTag = true,
+  onComplete,
+  onToday,
+  onToggleToday,
+  onMoveUp,
+  onMoveDown,
 }: {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
@@ -41,6 +46,11 @@ export function TaskRow({
   onMove: (status: TaskStatus) => void;
   media?: Attachment[];
   showProgressTag?: boolean;
+  onComplete?: () => void;
+  onToday?: boolean;
+  onToggleToday?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
   const ref = useRef<SwipeableMethods>(null);
   const selection = useSelection();
@@ -87,6 +97,11 @@ export function TaskRow({
           showProgressTag={showProgressTag}
           onPress={onOpen}
           media={media}
+          onComplete={onComplete}
+          onToday={onToday}
+          onToggleToday={onToggleToday}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
         />
       </ReanimatedSwipeable>
     </View>

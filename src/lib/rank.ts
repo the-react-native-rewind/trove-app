@@ -49,6 +49,30 @@ export function rankAfterStepUp(taskId: string, ordered: readonly RankedRef[]): 
 }
 
 /**
+ * Move one place down inside the same circle and due date.
+ * The new key sits between the task directly below and the one below that.
+ * Returns null when this task is already the bottom of that group.
+ */
+export function rankAfterStepDown(taskId: string, ordered: readonly RankedRef[]): string | null {
+  const index = ordered.findIndex((task) => task.id === taskId);
+  if (index < 0) return null;
+  const task = ordered[index];
+  let below: RankedRef | undefined;
+  let belowBelow: RankedRef | undefined;
+  for (let cursor = index + 1; cursor < ordered.length; cursor += 1) {
+    const candidate = ordered[cursor];
+    if (candidate.space_id !== task.space_id || candidate.due_date !== task.due_date) continue;
+    if (!below) below = candidate;
+    else {
+      belowBelow = candidate;
+      break;
+    }
+  }
+  if (!below) return null;
+  return generateKeyBetween(belowBelow?.rank ?? null, below.rank);
+}
+
+/**
  * Place a task from a priority word among the ranks it is given.
  * `high` goes above the current top, `medium` between the two central keys,
  * and `low` or null at the bottom. An empty list starts at `a0`.

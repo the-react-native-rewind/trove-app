@@ -23,10 +23,12 @@ import { useTaskMediaForTasks } from '@/data/attachments';
 import { useRoster } from '@/data/members';
 import { useProjects } from '@/data/projects';
 import { useMoveTaskStatus, useTasks, useUpdateTaskRank } from '@/data/tasks';
+import { useTodayTaskLinks, useToggleTodayTask } from '@/data/today';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
 import { sortTasksByUrgency } from '@/lib/board';
+import { rankAfterStepDown, rankAfterStepUp } from '@/lib/rank';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { TODAY_VIEW_ID } from '@/lib/today';
@@ -96,6 +98,8 @@ function SpaceBoard() {
   const collapse = useCollapsingHeader(insets.top, 112);
   const moveStatus = useMoveTaskStatus();
   const updateRank = useUpdateTaskRank();
+  const { data: todayLinks = {} } = useTodayTaskLinks();
+  const toggleToday = useToggleTodayTask();
 
   const [boardTab, setBoardTab] = useState<'actions' | 'projects'>('actions');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -183,6 +187,10 @@ function SpaceBoard() {
 
   function renderItem({ item, index }: { item: TaskWithRefs; index: number }) {
     const rowWritable = isMine ? canWrite(spaces.find((s) => s.id === item.space_id)?.role) : writable;
+    const reorderable = canReorderTask(item.space_id) && !selection.active;
+    const upRank = reorderable ? rankAfterStepUp(item.id, items) : null;
+    const downRank = reorderable ? rankAfterStepDown(item.id, items) : null;
+    const todayItemId = todayLinks[item.id];
     return (
       <TaskRow
         task={item}
@@ -192,6 +200,15 @@ function SpaceBoard() {
         onOpen={() => router.push(`/task/${item.id}` as never)}
         onMove={(next) => moveStatus.mutate({ id: item.id, status: next })}
         media={mediaByTask?.[item.id]}
+        onComplete={
+          rowWritable ? () => moveStatus.mutate({ id: item.id, status: 'done' }) : undefined
+        }
+        onToday={Boolean(todayItemId)}
+        onToggleToday={() => toggleToday.mutate({ task: item, itemId: todayItemId })}
+        onMoveUp={upRank ? () => updateRank.mutate({ id: item.id, rank: upRank }) : undefined}
+        onMoveDown={
+          downRank ? () => updateRank.mutate({ id: item.id, rank: downRank }) : undefined
+        }
       />
     );
   }

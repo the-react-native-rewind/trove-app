@@ -30,6 +30,16 @@ type TaskCardProps = {
   onPress?: () => void;
   onLongPress?: () => void;
   media?: Attachment[];
+  /** Tap the leading checkbox to finish an open action. Also hides the heat dot. */
+  onComplete?: () => void;
+  /** The action already sits on today — the Today chip reads as selected. */
+  onToday?: boolean;
+  /** Tap the Today chip to add the action to today, or pull it back off. */
+  onToggleToday?: () => void;
+  /** Nudge the action one place up its list. Omitted when it is already top. */
+  onMoveUp?: () => void;
+  /** Nudge the action one place down its list. Omitted when it is already bottom. */
+  onMoveDown?: () => void;
 };
 
 export function TaskCard({
@@ -41,6 +51,11 @@ export function TaskCard({
   onPress,
   onLongPress,
   media,
+  onComplete,
+  onToday = false,
+  onToggleToday,
+  onMoveUp,
+  onMoveDown,
 }: TaskCardProps) {
   const selection = useSelection();
   const due = formatDueDate(task.due_date);
@@ -55,6 +70,10 @@ export function TaskCard({
   const handoffName = task.latest_handoff?.from_name ?? 'Former member';
   const selecting = selection.active;
   const selected = selecting && selection.isSelected(task.id);
+  const showCheckbox = Boolean(onComplete) && !done && !selecting;
+  const showCarets = Boolean(onMoveUp || onMoveDown);
+  const showTodayChip = Boolean(onToggleToday) && !done;
+  const checkRing = heat ?? colors.inkFaint;
 
   function handlePress() {
     if (selecting) {
@@ -123,6 +142,14 @@ export function TaskCard({
             <View style={[styles.check, selected && styles.checkOn]}>
               {selected ? <Ionicons name="checkmark" size={14} color={colors.onBrand} /> : null}
             </View>
+          ) : showCheckbox ? (
+            <Pressable
+              onPress={onComplete}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Finish ${task.title}`}
+              style={[styles.doneBox, { borderColor: checkRing }]}
+            />
           ) : null}
           <Text
             variant="cardTitle"
@@ -132,6 +159,30 @@ export function TaskCard({
           >
             {task.title}
           </Text>
+          {showCarets ? (
+            <View style={styles.caretCol}>
+              <Pressable
+                onPress={onMoveUp}
+                disabled={!onMoveUp}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Move up"
+                style={[styles.caret, styles.caretTop, !onMoveUp && styles.caretOff]}
+              >
+                <Ionicons name="chevron-up" size={15} color={onMoveUp ? colors.inkSoft : colors.inkFaint} />
+              </Pressable>
+              <Pressable
+                onPress={onMoveDown}
+                disabled={!onMoveDown}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Move down"
+                style={[styles.caret, styles.caretBottom, !onMoveDown && styles.caretOff]}
+              >
+                <Ionicons name="chevron-down" size={15} color={onMoveDown ? colors.inkSoft : colors.inkFaint} />
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         {notes ? (
@@ -148,9 +199,15 @@ export function TaskCard({
           />
         ) : null}
 
-        {(due || task.assignees.length > 0 || heat || repeats || showProgress || task.project) && (
+        {(due ||
+          task.assignees.length > 0 ||
+          heat ||
+          repeats ||
+          showProgress ||
+          task.project ||
+          showTodayChip) && (
           <View style={styles.meta}>
-            {heat ? (
+            {heat && !showCheckbox ? (
               <View
                 accessible={false}
                 style={[styles.heatDot, { backgroundColor: heat }]}
@@ -186,13 +243,29 @@ export function TaskCard({
               </View>
             ) : null}
             <View style={styles.spacer} />
-            <AvatarStack
-              people={task.assignees}
-              size={26}
-              ringColor={
-                selected ? colors.brandSoft : overdue ? colors.overdueSurface : colors.surface
-              }
-            />
+            {showTodayChip ? (
+              <Pressable
+                onPress={onToggleToday}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityState={{ selected: onToday }}
+                accessibilityLabel={onToday ? 'On today' : 'Add to today'}
+                style={[styles.todayChip, onToday && styles.todayChipOn]}
+              >
+                <Text variant="meta" color={onToday ? colors.onBrand : colors.inkSoft}>
+                  Today
+                </Text>
+              </Pressable>
+            ) : null}
+            {task.assignees.length > 0 ? (
+              <AvatarStack
+                people={task.assignees}
+                size={26}
+                ringColor={
+                  selected ? colors.brandSoft : overdue ? colors.overdueSurface : colors.surface
+                }
+              />
+            ) : null}
           </View>
         )}
       </Pressable>
@@ -228,6 +301,35 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   checkOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  doneBox: {
+    width: 24,
+    height: 24,
+    marginTop: 1,
+    borderRadius: 12,
+    borderWidth: 2.5,
+    backgroundColor: colors.surface,
+  },
+  caretCol: { alignSelf: 'center' },
+  caret: {
+    width: 34,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.hairline,
+  },
+  caretTop: { borderTopLeftRadius: 8, borderTopRightRadius: 8, borderBottomWidth: 0 },
+  caretBottom: { borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
+  caretOff: { opacity: 0.4 },
+  todayChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    backgroundColor: colors.surface,
+  },
+  todayChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   tagRow: {
     flexDirection: 'row',
     alignItems: 'center',
