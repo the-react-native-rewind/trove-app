@@ -8,11 +8,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CircleMenuSheet } from '@/components/CircleMenuSheet';
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
+import { MineMenuSheet } from '@/components/MineMenuSheet';
 import { TodayView } from '@/components/TodayView';
 import { ProjectFormSheet } from '@/components/ProjectFormSheet';
 import { ProjectsPane } from '@/components/ProjectsPane';
 import { SelectionActionBar, SelectionHeader } from '@/components/SelectionChrome';
-import { SegmentTabs, StatusSegmented } from '@/components/StatusSegmented';
+import { SegmentTabs } from '@/components/StatusSegmented';
 import { TaskReorderList } from '@/components/TaskReorderList';
 import { TaskRow } from '@/components/TaskRow';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -25,7 +26,7 @@ import { useMoveTaskStatus, useTasks, useUpdateTaskRank } from '@/data/tasks';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
-import { listBucket, sortTasksByUrgency } from '@/lib/board';
+import { sortTasksByUrgency } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { TODAY_VIEW_ID } from '@/lib/today';
@@ -96,9 +97,9 @@ function SpaceBoard() {
   const moveStatus = useMoveTaskStatus();
   const updateRank = useUpdateTaskRank();
 
-  const [status, setStatus] = useState<ListStatus>('todo');
   const [boardTab, setBoardTab] = useState<'actions' | 'projects'>('actions');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mineMenuOpen, setMineMenuOpen] = useState(false);
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set());
@@ -110,6 +111,7 @@ function SpaceBoard() {
     setShowFilter(false);
     setBoardTab('actions');
     setMenuOpen(false);
+    setMineMenuOpen(false);
     setProjectFormOpen(false);
   }
 
@@ -129,14 +131,10 @@ function SpaceBoard() {
   const mediaTaskIds = useMemo(() => visibleTasks.map((task) => task.id), [visibleTasks]);
   const { data: mediaByTask } = useTaskMediaForTasks(mediaTaskIds);
 
-  const counts: Record<ListStatus, number> = { todo: 0, done: 0 };
-  for (const t of visibleTasks) counts[listBucket(t.status)]++;
   const openActions = visibleTasks.filter((task) => task.status !== 'done');
 
   const showingProjects = !isMine && boardTab === 'projects';
-  const items = isMine
-    ? visibleTasks.filter((t) => listBucket(t.status) === status)
-    : openActions;
+  const items = openActions;
   const selectableIds = (isWide && isMine ? visibleTasks : items)
     .filter((task) => canWriteTask(task.space_id))
     .map((task) => task.id);
@@ -247,21 +245,49 @@ function SpaceBoard() {
         </View>
       </View>
 
-      {isMine && isWide ? null : (
+      {isMine && isWide ? null : isMine ? (
+        <View style={styles.mineBar}>
+          <Pressable
+            onPress={() => {
+              hapticLight();
+              setShowFilter((value) => !value);
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Filter circles"
+            style={styles.iconBtn}
+          >
+            <Ionicons
+              name={excluded.size ? 'funnel' : 'funnel-outline'}
+              size={22}
+              color={colors.ink}
+            />
+          </Pressable>
+          <View style={styles.flex} />
+          <Pressable
+            onPress={() => {
+              hapticLight();
+              setMineMenuOpen(true);
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Mine settings"
+            style={styles.iconBtn}
+          >
+            <Ionicons name="settings-outline" size={22} color={colors.ink} />
+          </Pressable>
+        </View>
+      ) : (
         <View style={styles.segmentRow}>
           <View style={styles.segmentTabs}>
-            {isMine ? (
-              <StatusSegmented value={status} counts={counts} onChange={setStatus} />
-            ) : (
-              <SegmentTabs
-                options={[
-                  { key: 'actions' as const, label: 'Actions', count: openActions.length },
-                  { key: 'projects' as const, label: 'Projects', count: projects.length },
-                ]}
-                value={boardTab}
-                onChange={selectBoardTab}
-              />
-            )}
+            <SegmentTabs
+              options={[
+                { key: 'actions' as const, label: 'Actions', count: openActions.length },
+                { key: 'projects' as const, label: 'Projects', count: projects.length },
+              ]}
+              value={boardTab}
+              onChange={selectBoardTab}
+            />
           </View>
           <Pressable
             onPress={() => {
@@ -270,11 +296,11 @@ function SpaceBoard() {
             }}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={isMine ? 'Filter circles' : 'Filter assignees'}
+            accessibilityLabel="Filter assignees"
             style={styles.filterBtn}
           >
             <Ionicons
-              name={(isMine ? excluded.size : assigneeFilter.size) ? 'funnel' : 'funnel-outline'}
+              name={assigneeFilter.size ? 'funnel' : 'funnel-outline'}
               size={20}
               color={colors.ink}
             />
@@ -381,7 +407,7 @@ function SpaceBoard() {
       body="Pull to refresh and try again."
     />
   ) : (
-    <EmptyState {...(isMine ? MINE_EMPTY : EMPTY_COPY)[isMine ? status : 'todo']} />
+    <EmptyState {...(isMine ? MINE_EMPTY : EMPTY_COPY).todo} />
   );
   const refreshControl = (
     <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brand} />
@@ -486,7 +512,9 @@ function SpaceBoard() {
         </Pressable>
       ) : null}
 
-      {isMine ? null : (
+      {isMine ? (
+        <MineMenuSheet visible={mineMenuOpen} onClose={() => setMineMenuOpen(false)} />
+      ) : (
         <>
           <CircleMenuSheet
             visible={menuOpen}
@@ -517,6 +545,13 @@ const styles = StyleSheet.create({
   // line up with the first and last columns.
   headerWide: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
   iconBtn: { padding: spacing.xs },
+  flex: { flex: 1 },
+  mineBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
   titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   titleText: { flex: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

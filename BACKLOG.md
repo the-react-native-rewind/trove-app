@@ -30,13 +30,13 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Confetti when completing an action on Today (plain lines get none)
 - ✅ Faster splash; circles expand to ~3.6x as they fly out
 - ✅ Today pull-to-refresh now returns server truth (cleared a stuck optimistic-edit guard); Mine/circle/projects lists already had working refresh
+- ✅ Mine header redesign: dropped the To do/Done toggle; filter icon left, settings gear right; gear opens a sheet with "Completed actions"
+- ✅ Mine Completed-actions screen, sorted by most-recently-completed
 
 ---
 
 ## ⬜ Not started
 
-- ⬜ **Mine page header redesign** (take a cue from Circles). Remove the "To do / Done" toggle. Put a **filter** icon on the left and a **settings** icon on the right. The settings icon opens a bottom sheet containing a "Completed actions" button.
-- ⬜ **Mine / actions sort:** sort by most-recently-completed, newest at the top.
 - ⬜ **Projects page — per project:** a progress bar + "X of Y tasks complete"; show who's involved / assigned; remove the filter option on the projects page.
 - ⬜ **Actions page:** between the priority color circle and the status ("in progress"), show a tag with the project the action belongs to (when it belongs to one).
 - ⬜ **Composer keyboard dismiss:** tapping on truly empty space should also dismiss (drag-to-dismiss already done).
