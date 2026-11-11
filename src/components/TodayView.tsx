@@ -32,6 +32,7 @@ import DraggableFlatList, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  forceTodayFresh,
   useAddTodayTask,
   useAddTodayText,
   useCheckTodayItem,
@@ -640,6 +641,8 @@ export function TodayView() {
       refreshing={refreshing}
       onRefresh={() => {
         setRefreshing(true);
+        // Drop the optimistic-edit guard so the pull returns server truth.
+        forceTodayFresh();
         void Promise.all([
           activeQuery.refetch(),
           viewingPast ? Promise.resolve() : suggestionsQuery.refetch(),

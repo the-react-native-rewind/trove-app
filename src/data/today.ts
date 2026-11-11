@@ -143,6 +143,15 @@ function todayEditsInFlight(): number {
   return pendingTodayEdits;
 }
 
+/**
+ * Clear the optimistic-edit guard so an explicit pull-to-refresh returns server
+ * truth. Without this, a leaked in-flight counter makes refetches keep the
+ * cached list and the pull appears to do nothing.
+ */
+export function forceTodayFresh() {
+  pendingTodayEdits = 0;
+}
+
 let pendingLineSerial = 0;
 
 function nextPendingLineId(): string {
