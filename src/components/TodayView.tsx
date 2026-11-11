@@ -58,6 +58,7 @@ import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
 import { formatDayLabel } from '@/lib/format';
+import { celebrate } from '@/lib/celebrate';
 import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from '@/lib/haptics';
 import { useMomentumChime } from '@/lib/momentumSound';
 import { rankAfterDrop } from '@/lib/rank';
@@ -315,6 +316,8 @@ export function TodayView() {
       chime.play(countAfter(line, true));
     }
     hapticSuccess();
+    // Completing an action is a win — plain lines (no taskId) never reach here.
+    celebrate();
     check.mutate(
       { id: line.id, checked: true, taskId, taskStatus },
       {

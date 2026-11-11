@@ -27,6 +27,7 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Drag the Today list to dismiss the keyboard (partial: tap-on-empty-space still TODO)
 - ✅ Removed the My Week feature entirely; Beta section kept with "No new beta features"
 - ✅ Splash: circles hold as the logo, then fly apart and fade to reveal the page
+- ✅ Confetti when completing an action on Today (plain lines get none)
 
 ---
 
@@ -36,7 +37,6 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ⬜ **Mine / actions sort:** sort by most-recently-completed, newest at the top.
 - ⬜ **Projects page — per project:** a progress bar + "X of Y tasks complete"; show who's involved / assigned; remove the filter option on the projects page.
 - ⬜ **Actions page:** between the priority color circle and the status ("in progress"), show a tag with the project the action belongs to (when it belongs to one).
-- ⬜ **Today completion confetti:** when you complete an **action** (a task) on Today, play a confetti animation. A plain line gets no confetti.
 - ⬜ **Composer keyboard dismiss:** when the "Add a line, or @ an action" input is focused, tapping outside should dismiss the keyboard / unfocus the input (currently you can't).
 
 ---
