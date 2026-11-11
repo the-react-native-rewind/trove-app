@@ -21,6 +21,14 @@ function nextColor(current: string): string {
   return spaceAccentOrder[(i + 1) % spaceAccentOrder.length];
 }
 
+/** A short "2 actions · 1 routine" summary of what a circle holds. */
+function itemSummary(actions: number, routines: number): string {
+  const parts: string[] = [];
+  if (actions) parts.push(`${actions} action${actions > 1 ? 's' : ''}`);
+  if (routines) parts.push(`${routines} routine${routines > 1 ? 's' : ''}`);
+  return parts.join(' · ') || 'Nothing yet';
+}
+
 /** Drop blank titles the person may have cleared before building. */
 function tidy(plan: OnboardingPlan): OnboardingPlan {
   const actions = (list: OnboardingPlan['personal']['actions']) =>
@@ -76,8 +84,8 @@ export default function OnboardingReview() {
       >
         <Text style={styles.heading}>Here’s what’s on your plate</Text>
         <Text variant="body" color={colors.inkSoft} style={styles.sub}>
-          Have a quick look and tweak anything. Tap Today on the few that matter now.
-          You can change all of this later.
+          Everything’s gathered into circles — each one groups related actions and
+          routines. Tweak anything, and tap Today on what matters now.
         </Text>
 
         {plan.circles.map((circle, ci) => (
@@ -90,13 +98,21 @@ export default function OnboardingReview() {
                 accessibilityLabel="Change colour"
                 style={[styles.dot, { backgroundColor: resolveAccent(circle.color) }]}
               />
-              <TextInput
-                value={circle.name}
-                onChangeText={(name) => edit((p) => { p.circles[ci].name = name; })}
-                placeholder="Circle name"
-                placeholderTextColor={colors.inkFaint}
-                style={styles.circleName}
-              />
+              <View style={styles.headText}>
+                <Text variant="label" color={resolveAccent(circle.color)}>
+                  Circle
+                </Text>
+                <TextInput
+                  value={circle.name}
+                  onChangeText={(name) => edit((p) => { p.circles[ci].name = name; })}
+                  placeholder="Circle name"
+                  placeholderTextColor={colors.inkFaint}
+                  style={styles.circleName}
+                />
+                <Text variant="meta" color={colors.inkFaint}>
+                  {itemSummary(circle.actions.length, circle.routines.length)}
+                </Text>
+              </View>
               <Pressable
                 onPress={() => edit((p) => { p.circles.splice(ci, 1); })}
                 hitSlop={8}
@@ -106,6 +122,8 @@ export default function OnboardingReview() {
                 <Ionicons name="trash-outline" size={18} color={colors.inkFaint} />
               </Pressable>
             </View>
+
+            <View style={styles.divider} />
 
             {circle.actions.map((action, ai) => (
               <ActionRow
@@ -144,8 +162,19 @@ export default function OnboardingReview() {
           <View style={styles.card}>
             <View style={styles.cardHead}>
               <View style={[styles.dot, { backgroundColor: resolveAccent('sage') }]} />
-              <Text style={styles.circleName}>Personal</Text>
+              <View style={styles.headText}>
+                <Text variant="label" color={resolveAccent('sage')}>
+                  Circle
+                </Text>
+                <Text style={styles.circleName}>Personal</Text>
+                <Text variant="meta" color={colors.inkFaint}>
+                  {itemSummary(plan.personal.actions.length, plan.personal.routines.length)}
+                </Text>
+              </View>
             </View>
+
+            <View style={styles.divider} />
+
             {plan.personal.actions.map((action, ai) => (
               <ActionRow
                 key={`pa${ai}`}
@@ -201,17 +230,21 @@ const styles = StyleSheet.create({
   },
   cardHead: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    marginBottom: spacing.xs,
   },
-  dot: { width: 14, height: 14, borderRadius: 7 },
+  headText: { flex: 1, gap: 2 },
+  dot: { width: 14, height: 14, borderRadius: 7, marginTop: 3 },
   circleName: {
-    flex: 1,
     fontFamily: fonts.displayMedium,
-    fontSize: 19,
+    fontSize: 20,
     color: colors.ink,
     padding: 0,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.hairline,
+    marginVertical: spacing.sm,
   },
   addRow: {
     flexDirection: 'row',

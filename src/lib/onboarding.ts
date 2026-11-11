@@ -113,10 +113,13 @@ function cleanColor(value: unknown, index: number): SpaceAccentName {
   return spaceAccentOrder[index % spaceAccentOrder.length];
 }
 
+/** A circle needs at least this many items (actions + routines) to stand alone. */
+const MIN_CIRCLE_ITEMS = 2;
+
 /** Normalise and harden whatever the model returned into a usable plan. */
 export function normalisePlan(raw: unknown): OnboardingPlan {
   const data = (raw ?? {}) as Record<string, unknown>;
-  const circles = Array.isArray(data.circles)
+  const rawCircles = Array.isArray(data.circles)
     ? data.circles
         .map((rawCircle, index) => {
           const circle = (rawCircle ?? {}) as Record<string, unknown>;
@@ -130,12 +133,25 @@ export function normalisePlan(raw: unknown): OnboardingPlan {
         .filter((circle) => circle.name.length > 0)
     : [];
   const personal = (data.personal ?? {}) as Record<string, unknown>;
+  const personalActions = cleanActions(personal.actions);
+  const personalRoutines = cleanRoutines(personal.routines);
+
+  // Deterministically enforce "a circle holds a group, not a single task":
+  // any circle too small to be a real grouping has its items folded into
+  // Personal. The model steers the grouping; this guarantees the threshold.
+  const circles: OnboardingCircle[] = [];
+  for (const circle of rawCircles) {
+    if (circle.actions.length + circle.routines.length >= MIN_CIRCLE_ITEMS) {
+      circles.push(circle);
+    } else {
+      personalActions.push(...circle.actions);
+      personalRoutines.push(...circle.routines);
+    }
+  }
+
   return {
     circles,
-    personal: {
-      actions: cleanActions(personal.actions),
-      routines: cleanRoutines(personal.routines),
-    },
+    personal: { actions: personalActions, routines: personalRoutines },
   };
 }
 

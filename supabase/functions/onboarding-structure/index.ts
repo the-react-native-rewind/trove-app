@@ -10,7 +10,7 @@ type StructureRequest = {
   timezone?: string; // IANA name, e.g. Europe/Madrid
 };
 
-const MODEL = 'gpt-4o-mini';
+const MODEL = 'gpt-4o';
 
 // Circle colours must come from the app's accent palette (src/theme/tokens.ts).
 const COLORS = [
@@ -151,15 +151,33 @@ Deno.serve(async (req) => {
       'Turn their spoken brain-dump into a calm, organised starting point. UK English.',
       `Today is ${today} in the ${timezone} timezone; resolve relative dates against it.`,
       '',
-      'Group related things into CIRCLES. A circle is a project, an area of life, or a',
-      'group of people — e.g. "Finca", "Newsletter", "Home". Give each a short human',
-      'name (1–3 words, sentence case).',
+      'A CIRCLE is a BROAD area of life or work that gathers many related actions —',
+      'the handful of big buckets a person\'s life splits into, like "Work", "Home",',
+      '"Finca", "Health", or one specific business or client.',
+      '',
+      'Produce only TWO or THREE circles for a typical brain-dump, by gathering things',
+      'into broad buckets:',
+      '- Put all work/business tasks together under ONE broad work circle — even when',
+      '  they span different projects or clients — unless two businesses are clearly',
+      '  separate major areas.',
+      '- Put home / life / property / errand-style areas together.',
+      'Do NOT make a circle per project, per client, per topic or per task. A circle',
+      'named after a single task (e.g. "Vet appointment", "Review the proposal") is',
+      'wrong — such one-offs go in "personal".',
+      'Worked example: "email the accountant, chase the invoice, prep the board deck,',
+      'water the allotment daily, fix the shed, book a dentist" → circles "Work" (email',
+      'accountant, chase invoice, prep board deck) and "Allotment" (water daily, fix',
+      'shed); "book a dentist" goes to personal. Notice several different work tasks',
+      'share ONE broad circle.',
+      'Every circle must hold at least two items. Give each a short human name (1–3',
+      'words, sentence case).',
+      '',
       'Each circle has ACTIONS (concrete things to do; short imperative titles) and',
       'ROUTINES (recurring things like "Water the plants", with the weekdays they recur).',
-      'Mark an action today:true only when it clearly needs doing today or was said as',
-      'urgent — keep those to a handful. Set due_date only when a date is clearly implied.',
+      'Most actions are NOT for today: set today:true only when the person clearly said',
+      'it is for today or right now. Set due_date only when a date is clearly implied.',
       'For routines, "every day" or "every morning" means all seven weekdays.',
-      'Anything that does not belong to a clear circle goes under "personal".',
+      'Loose one-off items that do not fit a broad circle go under "personal".',
       '',
       'Never invent tasks, circles, dates or people that were not mentioned. Do not add',
       'reminders, timers or widgets. Be calm and plain — no guilt, no hustle language.',
@@ -179,6 +197,7 @@ Deno.serve(async (req) => {
           { role: 'user', content: transcript },
         ],
         response_format: RESPONSE_SCHEMA,
+        temperature: 0.2,
         max_tokens: 2000,
       }),
     });
