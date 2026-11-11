@@ -41,6 +41,7 @@ export type TaskAssignee = Pick<Profile, 'id' | 'display_name' | 'avatar_url'>;
 /** A task joined with its space (name + color), assignees, and the latest handoff. */
 export type TaskWithRefs = Task & {
   space: Pick<Space, 'id' | 'name' | 'color'> | null;
+  project: Pick<Project, 'id' | 'name'> | null;
   assignees: TaskAssignee[];
   latest_handoff: TaskHandoff | null;
   agent_log_count: number;

@@ -30,7 +30,7 @@ import Toast from 'react-native-toast-message';
 export { positionBetween };
 
 export const TASK_SELECT =
-  '*, space:spaces(id,name,color), assignees:task_assignees(position, profile:profiles(id,display_name,avatar_url)), latest_handoff:task_handoffs(id,from_user_id,to_user_id,status,note,note_edited_at,created_at,from_profile:profiles!task_handoffs_from_user_id_fkey(id,display_name,avatar_url),to_profile:profiles!task_handoffs_to_user_id_fkey(id,display_name,avatar_url)), agent_log_entries(count)';
+  '*, space:spaces(id,name,color), project:projects(id,name), assignees:task_assignees(position, profile:profiles(id,display_name,avatar_url)), latest_handoff:task_handoffs(id,from_user_id,to_user_id,status,note,note_edited_at,created_at,from_profile:profiles!task_handoffs_from_user_id_fkey(id,display_name,avatar_url),to_profile:profiles!task_handoffs_to_user_id_fkey(id,display_name,avatar_url)), agent_log_entries(count)';
 
 const HANDOFF_SELECT =
   'id, from_user_id, to_user_id, status, note, note_edited_at, created_at, from_profile:profiles!task_handoffs_from_user_id_fkey(id,display_name,avatar_url), to_profile:profiles!task_handoffs_to_user_id_fkey(id,display_name,avatar_url)';

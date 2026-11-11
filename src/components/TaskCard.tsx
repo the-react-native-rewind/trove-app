@@ -148,13 +148,21 @@ export function TaskCard({
           />
         ) : null}
 
-        {(due || task.assignees.length > 0 || heat || repeats || showProgress) && (
+        {(due || task.assignees.length > 0 || heat || repeats || showProgress || task.project) && (
           <View style={styles.meta}>
             {heat ? (
               <View
                 accessible={false}
                 style={[styles.heatDot, { backgroundColor: heat }]}
               />
+            ) : null}
+            {task.project ? (
+              <View style={styles.projectTag}>
+                <Ionicons name="folder-outline" size={12} color={colors.inkSoft} />
+                <Text variant="meta" color={colors.inkSoft} numberOfLines={1}>
+                  {task.project.name}
+                </Text>
+              </View>
             ) : null}
             {showProgress ? <InProgressTag reserveHeight={HEAT_DOT_SIZE} /> : null}
             {repeats ? (
@@ -233,5 +241,15 @@ const styles = StyleSheet.create({
     borderRadius: HEAT_DOT_SIZE / 2,
   },
   dueWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  projectTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+  },
   spacer: { flex: 1 },
 });
