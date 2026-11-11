@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
+import { PRO_TRIAL_DAYS, useCancelProStub, usePro } from '@/data/pro';
 import { pickAvatarImage, useProfile, useUpdateProfile, useUploadAvatar } from '@/data/profile';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
 import { supabase } from '@/lib/supabase';
@@ -19,6 +20,8 @@ export default function Account() {
   const { data: profile } = useProfile();
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
+  const { isPro } = usePro();
+  const cancelPro = useCancelProStub();
 
   const profileName = profile?.display_name ?? '';
   const [name, setName] = useState(profileName);
@@ -107,6 +110,27 @@ export default function Account() {
         helper={saved ? 'Saved' : 'This is how your people see you.'}
       />
 
+      <View style={styles.pro}>
+        <Text variant="sectionHeading">{isPro ? 'Trove Pro' : 'Upgrade to Trove Pro'}</Text>
+        <Text variant="body" color={colors.inkSoft}>
+          {isPro
+            ? 'You’re on Trove Pro — every circle, insights, voice and agents. The people you invite never pay.'
+            : 'Unlock every circle, insights, voice beyond your first dump, and agents. Only you pay — inviting people is always free.'}
+        </Text>
+        {isPro ? (
+          <Button
+            label="Turn off Pro (testing)"
+            variant="secondary"
+            onPress={() => cancelPro.mutate()}
+          />
+        ) : (
+          <Button
+            label={`Start my ${PRO_TRIAL_DAYS} days free`}
+            onPress={() => router.push('/paywall')}
+          />
+        )}
+      </View>
+
       <View style={styles.beta}>
         <Text variant="sectionHeading">Beta features</Text>
         <Text variant="body" color={colors.inkSoft}>
@@ -153,6 +177,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(43, 38, 32, 0.35)',
   },
+  pro: { marginTop: spacing.xl, gap: spacing.md },
   beta: { marginTop: spacing.xl, gap: spacing.md },
   connect: { marginTop: spacing.xl, gap: spacing.md },
   actions: { marginTop: spacing.xl, gap: spacing.md },

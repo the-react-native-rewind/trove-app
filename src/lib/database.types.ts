@@ -96,6 +96,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          is_pro: boolean
           my_week_enabled: boolean
           onboarded_at: string | null
         }
@@ -104,6 +105,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          is_pro?: boolean
           my_week_enabled?: boolean
           onboarded_at?: string | null
         }
@@ -112,6 +114,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          is_pro?: boolean
           my_week_enabled?: boolean
           onboarded_at?: string | null
         }

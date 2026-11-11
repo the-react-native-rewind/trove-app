@@ -3,11 +3,13 @@ import { type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { ProLock } from '@/components/ProLock';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StackScreen } from '@/components/ui/StackScreen';
 import { Text } from '@/components/ui/Text';
 import { Avatar } from '@/components/ui/Avatar';
 import { useRoster } from '@/data/members';
+import { usePro } from '@/data/pro';
 import { useSpaces } from '@/data/spaces';
 import { useTasks } from '@/data/tasks';
 import { colors, radii, spacing, type as typeScale } from '@/theme/tokens';
@@ -21,6 +23,9 @@ export default function CircleAnalytics() {
   const { data: spaces = [] } = useSpaces();
   const { data: tasks = [], isLoading, isError } = useTasks(spaceId ?? '');
   const { data: roster = [] } = useRoster(spaceId ?? '');
+  // Gates on the viewer for now. Owner-based (the circle's owner being Pro
+  // unlocks it for every member) is the intended model — a follow-up.
+  const { isPro, isLoading: proLoading } = usePro();
   const space = spaces.find((s) => s.id === spaceId);
 
   const total = tasks.length;
@@ -44,6 +49,15 @@ export default function CircleAnalytics() {
     })
     .filter((row) => row.total > 0)
     .sort((a, b) => b.done - a.done || b.total - a.total);
+
+  if (!proLoading && !isPro) {
+    return (
+      <ProLock
+        title="See how your circle’s doing"
+        body="Who’s finished what, how much is open, and how the circle’s moving. It’s part of Trove Pro."
+      />
+    );
+  }
 
   return (
     <StackScreen title={space ? `${space.name} analytics` : 'Analytics'}>

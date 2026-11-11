@@ -15,6 +15,7 @@ import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/Collap
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Text } from '@/components/ui/Text';
 import { AccentDot } from '@/components/ui/Indicators';
+import { ProLock } from '@/components/ProLock';
 import {
   useInsights,
   type CircleStat,
@@ -22,6 +23,7 @@ import {
   type InsightsSummary,
   type RoutineStat,
 } from '@/data/insights';
+import { usePro } from '@/data/pro';
 import { hapticSelection } from '@/lib/haptics';
 import { colors, radii, resolveAccent, spacing, type as typeScale } from '@/theme/tokens';
 
@@ -128,7 +130,17 @@ export default function Insights() {
   const router = useRouter();
   const collapse = useCollapsingHeader(insets.top, 52);
   const [range, setRange] = useState<InsightsRange>(30);
+  const { isPro, isLoading: proLoading } = usePro();
   const { data, isLoading, isError } = useInsights(range);
+
+  if (!proLoading && !isPro) {
+    return (
+      <ProLock
+        title="See what you’re finishing"
+        body="Insights show what’s getting done across your circles, and where it slips. It’s part of Trove Pro."
+      />
+    );
+  }
 
   return (
     <View style={styles.screen}>

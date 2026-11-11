@@ -2,11 +2,13 @@ import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
+import { ProLock } from '@/components/ProLock';
 import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { useApiTokens, useCreateApiToken, useRevokeApiToken } from '@/data/apiTokens';
+import { usePro } from '@/data/pro';
 import { useOAuthGrants, useRevokeOAuthGrant } from '@/data/oauthGrants';
 import { confirmDialog } from '@/lib/dialog';
 import { describeScope } from '@/lib/oauthScopes';
@@ -24,6 +26,7 @@ export default function ConnectAssistant() {
   const [revealed, setRevealed] = useState<string | null>(null);
   const [copied, setCopied] = useState<'token' | 'url' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { isPro, isLoading: proLoading } = usePro();
 
   async function onCreate() {
     setError(null);
@@ -72,6 +75,15 @@ export default function ConnectAssistant() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not revoke that token.');
     }
+  }
+
+  if (!proLoading && !isPro) {
+    return (
+      <ProLock
+        title="Agents, where they earn a place"
+        body="Hand a line to Claude, ChatGPT or Cursor — after you and your people. Connecting an assistant is part of Trove Pro."
+      />
+    );
   }
 
   return (

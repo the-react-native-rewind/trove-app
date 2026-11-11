@@ -111,6 +111,7 @@ function RootNavigator() {
       <Stack.Screen name="space/[id]/analytics" />
       <Stack.Screen name="space/[id]/project/[projectId]" />
       <Stack.Screen name="account" options={modalOptions} />
+      <Stack.Screen name="paywall" options={modalOptions} />
       <Stack.Screen name="connect" options={modalOptions} />
       <Stack.Screen name="oauth/consent" />
       <Stack.Screen name="invite/[token]" options={modalOptions} />
