@@ -225,15 +225,21 @@ export function TodayView() {
   const listPan = useMemo(() => dayPanGesture(stepDay), [stepDay]);
   // A quick tap on the list dismisses the composer keyboard (its input sits
   // outside the list, so the list's own keyboard handling never blurs it).
+  // Wrap Keyboard.dismiss in a plain JS fn — referencing Keyboard.dismiss
+  // directly makes the worklet try to send the Keyboard object to the UI
+  // runtime, which throws.
+  const dismissKeyboard = useCallback(() => {
+    Keyboard.dismiss();
+  }, []);
   const listGesture = useMemo(
     () =>
       Gesture.Simultaneous(
         listPan,
         Gesture.Tap()
           .maxDistance(10)
-          .onEnd(() => runOnJS(Keyboard.dismiss)()),
+          .onEnd(() => runOnJS(dismissKeyboard)()),
       ),
-    [listPan],
+    [listPan, dismissKeyboard],
   );
 
   function openDrawer() {
