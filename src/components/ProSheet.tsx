@@ -17,7 +17,10 @@ export function ProSheet({ title, body }: { title: string; body: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const dismiss = () => {
+    // Fall back to home when there's no back stack (e.g. deep-linked or a dev
+    // reload landed straight on this route), so the sheet is never a dead end.
     if (router.canGoBack()) router.back();
+    else router.replace('/' as never);
   };
 
   return (

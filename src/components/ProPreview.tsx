@@ -24,7 +24,7 @@ export function ProPreview({ title, body }: { title: string; body: string }) {
     <View style={styles.fill}>
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.xs }]}>
         <Text
-          onPress={() => router.canGoBack() && router.back()}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as never))}
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
