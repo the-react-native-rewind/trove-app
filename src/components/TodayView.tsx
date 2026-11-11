@@ -5,6 +5,7 @@ import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
   Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -222,6 +223,18 @@ export function TodayView() {
   }, []);
   const headerPan = useMemo(() => dayPanGesture(stepDay), [stepDay]);
   const listPan = useMemo(() => dayPanGesture(stepDay), [stepDay]);
+  // A quick tap on the list dismisses the composer keyboard (its input sits
+  // outside the list, so the list's own keyboard handling never blurs it).
+  const listGesture = useMemo(
+    () =>
+      Gesture.Simultaneous(
+        listPan,
+        Gesture.Tap()
+          .maxDistance(10)
+          .onEnd(() => runOnJS(Keyboard.dismiss)()),
+      ),
+    [listPan],
+  );
 
   function openDrawer() {
     (navigation as unknown as { openDrawer: () => void }).openDrawer();
@@ -718,7 +731,7 @@ export function TodayView() {
         </GestureDetector>
       </CollapsingScreenHeader>
 
-      <GestureDetector gesture={listPan} touchAction="pan-y">
+      <GestureDetector gesture={listGesture} touchAction="pan-y">
       <View style={styles.listFrame}>
         {activeQuery.data === undefined && !activeQuery.isError ? (
           <View style={[styles.center, listPad]}>

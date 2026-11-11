@@ -35,13 +35,14 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Action cards show a project tag (between the priority dot and the status) when linked to a project
 - ✅ Projects page: per-project progress bar + "X of Y done" + assignee avatars; filter removed on the projects tab
 - ✅ Mine filter + settings icons moved to the top-right header
+- ✅ Tapping the Today list dismisses the composer keyboard (drag already did)
 
 ---
 
 ## ⬜ Not started
 
-- ⬜ **Composer keyboard dismiss:** tapping on truly empty space should also dismiss (drag-to-dismiss already done).
 - ⬜ **Pull-to-refresh — remaining:** wide-screen Kanban board and the Completed-actions screen still lack pull-to-refresh (phone lists done).
+- ⬜ **Circle analytics.** A Circle's Settings gets an "Analytics" option opening a breakdown screen (inspired by Today's Insights): who completed what, open vs completed counts, circle size (members), how much work is done. First pass — refine what's useful.
 
 ---
 
