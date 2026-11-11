@@ -1,7 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { OnboardingScaffold } from '@/components/onboarding/OnboardingScaffold';
 import { Button } from '@/components/ui/Button';
@@ -31,6 +40,7 @@ export default function OnboardingCapture() {
     if (dictation.listening) {
       dictation.stop();
     } else {
+      Keyboard.dismiss();
       dictationBaseRef.current = text;
       dictation.start();
     }
@@ -45,6 +55,10 @@ export default function OnboardingCapture() {
   const hasText = text.trim().length > 0;
 
   return (
+    <KeyboardAvoidingView
+      style={styles.fill}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
     <OnboardingScaffold
       step={2}
       footer={
@@ -82,7 +96,11 @@ export default function OnboardingCapture() {
         </Text>
       </View>
 
-      <ScrollView style={styles.transcriptWrap} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.transcriptWrap}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <TextInput
           value={text}
           onChangeText={setText}
@@ -111,10 +129,12 @@ export default function OnboardingCapture() {
         </Text>
       </Pressable>
     </OnboardingScaffold>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1, backgroundColor: colors.paper },
   heading: {
     fontFamily: fonts.displaySemiBold,
     fontSize: 30,
