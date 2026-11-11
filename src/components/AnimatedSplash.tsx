@@ -29,7 +29,7 @@ function SplashCircle({ dot, progress, spread }: { dot: SplashDot; progress: Sha
       transform: [
         { translateX: dot.x + dot.dx * spread * p },
         { translateY: dot.y + dot.dy * spread * p },
-        { scale: 1 + p * 1.8 },
+        { scale: 1 + p * 2.6 },
       ],
     };
   });
@@ -49,12 +49,12 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     progress.value = withDelay(
-      450,
-      withTiming(1, { duration: 800, easing: Easing.in(Easing.cubic) }),
+      300,
+      withTiming(1, { duration: 560, easing: Easing.in(Easing.cubic) }),
     );
     opacity.value = withDelay(
-      820,
-      withTiming(0, { duration: 520, easing: Easing.in(Easing.quad) }, (finished) => {
+      560,
+      withTiming(0, { duration: 400, easing: Easing.in(Easing.quad) }, (finished) => {
         if (finished) runOnJS(onDone)();
       }),
     );
