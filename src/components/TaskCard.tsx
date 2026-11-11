@@ -131,25 +131,11 @@ export function TaskCard({
         accessibilityState={{ selected }}
         style={styles.body}
       >
-        {showTag && task.space ? (
-          <View style={styles.tagRow}>
-            <SpaceTag name={task.space.name} color={task.space.color} />
-          </View>
-        ) : null}
-
         <View style={styles.titleRow}>
           {selecting && selectable ? (
             <View style={[styles.check, selected && styles.checkOn]}>
               {selected ? <Ionicons name="checkmark" size={14} color={colors.onBrand} /> : null}
             </View>
-          ) : showCheckbox ? (
-            <Pressable
-              onPress={onComplete}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={`Finish ${task.title}`}
-              style={[styles.doneBox, { borderColor: checkRing }]}
-            />
           ) : null}
           <Text
             variant="cardTitle"
@@ -185,6 +171,12 @@ export function TaskCard({
           ) : null}
         </View>
 
+        {showTag && task.space ? (
+          <View style={styles.tagRow}>
+            <SpaceTag name={task.space.name} color={task.space.color} />
+          </View>
+        ) : null}
+
         {notes ? (
           <Text variant="meta" color={colors.inkSoft} numberOfLines={handoffNote ? 1 : 2}>
             {notes}
@@ -205,8 +197,18 @@ export function TaskCard({
           repeats ||
           showProgress ||
           task.project ||
-          showTodayChip) && (
+          showTodayChip ||
+          showCheckbox) && (
           <View style={styles.meta}>
+            {showCheckbox ? (
+              <Pressable
+                onPress={onComplete}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Finish ${task.title}`}
+                style={[styles.doneBox, { borderColor: checkRing }]}
+              />
+            ) : null}
             {heat && !showCheckbox ? (
               <View
                 accessible={false}
