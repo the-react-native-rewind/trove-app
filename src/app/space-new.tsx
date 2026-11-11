@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
 import { ColorPicker } from '@/components/form';
 import { ProSheet } from '@/components/ProSheet';
@@ -10,6 +10,7 @@ import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { FREE_CIRCLES, usePro } from '@/data/pro';
 import { useCreateSpace, useSpaces } from '@/data/spaces';
+import { useAuth } from '@/providers/AuthProvider';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, spacing } from '@/theme/tokens';
 
@@ -17,13 +18,18 @@ export default function NewSpace() {
   const router = useRouter();
   const { setSelectedSpaceId } = useSelectedSpace();
   const createSpace = useCreateSpace();
-  const { data: spaces = [] } = useSpaces();
+  const { userId } = useAuth();
+  const { data: spaces = [], isLoading: spacesLoading } = useSpaces();
 
   const [name, setName] = useState('');
   const [color, setColor] = useState('sage');
   const [error, setError] = useState<string | null>(null);
   const { isPro, isLoading: proLoading } = usePro();
-  const ownedCircles = spaces.filter((space) => !space.is_default).length;
+  const [hitLimit, setHitLimit] = useState(false);
+  // Only circles you own count. Circles you were invited into are always free.
+  const ownedCircles = spaces.filter(
+    (space) => !space.is_default && space.owner_id === userId,
+  ).length;
 
   async function onCreate() {
     setError(null);
@@ -35,12 +41,25 @@ export default function NewSpace() {
       const space = await createSpace.mutateAsync({ name, color });
       setSelectedSpaceId(space.id);
       router.back();
-    } catch {
+    } catch (e) {
+      // The database enforces the free limit too (migration 0037).
+      if (String((e as { message?: string } | null)?.message ?? '').includes('trove_pro_required')) {
+        setHitLimit(true);
+        return;
+      }
       setError('We could not create that circle. Try again.');
     }
   }
 
-  if (!proLoading && !isPro && ownedCircles >= FREE_CIRCLES) {
+  if (proLoading || spacesLoading) {
+    return (
+      <ModalScaffold title="New circle">
+        <ActivityIndicator color={colors.brand} />
+      </ModalScaffold>
+    );
+  }
+
+  if (hitLimit || (!isPro && ownedCircles >= FREE_CIRCLES)) {
     return (
       <ProSheet
         title="Room for every circle"

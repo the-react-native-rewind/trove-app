@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
-import { PRO_TRIAL_DAYS, useCancelProStub, usePro } from '@/data/pro';
+import { billingAvailable, openManageSubscriptions, PRO_TRIAL_DAYS, usePro } from '@/data/pro';
 import { pickAvatarImage, useProfile, useUpdateProfile, useUploadAvatar } from '@/data/profile';
 import { alertDialog, confirmDialog } from '@/lib/dialog';
 import { supabase } from '@/lib/supabase';
@@ -21,7 +21,6 @@ export default function Account() {
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
   const { isPro } = usePro();
-  const cancelPro = useCancelProStub();
 
   const profileName = profile?.display_name ?? '';
   const [name, setName] = useState(profileName);
@@ -114,18 +113,24 @@ export default function Account() {
         <Text variant="sectionHeading">{isPro ? 'Trove Pro' : 'Upgrade to Trove Pro'}</Text>
         <Text variant="body" color={colors.inkSoft}>
           {isPro
-            ? 'You’re on Trove Pro — every circle, insights, voice and agents. The people you invite never pay.'
-            : 'Unlock every circle, insights, voice beyond your first dump, and agents. Only you pay — inviting people is always free.'}
+            ? 'You’re on Trove Pro — every circle, Insights, a full Today and agents. The people you invite never pay.'
+            : 'Unlock every circle, Insights, a full Today and agents. Only you pay — inviting people is always free.'}
         </Text>
         {isPro ? (
-          <Button
-            label="Turn off Pro (testing)"
-            variant="secondary"
-            onPress={() => cancelPro.mutate()}
-          />
+          billingAvailable ? (
+            <Button
+              label="Manage subscription"
+              variant="secondary"
+              onPress={() => openManageSubscriptions()}
+            />
+          ) : (
+            <Text variant="meta" color={colors.inkFaint}>
+              Manage or cancel it from Account in the Trove iPhone app, or in your Apple ID settings.
+            </Text>
+          )
         ) : (
           <Button
-            label={`Start my ${PRO_TRIAL_DAYS} days free`}
+            label={billingAvailable ? `Start my ${PRO_TRIAL_DAYS} days free` : 'See Trove Pro'}
             onPress={() => router.push('/paywall')}
           />
         )}

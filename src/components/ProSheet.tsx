@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
 import { Text } from '@/components/ui/Text';
-import { PRO_TRIAL_DAYS } from '@/data/pro';
+import { billingAvailable, PRO_TRIAL_DAYS } from '@/data/pro';
 import { colors, fonts, radii, shadows, spacing } from '@/theme/tokens';
 
 /**
@@ -44,7 +44,7 @@ export function ProSheet({ title, body }: { title: string; body: string }) {
           {body}
         </Text>
         <Button
-          label={`Start my ${PRO_TRIAL_DAYS} days free`}
+          label={billingAvailable ? `Start my ${PRO_TRIAL_DAYS} days free` : 'See Trove Pro'}
           onPress={() => router.replace('/paywall' as never)}
           haptic="light"
         />

@@ -44,6 +44,7 @@
     "react-native-enriched-markdown": "^1.1.0",
     "react-native-fast-confetti": "^2.0.1",
     "react-native-gesture-handler": "~2.31.1",
+    "react-native-purchases": "^11.0.2",
     "react-native-reanimated": "4.3.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",

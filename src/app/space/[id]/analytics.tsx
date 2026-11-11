@@ -55,6 +55,7 @@ export default function CircleAnalytics() {
       <ProPreview
         title="See how your circle’s doing"
         body="Who’s finished what, how much is open, and how the circle’s moving. It’s part of Trove Pro."
+        screenTitle="Analytics"
       />
     );
   }
