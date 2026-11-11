@@ -36,13 +36,14 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Projects page: per-project progress bar + "X of Y done" + assignee avatars; filter removed on the projects tab
 - ✅ Mine filter + settings icons moved to the top-right header
 - ✅ Tapping the Today list dismisses the composer keyboard (drag already did)
+- ✅ Circle Analytics (Settings → Analytics): completion %, open/done/members tiles, per-member breakdown
 
 ---
 
 ## ⬜ Not started
 
 - ⬜ **Pull-to-refresh — remaining:** wide-screen Kanban board and the Completed-actions screen still lack pull-to-refresh (phone lists done).
-- ⬜ **Circle analytics.** A Circle's Settings gets an "Analytics" option opening a breakdown screen (inspired by Today's Insights): who completed what, open vs completed counts, circle size (members), how much work is done. First pass — refine what's useful.
+- ⬜ **Circle analytics — refine (first pass shipped).** Consider: completion over time, by-project breakdown, overdue count, agent vs human split.
 
 ---
 

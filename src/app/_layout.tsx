@@ -93,6 +93,7 @@ function RootNavigator() {
       <Stack.Screen name="space/[id]/members" options={modalOptions} />
       <Stack.Screen name="space/[id]/settings" options={modalOptions} />
       <Stack.Screen name="space/[id]/completed" />
+      <Stack.Screen name="space/[id]/analytics" />
       <Stack.Screen name="space/[id]/project/[projectId]" />
       <Stack.Screen name="account" options={modalOptions} />
       <Stack.Screen name="connect" options={modalOptions} />

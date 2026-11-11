@@ -30,6 +30,12 @@ export function circleMenuItems(spaceId: string): MenuItem[] {
       href: `/space/${spaceId}/members`,
     },
     {
+      key: 'analytics',
+      label: 'Analytics',
+      icon: 'stats-chart-outline',
+      href: `/space/${spaceId}/analytics`,
+    },
+    {
       key: 'completed',
       label: 'Completed actions',
       icon: 'checkmark-circle-outline',
