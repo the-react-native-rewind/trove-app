@@ -33,12 +33,13 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Mine header redesign: dropped the To do/Done toggle; filter icon left, settings gear right; gear opens a sheet with "Completed actions"
 - ✅ Mine Completed-actions screen, sorted by most-recently-completed
 - ✅ Action cards show a project tag (between the priority dot and the status) when linked to a project
+- ✅ Projects page: per-project progress bar + "X of Y done" + assignee avatars; filter removed on the projects tab
+- ✅ Mine filter + settings icons moved to the top-right header
 
 ---
 
 ## ⬜ Not started
 
-- ⬜ **Projects page — per project:** a progress bar + "X of Y tasks complete"; show who's involved / assigned; remove the filter option on the projects page.
 - ⬜ **Composer keyboard dismiss:** tapping on truly empty space should also dismiss (drag-to-dismiss already done).
 - ⬜ **Pull-to-refresh — remaining:** wide-screen Kanban board and the Completed-actions screen still lack pull-to-refresh (phone lists done).
 

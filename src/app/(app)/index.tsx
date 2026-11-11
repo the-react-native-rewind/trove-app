@@ -11,7 +11,7 @@ import { KanbanBoard } from '@/components/KanbanBoard';
 import { MineMenuSheet } from '@/components/MineMenuSheet';
 import { TodayView } from '@/components/TodayView';
 import { ProjectFormSheet } from '@/components/ProjectFormSheet';
-import { ProjectsPane } from '@/components/ProjectsPane';
+import { ProjectsPane, type ProjectStat } from '@/components/ProjectsPane';
 import { SelectionActionBar, SelectionHeader } from '@/components/SelectionChrome';
 import { SegmentTabs } from '@/components/StatusSegmented';
 import { TaskReorderList } from '@/components/TaskReorderList';
@@ -135,6 +135,22 @@ function SpaceBoard() {
 
   const showingProjects = !isMine && boardTab === 'projects';
   const items = openActions;
+
+  // Per-project progress and who is assigned, from the circle's whole task list.
+  const projectStats = useMemo(() => {
+    const map: Record<string, ProjectStat> = {};
+    for (const task of tasks) {
+      if (!task.project_id) continue;
+      const stat = map[task.project_id] ?? { done: 0, total: 0, assignees: [] };
+      stat.total += 1;
+      if (task.status === 'done') stat.done += 1;
+      for (const person of task.assignees) {
+        if (!stat.assignees.some((p) => p.id === person.id)) stat.assignees.push(person);
+      }
+      map[task.project_id] = stat;
+    }
+    return map;
+  }, [tasks]);
   const selectableIds = (isWide && isMine ? visibleTasks : items)
     .filter((task) => canWriteTask(task.space_id))
     .map((task) => task.id);
@@ -210,25 +226,38 @@ function SpaceBoard() {
         </View>
 
         <View style={styles.headerActions}>
-          {isMine && isWide ? (
-            <Pressable
-              onPress={() => {
-                hapticLight();
-                setShowFilter((v) => !v);
-              }}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Filter circles"
-              style={styles.iconBtn}
-            >
-              <Ionicons
-                name={excluded.size ? 'funnel' : 'funnel-outline'}
-                size={20}
-                color={colors.ink}
-              />
-            </Pressable>
-          ) : null}
-          {isMine ? null : (
+          {isMine ? (
+            <>
+              <Pressable
+                onPress={() => {
+                  hapticLight();
+                  setShowFilter((v) => !v);
+                }}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Filter circles"
+                style={styles.iconBtn}
+              >
+                <Ionicons
+                  name={excluded.size ? 'funnel' : 'funnel-outline'}
+                  size={22}
+                  color={colors.ink}
+                />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  hapticLight();
+                  setMineMenuOpen(true);
+                }}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Mine settings"
+                style={styles.iconBtn}
+              >
+                <Ionicons name="settings-outline" size={22} color={colors.ink} />
+              </Pressable>
+            </>
+          ) : (
             <Pressable
               onPress={() => {
                 hapticLight();
@@ -245,39 +274,7 @@ function SpaceBoard() {
         </View>
       </View>
 
-      {isMine && isWide ? null : isMine ? (
-        <View style={styles.mineBar}>
-          <Pressable
-            onPress={() => {
-              hapticLight();
-              setShowFilter((value) => !value);
-            }}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Filter circles"
-            style={styles.iconBtn}
-          >
-            <Ionicons
-              name={excluded.size ? 'funnel' : 'funnel-outline'}
-              size={22}
-              color={colors.ink}
-            />
-          </Pressable>
-          <View style={styles.flex} />
-          <Pressable
-            onPress={() => {
-              hapticLight();
-              setMineMenuOpen(true);
-            }}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Mine settings"
-            style={styles.iconBtn}
-          >
-            <Ionicons name="settings-outline" size={22} color={colors.ink} />
-          </Pressable>
-        </View>
-      ) : (
+      {isMine ? null : (
         <View style={styles.segmentRow}>
           <View style={styles.segmentTabs}>
             <SegmentTabs
@@ -289,22 +286,24 @@ function SpaceBoard() {
               onChange={selectBoardTab}
             />
           </View>
-          <Pressable
-            onPress={() => {
-              hapticLight();
-              setShowFilter((value) => !value);
-            }}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Filter assignees"
-            style={styles.filterBtn}
-          >
-            <Ionicons
-              name={assigneeFilter.size ? 'funnel' : 'funnel-outline'}
-              size={20}
-              color={colors.ink}
-            />
-          </Pressable>
+          {showingProjects ? null : (
+            <Pressable
+              onPress={() => {
+                hapticLight();
+                setShowFilter((value) => !value);
+              }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Filter assignees"
+              style={styles.filterBtn}
+            >
+              <Ionicons
+                name={assigneeFilter.size ? 'funnel' : 'funnel-outline'}
+                size={20}
+                color={colors.ink}
+              />
+            </Pressable>
+          )}
         </View>
       )}
 
@@ -442,6 +441,7 @@ function SpaceBoard() {
       ) : showingProjects ? (
         <ProjectsPane
           projects={projects}
+          stats={projectStats}
           isLoading={projectsLoading}
           isError={projectsError}
           refreshing={projectsRefetching}
@@ -545,13 +545,6 @@ const styles = StyleSheet.create({
   // line up with the first and last columns.
   headerWide: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
   iconBtn: { padding: spacing.xs },
-  flex: { flex: 1 },
-  mineBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
   titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   titleText: { flex: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
