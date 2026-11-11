@@ -28,13 +28,16 @@ export default function ProjectActions() {
   const moveStatus = useMoveTaskStatus();
   const role = spaces.find((space) => space.id === spaceId)?.role;
   const writable = canWrite(role);
-  const actions = useMemo(
-    () =>
-      sortTasksByUrgency(
-        tasks.filter((task) => task.project_id === projectId && task.status !== 'done'),
-      ),
-    [tasks, projectId],
-  );
+  // One list: open actions by urgency, then done ones at the bottom (most
+  // recently finished first), faded out in the row below.
+  const actions = useMemo(() => {
+    const inProject = tasks.filter((task) => task.project_id === projectId);
+    const open = sortTasksByUrgency(inProject.filter((task) => task.status !== 'done'));
+    const done = inProject
+      .filter((task) => task.status === 'done')
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    return [...open, ...done];
+  }, [tasks, projectId]);
   const media = useTaskMediaForTasks(actions.map((task) => task.id));
 
   function addAction() {
@@ -73,14 +76,15 @@ export default function ProjectActions() {
         ) : (
           <View style={styles.list}>
             {actions.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                canWrite={writable}
-                onOpen={() => router.push(`/task/${task.id}` as never)}
-                onMove={(next) => moveStatus.mutate({ id: task.id, status: next })}
-                media={media.data?.[task.id]}
-              />
+              <View key={task.id} style={task.status === 'done' ? styles.doneRow : undefined}>
+                <TaskRow
+                  task={task}
+                  canWrite={writable}
+                  onOpen={() => router.push(`/task/${task.id}` as never)}
+                  onMove={(next) => moveStatus.mutate({ id: task.id, status: next })}
+                  media={media.data?.[task.id]}
+                />
+              </View>
             ))}
           </View>
         )}
@@ -105,6 +109,7 @@ const styles = StyleSheet.create({
   introCopy: { flex: 1 },
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
   list: { gap: spacing.sm },
+  doneRow: { opacity: 0.55 },
   fab: {
     position: 'absolute',
     right: spacing.lg,

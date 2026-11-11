@@ -38,6 +38,8 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Tapping the Today list dismisses the composer keyboard (drag already did)
 - ✅ Circle Analytics (Settings → Analytics): completion %, open/done/members tiles, per-member breakdown
 - ✅ Pull-to-refresh on the Completed-actions screens (Mine + circle)
+- ✅ Today pull-to-refresh spinner now visible (offset below the header)
+- ✅ Project view: done actions stay in the same list, faded and sorted to the bottom
 
 ---
 
