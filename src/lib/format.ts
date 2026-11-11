@@ -28,6 +28,20 @@ export function isOverdue(iso: string | null): boolean {
   return due.getTime() < startOfDay(new Date()).getTime();
 }
 
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/**
+ * Header label for a day the user is browsing, e.g. "Mon 10 Nov".
+ * Adds the year only when it is not the current one. Always the date, never
+ * "Today"/"Yesterday" — the stepper tints and resets to orient instead.
+ */
+export function formatDayLabel(iso: string): string {
+  const d = startOfDay(new Date(`${iso}T00:00:00`));
+  const today = startOfDay(new Date());
+  const base = `${WEEKDAY_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  return d.getFullYear() === today.getFullYear() ? base : `${base} ${d.getFullYear()}`;
+}
+
 /** YYYY-MM-DD in local time, for the date column type. */
 export function toDateString(d: Date): string {
   const m = `${d.getMonth() + 1}`.padStart(2, '0');

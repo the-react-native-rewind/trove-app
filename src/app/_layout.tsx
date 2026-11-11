@@ -84,6 +84,7 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
+      <Stack.Screen name="insights" />
       <Stack.Screen name="task-new" options={modalOptions} />
       <Stack.Screen name="task/[id]/index" />
       <Stack.Screen name="task/[id]/edit" options={modalOptions} />

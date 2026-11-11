@@ -414,7 +414,24 @@ export type OpenTaskChoice = {
   title: string;
   spaceName: string;
   spaceColor: string;
+  rank: string | null;
+  dueDate: string | null;
+  position: number;
+  createdAt: string;
 };
+
+/** Same order as the Mine tab: manual rank first, then due date, position, age. */
+function compareChoiceUrgency(a: OpenTaskChoice, b: OpenTaskChoice): number {
+  const byRank = compareRank(a.rank ?? '', b.rank ?? '');
+  if (byRank !== 0) return byRank;
+  if (a.dueDate !== b.dueDate) {
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return a.dueDate.localeCompare(b.dueDate);
+  }
+  if (a.position !== b.position) return a.position - b.position;
+  return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+}
 
 export function useOpenTaskChoices(search: string, enabled: boolean) {
   const term = search.trim().replace(/[%_\\]/g, '');
@@ -424,24 +441,36 @@ export function useOpenTaskChoices(search: string, enabled: boolean) {
     queryFn: async (): Promise<OpenTaskChoice[]> => {
       let query = supabase
         .from('tasks')
-        .select('id, title, status, space:spaces(id, name, color)')
+        .select('id, title, status, rank, due_date, position, created_at, space:spaces(id, name, color)')
         .neq('status', 'done')
-        .order('updated_at', { ascending: false })
-        .limit(40);
+        .limit(60);
       if (term) query = query.ilike('title', `%${term}%`);
       const { data, error } = await query;
       if (error) throw error;
-      return ((data ?? []) as unknown as { id: string; title: string; space: TaskJoin['space'] }[]).map(
-        (row) => {
+      const rows = (data ?? []) as unknown as {
+        id: string;
+        title: string;
+        rank: string | null;
+        due_date: string | null;
+        position: number | null;
+        created_at: string;
+        space: TaskJoin['space'];
+      }[];
+      return rows
+        .map((row) => {
           const space = one(row.space);
           return {
             id: row.id,
             title: row.title,
             spaceName: space?.name ?? 'Circle',
             spaceColor: space?.color ?? 'sage',
+            rank: row.rank,
+            dueDate: row.due_date,
+            position: row.position ?? 0,
+            createdAt: row.created_at,
           };
-        },
-      );
+        })
+        .sort(compareChoiceUrgency);
     },
   });
 }

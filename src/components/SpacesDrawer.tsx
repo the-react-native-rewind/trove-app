@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useMyWeekEnabled } from '@/data/profile';
+import { useMyWeekEnabled, useProfile } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
 import { useTasks } from '@/data/tasks';
 import { useTodayList } from '@/data/today';
@@ -24,6 +24,7 @@ import { localToday, TODAY_VIEW_ID } from '@/lib/today';
 import { getCurrentWeekStart, MY_WEEK_VIEW_ID } from '@/lib/week';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
+import { Avatar } from './ui/Avatar';
 import { AccentDot } from './ui/Indicators';
 import { Text } from './ui/Text';
 
@@ -39,6 +40,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   const isWide = useIsWide();
   const { selectedSpaceId, setSelectedSpaceId } = useSelectedSpace();
   const myWeekEnabled = useMyWeekEnabled();
+  const { data: profile } = useProfile();
   const { data: spaces = [] } = useSpaces();
   const { data: mineTasks = [] } = useTasks('all');
   const { data: todayLines = [] } = useTodayList(localToday());
@@ -190,7 +192,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
         accessibilityLabel="Account"
       >
         <View style={styles.rowLeading}>
-          <Ionicons name="person-circle-outline" size={24} color={colors.inkSoft} />
+          <Avatar name={profile?.display_name} uri={profile?.avatar_url} size={24} />
         </View>
         <Animated.View style={[styles.rowRest, fade]}>
           <Text variant="bodyMedium" color={colors.ink} numberOfLines={1}>
