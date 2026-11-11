@@ -3,13 +3,13 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { ColorPicker } from '@/components/form';
-import { ProLock } from '@/components/ProLock';
+import { ProSheet } from '@/components/ProSheet';
 import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
-import { usePro } from '@/data/pro';
-import { useCreateSpace } from '@/data/spaces';
+import { FREE_CIRCLES, usePro } from '@/data/pro';
+import { useCreateSpace, useSpaces } from '@/data/spaces';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, spacing } from '@/theme/tokens';
 
@@ -17,11 +17,13 @@ export default function NewSpace() {
   const router = useRouter();
   const { setSelectedSpaceId } = useSelectedSpace();
   const createSpace = useCreateSpace();
+  const { data: spaces = [] } = useSpaces();
 
   const [name, setName] = useState('');
   const [color, setColor] = useState('sage');
   const [error, setError] = useState<string | null>(null);
   const { isPro, isLoading: proLoading } = usePro();
+  const ownedCircles = spaces.filter((space) => !space.is_default).length;
 
   async function onCreate() {
     setError(null);
@@ -38,11 +40,11 @@ export default function NewSpace() {
     }
   }
 
-  if (!proLoading && !isPro) {
+  if (!proLoading && !isPro && ownedCircles >= FREE_CIRCLES) {
     return (
-      <ProLock
+      <ProSheet
         title="Room for every circle"
-        body="You’ve got the circles Trove set up. New ones — a circle for each project and part of life — come with Trove Pro. Inviting people is always free."
+        body={`Free Trove gives you ${FREE_CIRCLES} circles plus Personal. Add as many as you like with Pro — inviting people is always free.`}
       />
     );
   }

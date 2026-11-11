@@ -1,5 +1,6 @@
 import { toDateString } from './format';
 import { supabase } from './supabase';
+import { FREE_CIRCLES } from '@/data/pro';
 import { spaceAccentOrder, type SpaceAccentName } from '@/theme/tokens';
 
 export type Weekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -139,14 +140,24 @@ export function normalisePlan(raw: unknown): OnboardingPlan {
   // Deterministically enforce "a circle holds a group, not a single task":
   // any circle too small to be a real grouping has its items folded into
   // Personal. The model steers the grouping; this guarantees the threshold.
-  const circles: OnboardingCircle[] = [];
+  const grouped: OnboardingCircle[] = [];
   for (const circle of rawCircles) {
     if (circle.actions.length + circle.routines.length >= MIN_CIRCLE_ITEMS) {
-      circles.push(circle);
+      grouped.push(circle);
     } else {
       personalActions.push(...circle.actions);
       personalRoutines.push(...circle.routines);
     }
+  }
+
+  // Onboarding builds at most FREE_CIRCLES circles, so a brand-new free account
+  // never meets a lock here. Keep the richest few; fold the rest into Personal.
+  const size = (c: OnboardingCircle) => c.actions.length + c.routines.length;
+  grouped.sort((a, b) => size(b) - size(a));
+  const circles = grouped.slice(0, FREE_CIRCLES);
+  for (const extra of grouped.slice(FREE_CIRCLES)) {
+    personalActions.push(...extra.actions);
+    personalRoutines.push(...extra.routines);
   }
 
   return {

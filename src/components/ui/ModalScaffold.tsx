@@ -175,7 +175,7 @@ export function ModalScaffold({
 
 const styles = StyleSheet.create({
   fill: { flex: 1, overflow: 'visible' },
-  container: { flex: 1, backgroundColor: colors.paper },
+  container: { flex: 1, width: '100%', backgroundColor: colors.paper },
   flex: { flex: 1 },
   host: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   hostPhone: { padding: 0, justifyContent: 'flex-end' },

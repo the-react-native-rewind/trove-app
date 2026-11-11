@@ -75,3 +75,10 @@ export const PRO_PLANS = {
 } as const;
 
 export const PRO_TRIAL_DAYS = 14;
+
+// Free usage caps. Chosen to bite only once someone is genuinely using Trove —
+// never during onboarding or the first days. Easy to tune.
+/** Circles a free person can own, on top of their Personal circle. */
+export const FREE_CIRCLES = 2;
+/** Items a free person can hold on Today at once. */
+export const FREE_TODAY_ITEMS = 15;

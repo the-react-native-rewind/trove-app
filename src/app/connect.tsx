@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { ProLock } from '@/components/ProLock';
+import { ProSheet } from '@/components/ProSheet';
 import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
@@ -79,7 +79,7 @@ export default function ConnectAssistant() {
 
   if (!proLoading && !isPro) {
     return (
-      <ProLock
+      <ProSheet
         title="Agents, where they earn a place"
         body="Hand a line to Claude, ChatGPT or Cursor — after you and your people. Connecting an assistant is part of Trove Pro."
       />

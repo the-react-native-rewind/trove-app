@@ -3,7 +3,7 @@ import { type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { ProLock } from '@/components/ProLock';
+import { ProPreview } from '@/components/ProPreview';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StackScreen } from '@/components/ui/StackScreen';
 import { Text } from '@/components/ui/Text';
@@ -52,7 +52,7 @@ export default function CircleAnalytics() {
 
   if (!proLoading && !isPro) {
     return (
-      <ProLock
+      <ProPreview
         title="See how your circle’s doing"
         body="Who’s finished what, how much is open, and how the circle’s moving. It’s part of Trove Pro."
       />

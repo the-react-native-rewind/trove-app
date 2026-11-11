@@ -15,7 +15,7 @@ import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/Collap
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Text } from '@/components/ui/Text';
 import { AccentDot } from '@/components/ui/Indicators';
-import { ProLock } from '@/components/ProLock';
+import { ProPreview } from '@/components/ProPreview';
 import {
   useInsights,
   type CircleStat,
@@ -135,9 +135,9 @@ export default function Insights() {
 
   if (!proLoading && !isPro) {
     return (
-      <ProLock
+      <ProPreview
         title="See what you’re finishing"
-        body="Insights show what’s getting done across your circles, and where it slips. It’s part of Trove Pro."
+        body="What’s getting done across your circles, and where it slips. It’s part of Trove Pro."
       />
     );
   }
