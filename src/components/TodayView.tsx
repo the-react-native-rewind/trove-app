@@ -748,6 +748,7 @@ export function TodayView() {
             refreshControl={refresh}
             containerStyle={styles.listFrame}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           />
         )}
       </View>
