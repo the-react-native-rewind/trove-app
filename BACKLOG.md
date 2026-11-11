@@ -26,12 +26,12 @@ Legend: ✅ done & verified · 🔧 in progress · ⬜ not started
 - ✅ Add-action sheet: title + search pinned; only the list scrolls, with a fade between
 - ✅ Drag the Today list to dismiss the keyboard (partial: tap-on-empty-space still TODO)
 - ✅ Removed the My Week feature entirely; Beta section kept with "No new beta features"
+- ✅ Splash: circles hold as the logo, then fly apart and fade to reveal the page
 
 ---
 
 ## ⬜ Not started
 
-- ⬜ **Splash screen animation.** Open with the three circles static in the middle, then expand them in different directions to "fold open" / reveal the page.
 - ⬜ **Mine page header redesign** (take a cue from Circles). Remove the "To do / Done" toggle. Put a **filter** icon on the left and a **settings** icon on the right. The settings icon opens a bottom sheet containing a "Completed actions" button.
 - ⬜ **Mine / actions sort:** sort by most-recently-completed, newest at the top.
 - ⬜ **Projects page — per project:** a progress bar + "X of Y tasks complete"; show who's involved / assigned; remove the filter option on the projects page.

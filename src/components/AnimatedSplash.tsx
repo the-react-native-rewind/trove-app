@@ -7,33 +7,54 @@ import Animated, {
   useSharedValue,
   withDelay,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 import { colors } from '@/theme/tokens';
 
 // Final logo geometry (matches the app icon: three multiply-blended circles).
+// dx/dy is the unit direction each circle flies when the splash opens.
 const D = 120;
-const CIRCLES = [
-  { color: '#5F7050', x: -26, y: -20 }, // sage
-  { color: '#D29A40', x: 26, y: -20 }, // honey
-  { color: '#C16E43', x: 0, y: 29 }, // terracotta
+type SplashDot = { color: string; x: number; y: number; dx: number; dy: number };
+const CIRCLES: SplashDot[] = [
+  { color: '#5F7050', x: -26, y: -20, dx: -0.79, dy: -0.61 }, // sage → up-left
+  { color: '#D29A40', x: 26, y: -20, dx: 0.79, dy: -0.61 }, // honey → up-right
+  { color: '#C16E43', x: 0, y: 29, dx: 0, dy: 1 }, // terracotta → down
 ];
 
+function SplashCircle({ dot, progress, spread }: { dot: SplashDot; progress: SharedValue<number>; spread: number }) {
+  const style = useAnimatedStyle(() => {
+    const p = progress.value;
+    return {
+      transform: [
+        { translateX: dot.x + dot.dx * spread * p },
+        { translateY: dot.y + dot.dy * spread * p },
+        { scale: 1 + p * 1.8 },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.circle, { backgroundColor: dot.color }, style]} />;
+}
+
 /**
- * Cold-start splash: the overlap starts huge (circles cover the screen, their
- * blend filling the viewport), zooms down into the logo, holds a beat, then
- * fades out to reveal the app.
+ * Cold-start splash: the three circles sit together as the logo, hold a beat,
+ * then fly apart in their own directions and grow, opening the screen while the
+ * paper overlay fades to reveal the app.
  */
 export function AnimatedSplash({ onDone }: { onDone: () => void }) {
   const { width, height } = useWindowDimensions();
-  const scale = useSharedValue(Math.max(width, height) / 45);
+  const spread = Math.max(width, height) * 0.55;
+  const progress = useSharedValue(0);
   const opacity = useSharedValue(1);
 
   useEffect(() => {
-    scale.value = withTiming(1, { duration: 1000, easing: Easing.out(Easing.cubic) });
+    progress.value = withDelay(
+      450,
+      withTiming(1, { duration: 800, easing: Easing.in(Easing.cubic) }),
+    );
     opacity.value = withDelay(
-      1350,
-      withTiming(0, { duration: 300, easing: Easing.in(Easing.quad) }, (finished) => {
+      820,
+      withTiming(0, { duration: 520, easing: Easing.in(Easing.quad) }, (finished) => {
         if (finished) runOnJS(onDone)();
       }),
     );
@@ -41,24 +62,14 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
   }, []);
 
   const overlayStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  const groupStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
     <Animated.View pointerEvents="none" style={[styles.overlay, overlayStyle]}>
-      <Animated.View style={groupStyle}>
-        {CIRCLES.map((c) => (
-          <View
-            key={c.color}
-            style={[
-              styles.circle,
-              {
-                backgroundColor: c.color,
-                transform: [{ translateX: c.x }, { translateY: c.y }],
-              },
-            ]}
-          />
+      <View>
+        {CIRCLES.map((dot) => (
+          <SplashCircle key={dot.color} dot={dot} progress={progress} spread={spread} />
         ))}
-      </Animated.View>
+      </View>
     </Animated.View>
   );
 }
