@@ -652,13 +652,19 @@ export function TodayView() {
   const refresh = (
     <RefreshControl
       refreshing={refreshing}
+      // The scroll view starts under the collapsing header, so push the spinner
+      // down into view instead of hiding it behind the header.
+      progressViewOffset={collapse.contentOffset}
       onRefresh={() => {
         setRefreshing(true);
         // Drop the optimistic-edit guard so the pull returns server truth.
         forceTodayFresh();
+        // Keep the spinner up briefly even when the refetch returns instantly.
+        const minSpin = new Promise((resolve) => setTimeout(resolve, 900));
         void Promise.all([
           activeQuery.refetch(),
           viewingPast ? Promise.resolve() : suggestionsQuery.refetch(),
+          minSpin,
         ]).finally(() => setRefreshing(false));
       }}
       tintColor={colors.brand}
