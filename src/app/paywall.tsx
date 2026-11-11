@@ -118,6 +118,7 @@ export default function Paywall() {
           per="month"
         />
       </View>
+      <View style={styles.bottomClear} />
     </ModalScaffold>
   );
 }
@@ -222,6 +223,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   footer: { gap: spacing.sm },
+  bottomClear: { height: spacing.xl },
   fine: {},
   legalRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm },
 });
