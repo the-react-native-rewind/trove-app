@@ -80,9 +80,10 @@ The full notes, and what each finding changed in the app, are on [troving.app](h
 - **A circle for every project.** The business, the house, the community night, the family. Invite the people in it by email or link. No training, no per-person cost. Put a name on a line and it leaves your list. Someone's waiting, so it moves.
 - **Room for the rest of your life.** Your private Personal circle sits on the same list as the business, so the yoga and the call to your mum stop losing every time. Set routines for the days you choose.
 - **Photos on tasks.** Snap the leaking tap or the cracked tile and it's on the task, so whoever picks it up knows what they're looking at.
+- **See where the week went.** Insights shows what you finished in each circle, and where it quietly slipped.
 - **An agent can take a task.** Connect Claude, ChatGPT, Cursor or Grok and hand it a line, like “summarise the roof quotes”. It stays in the circle. You first, then your people, then an agent where it earns its place. See [docs/MCP.md](docs/MCP.md).
 
-Trove is free during early access, on iPhone and in the browser at [troving.app](https://troving.app).
+Trove is free to start: your Personal circle plus 3 more, and the people you invite never pay. **Trove Pro** adds unlimited circles, Insights on where your week went, a full Today and agents, with a 14-day free trial ($9.99 a month or $79.99 a year, bought in the iPhone app). On iPhone and in the browser at [troving.app](https://troving.app).
 
 ### The one rule
 

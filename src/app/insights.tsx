@@ -1,7 +1,5 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { type ReactNode, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
@@ -11,8 +9,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { StandardHeader } from '@/components/ui/StandardHeader';
 import { Text } from '@/components/ui/Text';
 import { AccentDot } from '@/components/ui/Indicators';
 import { ProPreview } from '@/components/ProPreview';
@@ -127,8 +125,6 @@ function RangeToggle({
 
 export default function Insights() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const collapse = useCollapsingHeader(insets.top, 52);
   const [range, setRange] = useState<InsightsRange>(30);
   const { isPro, isLoading: proLoading } = usePro();
   const { data, isLoading, isError } = useInsights(range);
@@ -144,37 +140,13 @@ export default function Insights() {
 
   return (
     <View style={styles.screen}>
-      <CollapsingScreenHeader
-        topInset={insets.top}
-        onLayout={collapse.onLayout}
-        animatedStyle={collapse.animatedStyle}
-        pointerEvents={collapse.pointerEvents}
-      >
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            style={styles.back}
-          >
-            <Ionicons name="chevron-back" size={28} color={colors.ink} />
-          </Pressable>
-          <Text variant="sectionHeading" color={colors.ink} numberOfLines={1} style={styles.title}>
-            Insights
-          </Text>
-          <View style={styles.back} />
-        </View>
-      </CollapsingScreenHeader>
-
-      <Animated.ScrollView
-        onScroll={collapse.onScroll}
-        scrollEventThrottle={16}
+      <StandardHeader title="Insights" />
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scroll,
           {
-            paddingTop: collapse.contentOffset + spacing.sm,
+            paddingTop: spacing.sm,
             paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.xl,
           },
         ]}
@@ -199,7 +171,7 @@ export default function Insights() {
         ) : (
           <Summary data={data} range={range} />
         )}
-      </Animated.ScrollView>
+      </ScrollView>
     </View>
   );
 }
@@ -323,14 +295,6 @@ function RoutineRow({ routine, delay }: { routine: RoutineStat; delay: number })
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.paper },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  back: { width: 40, alignItems: 'flex-start', justifyContent: 'center' },
-  title: { flex: 1, textAlign: 'center' },
   scroll: { paddingHorizontal: spacing.lg, gap: spacing.xl },
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
   toggle: {

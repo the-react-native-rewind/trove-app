@@ -26,6 +26,7 @@
     "supabase/functions/onboarding-structure",
     "supabase/functions/send-email",
     "supabase/functions/open",
+    "supabase/functions/revenuecat-webhook",
     "supabase/functions/_shared/emailCopy.ts",
     "supabase/templates"
   ]

@@ -57,3 +57,7 @@ content_path = "./supabase/templates/invite.html"
 [auth.email.template.reauthentication]
 subject = "{{ .Token }} is your Trove code"
 content_path = "./supabase/templates/reauthentication.html"
+
+# RevenueCat subscription events. Auth is a shared secret header checked in code.
+[functions.revenuecat-webhook]
+verify_jwt = false

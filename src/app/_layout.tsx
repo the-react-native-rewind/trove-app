@@ -24,6 +24,7 @@ import '@/lib/devtools';
 import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { toastConfig } from '@/components/ui/AppToast';
 import { Celebration } from '@/components/Celebration';
+import { BillingSync } from '@/data/pro';
 import { useProfile } from '@/data/profile';
 import { hrefAfterSignIn } from '@/lib/pendingOAuth';
 import { queryClient } from '@/lib/queryClient';
@@ -149,6 +150,7 @@ export default function RootLayout() {
           <AuthProvider>
             <SpaceProvider>
               <StatusBar style="dark" />
+              <BillingSync />
               <RootNavigator />
               <Celebration />
               {!splashDone ? <AnimatedSplash onDone={() => setSplashDone(true)} /> : null}

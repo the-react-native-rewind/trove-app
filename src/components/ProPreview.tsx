@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
+import { StandardHeader } from '@/components/ui/StandardHeader';
 import { Text } from '@/components/ui/Text';
-import { PRO_TRIAL_DAYS } from '@/data/pro';
+import { billingAvailable, PRO_TRIAL_DAYS } from '@/data/pro';
 import { colors, fonts, radii, resolveAccent, shadows, spacing } from '@/theme/tokens';
 
 const SAMPLE = [
@@ -16,27 +17,25 @@ const SAMPLE = [
 ];
 
 /** A faded, non-interactive taste of Insights behind a Pro unlock card. */
-export function ProPreview({ title, body }: { title: string; body: string }) {
+export function ProPreview({
+  title,
+  body,
+  screenTitle = 'Insights',
+}: {
+  title: string;
+  body: string;
+  /** The header title of the gated screen. */
+  screenTitle?: string;
+}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.fill}>
-      <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as never))}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          style={styles.backBtn}
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.ink} />
-        </Pressable>
-      </View>
+      <StandardHeader title={screenTitle} />
 
       {/* The real thing, with sample numbers — faded and not tappable. */}
       <View style={styles.preview} pointerEvents="none">
-        <Text variant="screenTitle">Insights</Text>
         <View style={styles.hero}>
           <Text style={styles.heroPct}>78%</Text>
           <Text variant="body" color={colors.inkSoft}>
@@ -79,7 +78,7 @@ export function ProPreview({ title, body }: { title: string; body: string }) {
           {body}
         </Text>
         <Button
-          label={`Start my ${PRO_TRIAL_DAYS} days free`}
+          label={billingAvailable ? `Start my ${PRO_TRIAL_DAYS} days free` : 'See Trove Pro'}
           onPress={() => router.push('/paywall' as never)}
         />
       </View>
@@ -89,17 +88,6 @@ export function ProPreview({ title, body }: { title: string; body: string }) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.paper },
-  topBar: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   preview: { paddingHorizontal: spacing.xl, gap: spacing.md, opacity: 0.4 },
   hero: { gap: spacing.xs, marginTop: spacing.sm },
   heroPct: { fontFamily: fonts.displayBold, fontSize: 64, lineHeight: 70, color: colors.brand },

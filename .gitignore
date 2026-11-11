@@ -55,3 +55,9 @@ agent-output.txt
 
 # skia web (regenerate with: npx setup-skia-web public)
 public/canvaskit.wasm
+
+# supabase cli local state
+supabase/.temp/
+
+# agent session notepad
+BACKLOG.md
