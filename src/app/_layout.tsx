@@ -24,6 +24,7 @@ import '@/lib/devtools';
 import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { toastConfig } from '@/components/ui/AppToast';
 import { Celebration } from '@/components/Celebration';
+import { useProfile } from '@/data/profile';
 import { hrefAfterSignIn } from '@/lib/pendingOAuth';
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
@@ -34,6 +35,7 @@ SplashScreen.preventAutoHideAsync();
 
 function useProtectedRoute() {
   const { session, initializing, recovery } = useAuth();
+  const { data: profile, isLoading: profileLoading } = useProfile();
   const segments = useSegments();
   const router = useRouter();
 
@@ -41,6 +43,7 @@ function useProtectedRoute() {
     if (initializing) return;
     const root = segments[0];
     const inAuthGroup = root === '(auth)';
+    const inOnboarding = root === '(onboarding)';
     const onInvite = root === 'invite';
     const onOAuth = root === 'oauth';
     const onReset = root === 'reset-password';
@@ -51,7 +54,18 @@ function useProtectedRoute() {
     }
 
     if (!session) {
-      if (!inAuthGroup && !onInvite && !onOAuth) router.replace('/(auth)/sign-in');
+      // The welcome screen is the signed-out landing; onboarding's first step is
+      // reachable while signed out (it signs you in anonymously).
+      if (!inAuthGroup && !inOnboarding && !onInvite && !onOAuth) {
+        router.replace('/(auth)/welcome' as never);
+      }
+      return;
+    }
+
+    // Signed in but never onboarded (new anonymous or email account) → onboarding.
+    // Existing accounts were backfilled, so they skip straight past this.
+    if (!profileLoading && profile && !profile.onboarded_at && !inOnboarding && !onInvite && !onOAuth) {
+      router.replace('/(onboarding)/name' as never);
       return;
     }
 
@@ -63,7 +77,7 @@ function useProtectedRoute() {
         router.replace(href as never);
       });
     }
-  }, [session, initializing, recovery, segments, router]);
+  }, [session, initializing, recovery, segments, router, profile, profileLoading]);
 }
 
 function RootNavigator() {
@@ -83,6 +97,7 @@ function RootNavigator() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
       <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(app)" />
       <Stack.Screen name="insights" />
       <Stack.Screen name="mine/completed" />

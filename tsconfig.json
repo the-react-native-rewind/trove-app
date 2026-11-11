@@ -23,6 +23,7 @@
     "supabase/functions/mcp",
     "supabase/functions/delete-account",
     "supabase/functions/enrich-task",
+    "supabase/functions/onboarding-structure",
     "supabase/functions/send-email",
     "supabase/functions/open",
     "supabase/functions/_shared/emailCopy.ts",
