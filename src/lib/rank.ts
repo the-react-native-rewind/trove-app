@@ -72,6 +72,61 @@ export function rankAfterStepDown(taskId: string, ordered: readonly RankedRef[])
   return generateKeyBetween(belowBelow?.rank ?? null, below.rank);
 }
 
+/** Keep a slider value inside 0 (bottom) to 1 (top). Anything unusable is the bottom. */
+export function clampImportance(importance: number): number {
+  if (!Number.isFinite(importance)) return 0;
+  return Math.min(1, Math.max(0, importance));
+}
+
+/**
+ * How many distinct ranks a new task is being placed among.
+ * Blank keys are ignored. Ties count once, because they share one slot.
+ */
+export function countPlacementRanks(groupRanks: readonly string[]): number {
+  return ascendingRanks(groupRanks).length;
+}
+
+/**
+ * Slot for a new task in the list those ranks already form.
+ * 0 is above every rank (the top). `count` is below every rank (the bottom).
+ * The slots are equal slices of the slider, including both ends.
+ */
+export function importanceInsertionIndex(importance: number, count: number): number {
+  if (count <= 0) return 0;
+  const clamped = clampImportance(importance);
+  if (clamped <= 0) return count;
+  if (clamped >= 1) return 0;
+  return Math.min(count, Math.floor((1 - clamped) * (count + 1)));
+}
+
+/**
+ * Rank that lands a new task at `importance` in the list those ranks form.
+ * 0 is the bottom (least important) and 1 is the top (most important).
+ * The key sits in the nearest gap, so it sorts between the neighbours a
+ * person would see. An empty list starts at `a0`.
+ */
+export function rankForImportance(groupRanks: readonly string[], importance: number): string {
+  const ranks = ascendingRanks(groupRanks);
+  if (ranks.length === 0) return generateKeyBetween(null, null);
+  const display = [...ranks].reverse();
+  const insertAt = importanceInsertionIndex(importance, display.length);
+  const above = insertAt === 0 ? null : display[insertAt - 1];
+  const below = insertAt >= display.length ? null : display[insertAt];
+  return rankAfterDrop(above, below);
+}
+
+/** Non-empty keys, lowest first, with ties collapsed. */
+function ascendingRanks(groupRanks: readonly string[]): string[] {
+  const ranks = groupRanks
+    .filter((rank) => rank.length > 0)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const unique: string[] = [];
+  for (const rank of ranks) {
+    if (unique[unique.length - 1] !== rank) unique.push(rank);
+  }
+  return unique;
+}
+
 /**
  * Place a task from a priority word among the ranks it is given.
  * `high` goes above the current top, `medium` between the two central keys,

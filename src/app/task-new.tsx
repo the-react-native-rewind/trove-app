@@ -1,22 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AssigneePicker, SpacePicker } from '@/components/form';
+import { PrioritySlider } from '@/components/PrioritySlider';
 import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { pickMedia, uploadTaskMedia, type PickedMedia } from '@/data/attachments';
 import { useAcceptInboxItem } from '@/data/inbox';
 import { useSpaces } from '@/data/spaces';
-import { useCreateTask } from '@/data/tasks';
+import { useCreateTask, useTasks } from '@/data/tasks';
 import { useDictation } from '@/hooks/useDictation';
 import { fallbackTitle, inferDueDate } from '@/lib/capture';
 import { hapticLight, hapticMedium } from '@/lib/haptics';
 import { enrichCapture } from '@/lib/enrich';
 import { formatDueDate } from '@/lib/format';
+import { DEFAULT_IMPORTANCE, ranksForPlacement } from '@/lib/importance';
+import { rankForImportance } from '@/lib/rank';
 import { canWrite } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
@@ -53,9 +56,16 @@ export default function NewTask() {
   const [spaceId, setSpaceId] = useState<string | null>(initialSpace);
   const [assigneeIds, setAssigneeIds] = useState<string[]>(userId ? [userId] : []);
   const [media, setMedia] = useState<PickedMedia[]>([]);
+  const [importance, setImportance] = useState(DEFAULT_IMPORTANCE);
   const [dismissedMatch, setDismissedMatch] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const circleTasks = useTasks(spaceId ?? '');
+  const placementProjectId = spaceId === params.spaceId ? (params.projectId ?? null) : null;
+  const peerRanks = useMemo(
+    () => ranksForPlacement(circleTasks.data ?? [], placementProjectId),
+    [circleTasks.data, placementProjectId],
+  );
 
   // Text present before the current dictation session started.
   const dictationBaseRef = useRef('');
@@ -103,6 +113,7 @@ export default function NewTask() {
       // A dismissed chip means "no date", whatever the model thinks.
       const due = dismissedMatch && !dueDate ? null : (enriched?.due_date ?? dueDate);
 
+      const projectId = spaceId === params.spaceId ? (params.projectId ?? null) : null;
       const task = await createTask.mutateAsync({
         space_id: spaceId,
         title,
@@ -111,7 +122,10 @@ export default function NewTask() {
         priority: null,
         due_date: due,
         assignee_ids: assigneeIds,
-        project_id: spaceId === params.spaceId ? (params.projectId ?? null) : null,
+        project_id: projectId,
+        // Loaded peers put the action in the gap the slider is pointing at.
+        // Until then the database still appends it, which matches the default.
+        rank: circleTasks.isSuccess ? rankForImportance(peerRanks, importance) : undefined,
       });
       for (const m of media) {
         try {
@@ -225,6 +239,7 @@ export default function NewTask() {
         </View>
       ) : null}
 
+      <PrioritySlider value={importance} onChange={setImportance} peerRanks={peerRanks} />
       <SpacePicker
         spaces={spaces}
         value={spaceId}
