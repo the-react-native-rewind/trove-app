@@ -48,6 +48,7 @@ import {
   listCircleTasks,
   listCircles,
   listMembers,
+  addInboxItem,
   addTodayItem,
   checkTodayItem,
   convertTodayItemToTask,
@@ -672,6 +673,21 @@ function buildServer(store: TroveStore, siteUrl: string): McpServer {
       }),
     },
     async (args) => asTool(await convertTodayItemToTask(store, args)),
+  );
+
+  server.registerTool(
+    'add_inbox_item',
+    {
+      ...described('add_inbox_item'),
+      inputSchema: z.object({
+        text: z.string().describe('The line to capture, in the person\'s own terms. 1 to 4000 characters.'),
+        source: z
+          .string()
+          .optional()
+          .describe('Optional short tag for where it came from (your tool or app name). Up to 60 characters.'),
+      }),
+    },
+    async (args) => asTool(await addInboxItem(store, args)),
   );
 
   server.registerTool(

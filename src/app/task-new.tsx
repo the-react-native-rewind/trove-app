@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { ModalScaffold } from '@/components/ui/ModalScaffold';
 import { Text } from '@/components/ui/Text';
 import { pickMedia, uploadTaskMedia, type PickedMedia } from '@/data/attachments';
+import { useAcceptInboxItem } from '@/data/inbox';
 import { useSpaces } from '@/data/spaces';
 import { useCreateTask } from '@/data/tasks';
 import { useDictation } from '@/hooks/useDictation';
@@ -29,11 +30,17 @@ import { colors, radii, spacing, type as typeScale } from '@/theme/tokens';
  */
 export default function NewTask() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ spaceId?: string; projectId?: string }>();
+  const params = useLocalSearchParams<{
+    spaceId?: string;
+    projectId?: string;
+    text?: string;
+    inboxId?: string;
+  }>();
   const { data: spaces = [] } = useSpaces();
   const { userId } = useAuth();
   const { selectedSpaceId } = useSelectedSpace();
   const createTask = useCreateTask();
+  const acceptInbox = useAcceptInboxItem();
 
   const writableSpaces = spaces.filter((s) => canWrite(s.role));
   const preferredSpace = params.spaceId ?? selectedSpaceId;
@@ -41,7 +48,8 @@ export default function NewTask() {
     ? preferredSpace
     : writableSpaces[0]?.id ?? null;
 
-  const [text, setText] = useState('');
+  // Accepting an inbox line opens this sheet prefilled with the captured text.
+  const [text, setText] = useState(params.text ?? '');
   const [spaceId, setSpaceId] = useState<string | null>(initialSpace);
   const [assigneeIds, setAssigneeIds] = useState<string[]>(userId ? [userId] : []);
   const [media, setMedia] = useState<PickedMedia[]>([]);
@@ -118,6 +126,15 @@ export default function NewTask() {
           });
         } catch {
           // A failed attachment shouldn't lose the created task.
+        }
+      }
+      // Accepted from the inbox: link the line to its action and take it off
+      // the inbox. A failure here shouldn't lose the created action.
+      if (params.inboxId) {
+        try {
+          await acceptInbox.mutateAsync({ id: params.inboxId, taskId: task.id });
+        } catch {
+          // The action exists; the inbox line will be reconciled on next load.
         }
       }
       router.back();

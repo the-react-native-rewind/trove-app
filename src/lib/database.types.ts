@@ -459,6 +459,39 @@ export type Database = {
         }
         Relationships: []
       }
+      inbox_items: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          dismissed_at: string | null
+          id: string
+          source: string | null
+          task_id: string | null
+          text: string
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          dismissed_at?: string | null
+          id?: string
+          source?: string | null
+          task_id?: string | null
+          text: string
+          user_id?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          dismissed_at?: string | null
+          id?: string
+          source?: string | null
+          task_id?: string | null
+          text?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       today_items: {
         Row: {
           checked_at: string | null

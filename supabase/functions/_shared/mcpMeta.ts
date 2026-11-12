@@ -243,6 +243,13 @@ export const toolMetadata: Record<McpToolName, ToolMetadata> = {
     idempotentHint: false,
     openWorldHint: false,
   },
+  add_inbox_item: {
+    title: 'Add to the inbox',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
 };
 
 export type McpIcon = {

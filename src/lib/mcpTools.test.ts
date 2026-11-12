@@ -106,6 +106,7 @@ test('the tool catalog matches the handlers we ship', () => {
     'list_today_suggestions',
     'dismiss_today_suggestion',
     'convert_today_item_to_task',
+    'add_inbox_item',
   ]);
   assert.deepEqual(TASK_STATUSES, ['todo', 'in_progress', 'done']);
   assert.equal(/use handoff_task/.test(toolDescriptions.assign_task), true);
@@ -2108,6 +2109,12 @@ function memoryStore(options?: { houseRole?: Role; recentInvites?: number }): Tr
       item.taskId = task.id;
       resolveSuggestion(item.day, task.id);
       return { task, item: todayEntry(item) };
+    },
+    async addInboxItem(input) {
+      const text = input.text.trim();
+      if (!text) throw new TroveError('Write the line before adding it');
+      counter += 1;
+      return `inbox-${counter}`;
     },
     markTodayChecked(itemId: string) {
       const item = todayItems.find((row) => row.id === itemId);

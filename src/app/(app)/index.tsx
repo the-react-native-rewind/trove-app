@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CircleMenuSheet } from '@/components/CircleMenuSheet';
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
+import { InboxView } from '@/components/InboxView';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { MineMenuSheet } from '@/components/MineMenuSheet';
 import { TodayView } from '@/components/TodayView';
@@ -30,6 +31,7 @@ import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
 import { sortTasksByUrgency } from '@/lib/board';
 import { rankAfterStepDown, rankAfterStepUp } from '@/lib/rank';
 import { hapticLight } from '@/lib/haptics';
+import { INBOX_VIEW_ID } from '@/lib/inbox';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { TODAY_VIEW_ID } from '@/lib/today';
 import { canManage, canWrite, type ListStatus, type TaskWithRefs } from '@/lib/types';
@@ -45,6 +47,7 @@ const EMPTY_COPY: Record<ListStatus, { title: string; body: string }> = {
 export default function Board() {
   const { selectedSpaceId } = useSelectedSpace();
 
+  if (selectedSpaceId === INBOX_VIEW_ID) return <InboxView />;
   if (selectedSpaceId === TODAY_VIEW_ID) return <TodayView />;
 
   return (
@@ -232,7 +235,7 @@ function SpaceBoard() {
           {!isMine && currentSpace ? <AccentDot color={currentSpace.color} size={12} /> : null}
           <View style={styles.titleText}>
             <Text variant="screenTitle" numberOfLines={1}>
-              {isMine ? 'Mine' : currentSpace?.name ?? 'Circle'}
+              {isMine ? 'My Actions' : currentSpace?.name ?? 'Circle'}
             </Text>
             {isMine ? (
               <Text variant="meta" color={colors.inkFaint} numberOfLines={1}>
@@ -268,7 +271,7 @@ function SpaceBoard() {
                 }}
                 hitSlop={10}
                 accessibilityRole="button"
-                accessibilityLabel="Mine settings"
+                accessibilityLabel="My Actions settings"
                 style={styles.iconBtn}
               >
                 <Ionicons name="settings-outline" size={22} color={colors.ink} />

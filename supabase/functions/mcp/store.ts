@@ -125,7 +125,20 @@ export async function supabaseStore(userId: string, accessToken: string): Promis
     listTodaySuggestions: (input) => listTodaySuggestions(db, input),
     dismissTodaySuggestion: (input) => dismissTodaySuggestion(db, input),
     convertTodayItem: (input) => convertTodayItem(db, input),
+    addInboxItem: (input) => addInboxItem(db, input),
   };
+}
+
+async function addInboxItem(
+  db: SupabaseClient,
+  input: { text: string; source: string | null },
+): Promise<string> {
+  const { data, error } = await db.rpc('add_inbox_item', {
+    p_text: input.text,
+    p_source: input.source,
+  });
+  throwIf(error);
+  return data as string;
 }
 
 async function listCircles(

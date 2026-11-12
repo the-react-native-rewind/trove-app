@@ -104,6 +104,7 @@ export const MCP_TOOL_NAMES = [
   'list_today_suggestions',
   'dismiss_today_suggestion',
   'convert_today_item_to_task',
+  'add_inbox_item',
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
@@ -173,6 +174,8 @@ export const toolDescriptions: Record<McpToolName, string> = {
     'Hide one suggestion for the rest of that local day. Does not change the action, its due date, or its status. Pass task_id from list_today_suggestions. Pass day (defaults to local_today) so a tomorrow suggestion is hidden only for tomorrow. Idempotent when that suggestion is already hidden. Does not offer a replacement.',
   convert_today_item_to_task:
     'Turn one plain Today line into an action. The app calls this Make it an action. Pass the line id and a circle (circle_id, circle_name, or personal: true). Creates a to-do in that circle, assigned to the caller, and links the existing line to it. The line keeps its day, its place, and whether it is ticked. Task lines and repeating lines are refused. Viewers cannot add an action. A title longer than 300 characters is refused.',
+  add_inbox_item:
+    'Drop a line into the signed-in person\'s private Inbox for them to triage later. This is the way for a connected tool to surface something without creating an action: the person decides whether to send it into Trove (turn it into an action in a circle) or dismiss it. Do not use this to do work or to complete anything — the Inbox is a capture surface, never a to-do list. text is the line (1 to 4000 characters), in the person\'s own terms. source is an optional short tag for where it came from (for example your tool or app name, up to 60 characters) and is shown next to the line. Returns the new line id. The Inbox is private and is never shared with a circle.',
 };
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
@@ -524,6 +527,8 @@ export interface TroveStore {
    * line to it. The line keeps its day, rank, and tick.
    */
   convertTodayItem(input: { itemId: string; circleId: string }): Promise<{ task: TaskRecord; item: TodayEntry }>;
+  /** Append a line to the caller's private Inbox. Returns the new line id. */
+  addInboxItem(input: { text: string; source: string | null }): Promise<string>;
 }
 
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -1862,6 +1867,32 @@ export async function addTodayItem(
   try {
     const item = await store.addTodayItem({ day, text: text || null, taskId, asOf });
     return { ok: true, data: { day, item } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+const INBOX_SOURCE_MAX = 60;
+
+export async function addInboxItem(
+  store: TroveStore,
+  input: { text?: string | null; source?: string | null },
+): Promise<ToolResult<{ id: string }>> {
+  const text = input.text?.trim() ?? '';
+  const source = input.source?.trim() ?? '';
+  if (!text) return { ok: false, error: 'text is required.' };
+  if ([...text].some((char) => char.charCodeAt(0) < 32 && char !== '\n')) {
+    return { ok: false, error: 'A line cannot include control characters.' };
+  }
+  if (text.length > TODAY_TEXT_MAX) {
+    return { ok: false, error: `A line can be ${TODAY_TEXT_MAX} characters or fewer.` };
+  }
+  if (source.length > INBOX_SOURCE_MAX) {
+    return { ok: false, error: `source can be ${INBOX_SOURCE_MAX} characters or fewer.` };
+  }
+  try {
+    const id = await store.addInboxItem({ text, source: source || null });
+    return { ok: true, data: { id } };
   } catch (error) {
     return fail(error);
   }

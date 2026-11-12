@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useInbox } from '@/data/inbox';
 import { useProfile } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
 import { useTasks } from '@/data/tasks';
@@ -19,6 +20,7 @@ import { useTodayList } from '@/data/today';
 import { useIsWide } from '@/hooks/useIsWide';
 import { normalizeStatus } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
+import { INBOX_VIEW_ID } from '@/lib/inbox';
 import { localToday, TODAY_VIEW_ID } from '@/lib/today';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
@@ -41,6 +43,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   const { data: spaces = [] } = useSpaces();
   const { data: mineTasks = [] } = useTasks('all');
   const { data: todayLines = [] } = useTodayList(localToday());
+  const { data: inboxItems = [] } = useInbox();
 
   const [collapsed, setCollapsed] = useState(false);
   const progress = useSharedValue(1); // 0 = rail, 1 = expanded
@@ -67,6 +70,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
 
   const todayOpen = todayLines.filter((line) => line.checkedAt === null).length;
   const mineOpen = mineTasks.filter((task) => normalizeStatus(task.status) !== 'done').length;
+  const inboxOpen = inboxItems.length;
 
   function select(id: string) {
     if (id !== selectedSpaceId) hapticLight();
@@ -112,10 +116,18 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
         showsVerticalScrollIndicator={false}
       >
         <Row
+          active={selectedSpaceId === INBOX_VIEW_ID}
+          onPress={() => select(INBOX_VIEW_ID)}
+          leading={<Ionicons name="file-tray-outline" size={20} color={colors.brandDeep} />}
+          label="Inbox"
+          count={inboxOpen}
+          fade={fade}
+        />
+        <Row
           active={selectedSpaceId === TODAY_VIEW_ID}
           onPress={() => select(TODAY_VIEW_ID)}
           leading={<Ionicons name="sunny-outline" size={20} color={colors.brandDeep} />}
-          label="Today"
+          label="Planner"
           count={todayOpen}
           fade={fade}
         />
@@ -123,7 +135,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
           active={selectedSpaceId === 'all'}
           onPress={() => select('all')}
           leading={<Ionicons name="albums-outline" size={20} color={colors.brandDeep} />}
-          label="Mine"
+          label="My Actions"
           count={mineOpen}
           fade={fade}
         />

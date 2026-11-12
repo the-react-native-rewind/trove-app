@@ -14,7 +14,7 @@ export function MineMenuSheet({ visible, onClose }: { visible: boolean; onClose:
   return (
     <FadeSheet visible={visible} onClose={onClose} scroll>
       <SheetBottom style={styles.sheet}>
-        <Text variant="sectionHeading">Mine</Text>
+        <Text variant="sectionHeading">My Actions</Text>
         <Pressable
           onPress={() => {
             hapticLight();

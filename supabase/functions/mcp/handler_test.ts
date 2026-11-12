@@ -148,7 +148,7 @@ Deno.test('tools/list advertises a title and hints, and a personal token still a
   const { json } = await readBody(response);
   const result = json.result as { tools?: Array<Record<string, unknown>> };
   const tools = result.tools ?? [];
-  assertEquals(tools.length, 29);
+  assertEquals(tools.length, 30);
   for (const name of ['handoff_task', 'add_agent_log_entry', 'list_agent_log', 'get_task']) {
     assert(tools.some((tool) => tool.name === name), `${name} missing`);
   }
