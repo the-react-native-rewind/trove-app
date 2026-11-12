@@ -111,6 +111,8 @@ export type TaskInput = {
   priority?: Priority | null;
   due_date?: string | null;
   project_id?: string | null;
+  /** Fractional list position. Omitted ranks are filled at the bottom by the database. */
+  rank?: string;
 };
 
 export type TaskPatch = Partial<TaskInput> & {
@@ -134,8 +136,9 @@ export function useCreateTask() {
           priority: input.priority ?? null,
           due_date: input.due_date ?? null,
           project_id: input.project_id ?? null,
+          ...(input.rank ? { rank: input.rank } : {}),
           created_by: userId,
-          position: Date.now(), // append to the end of its status column
+          position: Date.now(), // tiebreaker only; rank is the list order
         })
         .select('id')
         .single();

@@ -121,6 +121,17 @@ export function heatColor(rank: number, total: number): string {
   return lerpHex(HEAT_WARM, HEAT_NEUTRAL, (stretch - 0.5) / 0.5);
 }
 
+/**
+ * Colour along the same ramp as a list's urgency dots.
+ * 0 is the calm bottom (warm neutral). 1 is the urgent top (terracotta).
+ */
+export function importanceColor(importance: number): string {
+  const steps = 21;
+  const t = Number.isFinite(importance) ? Math.min(1, Math.max(0, importance)) : 0;
+  const rank = Math.round((1 - t) * (steps - 1));
+  return heatColor(rank, steps);
+}
+
 export const radii = {
   sm: 8,
   button: 12,
