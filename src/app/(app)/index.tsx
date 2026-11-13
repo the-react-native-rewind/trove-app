@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CircleMenuSheet } from '@/components/CircleMenuSheet';
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
-import { InboxView } from '@/components/InboxView';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { MineMenuSheet } from '@/components/MineMenuSheet';
 import { TodayView } from '@/components/TodayView';
@@ -31,7 +30,6 @@ import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
 import { sortTasksByUrgency } from '@/lib/board';
 import { rankAfterStepDown, rankAfterStepUp } from '@/lib/rank';
 import { hapticLight } from '@/lib/haptics';
-import { INBOX_VIEW_ID } from '@/lib/inbox';
 import { MINE_VIEW_ID } from '@/lib/mine';
 import { TODAY_VIEW_ID } from '@/lib/today';
 import { canManage, canWrite, type ListStatus, type TaskWithRefs } from '@/lib/types';
@@ -47,7 +45,6 @@ const EMPTY_COPY: Record<ListStatus, { title: string; body: string }> = {
 export default function Board() {
   const { selectedSpaceId } = useSelectedSpace();
 
-  if (selectedSpaceId === INBOX_VIEW_ID) return <InboxView />;
   if (selectedSpaceId === TODAY_VIEW_ID) return <TodayView />;
 
   return (

@@ -56,6 +56,7 @@ import {
   useYesterdayList,
   type TodaySuggestion,
 } from '@/data/today';
+import { useAddInboxItem } from '@/data/inbox';
 import { FREE_TODAY_ITEMS, usePro } from '@/data/pro';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
@@ -87,6 +88,7 @@ import {
 import { canWrite } from '@/lib/types';
 import { resolveAccent, colors, radii, shadows, spacing, type as typeScale } from '@/theme/tokens';
 import { CollapsingScreenHeader, useCollapsingHeader } from './CollapsingHeader';
+import { InboxSection } from './InboxSection';
 import { showUndoToast } from './ui/AppToast';
 import { EmptyState } from './ui/EmptyState';
 import { FadeSheet, SheetBottom } from './ui/FadeSheet';
@@ -103,6 +105,9 @@ const MAX_PAST = 365; // generous backward bound; empty days just read empty
 const PICKER_LIST_MAX = Math.round(Dimensions.get('window').height * 0.56);
 
 type DayScope = 'yesterday' | 'today' | 'tomorrow';
+
+/** Which sheet is showing. add, inbox and routine come from the composer's + button. */
+type SheetMode = 'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action' | 'add' | 'inbox' | 'routine';
 
 /** Map a day offset to the data-layer scope: past reads like yesterday, future like tomorrow. */
 function scopeForOffset(offset: number): DayScope {
@@ -157,14 +162,14 @@ export function TodayView() {
           ? 'Tomorrow'
           : formatDayLabel(activeDay);
   const [draft, setDraft] = useState('');
-  const [sheet, setSheet] = useState<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action' | null>(null);
+  const [sheet, setSheet] = useState<SheetMode | null>(null);
   const [menuLine, setMenuLine] = useState<TodayLine | null>(null);
   const [editLine, setEditLine] = useState<TodayLine | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [repeatLine, setRepeatLine] = useState<TodayLine | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const afterClose = useRef<(() => void) | null>(null);
-  const [heldSheet, setHeldSheet] = useState<'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action' | null>(null);
+  const [heldSheet, setHeldSheet] = useState<SheetMode | null>(null);
   if (sheet && sheet !== heldSheet) setHeldSheet(sheet);
   const shown = sheet ?? heldSheet;
   const [repeatChoice, setRepeatChoice] = useState<'every' | 'weekdays' | 'custom'>('every');
@@ -172,6 +177,8 @@ export function TodayView() {
   const [tickLine, setTickLine] = useState<TodayLine | null>(null);
   const [taskSearch, setTaskSearch] = useState('');
   const [actionLine, setActionLine] = useState<TodayLine | null>(null);
+  const [inboxDraft, setInboxDraft] = useState('');
+  const [routineDraft, setRoutineDraft] = useState('');
 
   const todayQuery = useTodayList(today);
   const pastQuery = useYesterdayList(viewingPast ? activeDay : '');
@@ -185,6 +192,9 @@ export function TodayView() {
   const addText = useAddTodayText(activeDay);
   const addTask = useAddTodayTask(activeDay);
   const { isPro } = usePro();
+  const addInbox = useAddInboxItem();
+  // The free cap on a day, without opening the Pro sheet. See todayFull.
+  const atCap = !isPro && lines.length >= FREE_TODAY_ITEMS;
 
   // Free Trove holds a capped number of things on a day. Adding past it opens
   // the Pro sheet and leaves the item unadded. Returns true when the cap bites.
@@ -580,6 +590,72 @@ export function TodayView() {
     );
   }
 
+  function openAdd() {
+    hapticLight();
+    Keyboard.dismiss();
+    setSheet('add');
+  }
+
+  function startInbox() {
+    setInboxDraft('');
+    setSheet('inbox');
+  }
+
+  function startRoutine() {
+    const index = weekdayIndex(activeDay);
+    setRoutineDraft('');
+    setRepeatChoice('every');
+    setCustomDays(index === null ? [1, 2, 3, 4, 5] : [index]);
+    setSheet('routine');
+  }
+
+  /** A new action made from the planner lands on the day being viewed, cap allowing. */
+  function startNewAction() {
+    const query = atCap ? '' : `?addToDay=${activeDay}`;
+    closeSheet(() => router.push(`/task-new${query}` as never));
+  }
+
+  function submitInbox() {
+    const text = inboxDraft.replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    closeSheet();
+    setInboxDraft('');
+    addInbox.mutate(text, {
+      onSuccess: () => Toast.show({ type: 'success', text1: 'Added to inbox' }),
+      onError: (error) => {
+        setInboxDraft(text);
+        quietError('Couldn’t add to inbox', error);
+      },
+    });
+  }
+
+  /** A routine is a line with a repeat, so this writes the line and then its days. */
+  function saveNewRoutine() {
+    const text = routineDraft.replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    const days = repeatMask();
+    if (!isRepeatMask(days)) {
+      alertDialog('Pick at least one day');
+      return;
+    }
+    if (atCap) {
+      closeSheet(() => {
+        todayFull();
+      });
+      return;
+    }
+    closeSheet();
+    setRoutineDraft('');
+    void (async () => {
+      try {
+        const id = await addText.mutateAsync(text);
+        if (id) await setRepeat.mutateAsync({ id, days });
+      } catch (error) {
+        quietError('Couldn’t add that routine', error);
+      }
+    })();
+  }
+
   function addSuggestion(item: TodaySuggestion) {
     hapticMedium();
     addTask.mutate(
@@ -720,6 +796,8 @@ export function TodayView() {
     isRepeatMask(repeatDays) &&
     !dayMatches(repeatDays, repeatLine.day);
 
+  const routineSkipsDay = isRepeatMask(repeatDays) && !dayMatches(repeatDays, activeDay);
+
   const listPad = { paddingTop: collapse.contentOffset };
 
   return (
@@ -776,6 +854,7 @@ export function TodayView() {
             onDragBegin={() => hapticLight()}
             onDragEnd={onDragEnd}
             onScrollOffsetChange={collapse.onScrollOffsetChange}
+            ListHeaderComponent={viewingToday ? <InboxSection /> : null}
             ListFooterComponent={
               suggestions.length === 0 ? null : (
                 <SuggestionsSection
@@ -819,15 +898,12 @@ export function TodayView() {
             accessibilityLabel="Add a line"
           />
           <Pressable
-            onPress={() => {
-              hapticLight();
-              setSheet('picker');
-            }}
+            onPress={openAdd}
             accessibilityRole="button"
-            accessibilityLabel="Add an action"
+            accessibilityLabel="More ways to add"
             style={styles.taskButton}
           >
-            <Ionicons name="add" size={24} color={colors.inkSoft} />
+            <Ionicons name="add" size={24} color={colors.onBrand} />
           </Pressable>
         </View>
 
@@ -845,7 +921,13 @@ export function TodayView() {
         <SheetBottom style={[styles.sheet, isWide && styles.sheetWide]}>
           <View style={styles.sheetHeader}>
             <Text variant="sectionHeading" numberOfLines={2} style={styles.sheetTitle}>
-              {shown === 'edit'
+              {shown === 'add'
+                ? 'What are you adding?'
+                : shown === 'inbox'
+                  ? 'Add to inbox'
+                  : shown === 'routine'
+                    ? 'New routine'
+                    : shown === 'edit'
                 ? 'Edit line'
                 : shown === 'repeat'
                   ? 'Repeat'
@@ -969,35 +1051,12 @@ export function TodayView() {
           ) : null}
           {shown === 'repeat' ? (
             <>
-              <ChoiceRow label="Every day" selected={repeatChoice === 'every'} onPress={() => setRepeatChoice('every')} />
-              <ChoiceRow label="Weekdays" selected={repeatChoice === 'weekdays'} onPress={() => setRepeatChoice('weekdays')} />
-              <ChoiceRow label="Specific days" selected={repeatChoice === 'custom'} onPress={() => setRepeatChoice('custom')} />
-              {repeatChoice === 'custom' ? (
-                <View style={styles.dayRow}>
-                  {WEEKDAY_PICKER_ORDER.map((index) => {
-                    const selected = customDays.includes(index);
-                    return (
-                      <Pressable
-                        key={index}
-                        onPress={() => {
-                          hapticSelection();
-                          setCustomDays((current) =>
-                            current.includes(index) ? current.filter((day) => day !== index) : [...current, index],
-                          );
-                        }}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: selected }}
-                        accessibilityLabel={WEEKDAY_SHORT[index]}
-                        style={[styles.dayChip, selected && styles.dayChipOn]}
-                      >
-                        <Text variant="meta" color={selected ? colors.brandDeep : colors.inkSoft}>
-                          {WEEKDAY_SHORT[index]}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
+              <RepeatPicker
+                choice={repeatChoice}
+                onChoice={setRepeatChoice}
+                customDays={customDays}
+                onCustomDays={setCustomDays}
+              />
               {repeatLeaves ? (
                 <Text variant="meta" color={colors.inkSoft}>
                   This day isn’t included, so the line leaves today and comes back on the days you picked.
@@ -1007,6 +1066,82 @@ export function TodayView() {
               {repeatLine?.routineActive ? (
                 <SheetAction label="Delete routine" destructive onPress={() => repeatLine && void deleteRoutine(repeatLine)} />
               ) : null}
+            </>
+          ) : null}
+          {shown === 'add' ? (
+            <>
+              <SheetAction
+                label="Inbox"
+                detail="Park a thought to sort out later."
+                quiet
+                onPress={startInbox}
+              />
+              <SheetAction
+                label="Existing action"
+                detail="Pull one of your actions onto this day."
+                quiet
+                onPress={() => setSheet('picker')}
+              />
+              <SheetAction
+                label="Routine"
+                detail="A line that comes back on the days you pick."
+                quiet
+                onPress={startRoutine}
+              />
+              <SheetAction
+                label="New action"
+                detail={
+                  atCap
+                    ? 'Create an action in a circle, step by step.'
+                    : 'Create an action in a circle and put it on this day.'
+                }
+                quiet
+                onPress={startNewAction}
+              />
+            </>
+          ) : null}
+          {shown === 'inbox' ? (
+            <>
+              <Text variant="meta" color={colors.inkSoft}>
+                It waits at the top of today until you send it somewhere or let it go.
+              </Text>
+              <TextInput
+                value={inboxDraft}
+                onChangeText={setInboxDraft}
+                onSubmitEditing={submitInbox}
+                placeholder="Something to sort out later"
+                placeholderTextColor={colors.inkFaint}
+                returnKeyType="done"
+                style={styles.sheetInput}
+                autoFocus
+                accessibilityLabel="Inbox line"
+              />
+              <SheetAction label="Add to inbox" onPress={submitInbox} />
+            </>
+          ) : null}
+          {shown === 'routine' ? (
+            <>
+              <TextInput
+                value={routineDraft}
+                onChangeText={setRoutineDraft}
+                placeholder="Yoga, take meds, water the plants"
+                placeholderTextColor={colors.inkFaint}
+                style={styles.sheetInput}
+                autoFocus
+                accessibilityLabel="Routine"
+              />
+              <RepeatPicker
+                choice={repeatChoice}
+                onChoice={setRepeatChoice}
+                customDays={customDays}
+                onCustomDays={setCustomDays}
+              />
+              {routineSkipsDay ? (
+                <Text variant="meta" color={colors.inkSoft}>
+                  This day isn’t one of them, so it first shows on the next day you picked.
+                </Text>
+              ) : null}
+              <SheetAction label="Add routine" onPress={saveNewRoutine} />
             </>
           ) : null}
           {shown === 'tick' ? (
@@ -1661,6 +1796,55 @@ function SheetAction({
   );
 }
 
+type RepeatChoice = 'every' | 'weekdays' | 'custom';
+
+/** Every day, weekdays, or hand-picked days. Shared by Repeat and New routine. */
+function RepeatPicker({
+  choice,
+  onChoice,
+  customDays,
+  onCustomDays,
+}: {
+  choice: RepeatChoice;
+  onChoice: (next: RepeatChoice) => void;
+  customDays: number[];
+  onCustomDays: (update: (current: number[]) => number[]) => void;
+}) {
+  return (
+    <>
+      <ChoiceRow label="Every day" selected={choice === 'every'} onPress={() => onChoice('every')} />
+      <ChoiceRow label="Weekdays" selected={choice === 'weekdays'} onPress={() => onChoice('weekdays')} />
+      <ChoiceRow label="Specific days" selected={choice === 'custom'} onPress={() => onChoice('custom')} />
+      {choice === 'custom' ? (
+        <View style={styles.dayRow}>
+          {WEEKDAY_PICKER_ORDER.map((index) => {
+            const selected = customDays.includes(index);
+            return (
+              <Pressable
+                key={index}
+                onPress={() => {
+                  hapticSelection();
+                  onCustomDays((current) =>
+                    current.includes(index) ? current.filter((day) => day !== index) : [...current, index],
+                  );
+                }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={WEEKDAY_SHORT[index]}
+                style={[styles.dayChip, selected && styles.dayChipOn]}
+              >
+                <Text variant="meta" color={selected ? colors.brandDeep : colors.inkSoft}>
+                  {WEEKDAY_SHORT[index]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </>
+  );
+}
+
 function ChoiceRow({
   label,
   selected,
@@ -1829,8 +2013,8 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radii.button,
-    backgroundColor: colors.surfaceAlt,
+    borderRadius: 20,
+    backgroundColor: colors.brand,
   },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(43, 38, 32, 0.35)' },
   backdropWide: { justifyContent: 'center', padding: spacing.xl },

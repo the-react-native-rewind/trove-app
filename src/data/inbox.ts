@@ -10,6 +10,7 @@ import {
 } from '@/lib/inbox';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
+import { localToday } from '@/lib/today';
 import { useAuth } from '@/providers/AuthProvider';
 
 type InboxRow = {
@@ -124,6 +125,48 @@ export function useDismissInboxItem() {
     },
     onSettled: () => {
       if (userId) void qc.invalidateQueries({ queryKey: qk.inbox(userId) });
+    },
+  });
+}
+
+/**
+ * Add a line straight onto today's plan as a quick line (not an action, not in
+ * a circle) and take it off the inbox. This is the lightweight triage door: a
+ * thing to do today that doesn't need to become tracked work.
+ */
+export function useSendInboxItemToToday() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (item: InboxItem) => {
+      const day = localToday();
+      const { error: addError } = await supabase.rpc('add_today_item', {
+        p_day: day,
+        p_text: item.text,
+        p_task_id: null,
+        p_as_of: day,
+      });
+      if (addError) throw addError;
+      const { error: resolveError } = await supabase
+        .from('inbox_items')
+        .update({ accepted_at: new Date().toISOString() })
+        .eq('id', item.id);
+      if (resolveError) throw resolveError;
+    },
+    onMutate: async (item) => {
+      if (!userId) return { previous: undefined };
+      await qc.cancelQueries({ queryKey: qk.inbox(userId) });
+      const previous = qc.getQueryData<InboxItem[]>(qk.inbox(userId));
+      patchInbox(qc, userId, (items) => withoutInboxItem(items, item.id));
+      return { previous };
+    },
+    onError: (_error, _item, context) => {
+      if (userId && context?.previous) qc.setQueryData(qk.inbox(userId), context.previous);
+    },
+    onSettled: () => {
+      if (!userId) return;
+      void qc.invalidateQueries({ queryKey: qk.inbox(userId) });
+      void qc.invalidateQueries({ queryKey: ['today', userId] });
     },
   });
 }
