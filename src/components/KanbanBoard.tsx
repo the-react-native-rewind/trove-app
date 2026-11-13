@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import type { Attachment } from '@/data/attachments';
 import { groupByStatus, type KanbanProps, STATUSES } from '@/lib/board';
 import type { TaskStatus } from '@/lib/types';
-import { colors, heatColor, radii, spacing } from '@/theme/tokens';
+import { colors, radii, spacing } from '@/theme/tokens';
 import { TaskRow } from './TaskRow';
 import { Text } from './ui/Text';
 
@@ -45,12 +45,11 @@ export function KanbanBoard({
               contentContainerStyle={styles.bodyContent}
               showsVerticalScrollIndicator={false}
             >
-              {column.map((task, index) => (
+              {column.map((task) => (
                 <TaskRow
                   key={task.id}
                   task={task}
                   showSpaceTag={showSpaceTag}
-                  heat={heatColor(index, column.length)}
                   canWrite={canWriteTask(task.space_id)}
                   onOpen={() => onOpen(task.id)}
                   onMove={(status) => onMove(task.id, status)}

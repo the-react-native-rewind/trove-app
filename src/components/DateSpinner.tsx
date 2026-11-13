@@ -8,17 +8,20 @@ import { colors } from '@/theme/tokens';
 export type DateSpinnerProps = {
   visible: boolean;
   value: string | null; // YYYY-MM-DD
+  /** Earliest day that can be picked, as YYYY-MM-DD. */
+  minimumDate?: string;
   onChange: (date: string | null) => void;
   onClose: () => void;
 };
 
 /** Native (iOS/Android) date picker. A `.web` sibling handles the browser. */
-export function DateSpinner({ visible, value, onChange, onClose }: DateSpinnerProps) {
+export function DateSpinner({ visible, value, minimumDate, onChange, onClose }: DateSpinnerProps) {
   if (!visible) return null;
   return (
     <DateTimePicker
       value={value ? new Date(`${value}T00:00:00`) : new Date()}
       mode="date"
+      minimumDate={minimumDate ? new Date(`${minimumDate}T00:00:00`) : undefined}
       display={Platform.OS === 'ios' ? 'inline' : 'default'}
       themeVariant="light"
       accentColor={colors.brand}

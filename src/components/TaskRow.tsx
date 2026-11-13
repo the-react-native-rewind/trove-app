@@ -26,7 +26,6 @@ const NEXT_ACTIONS: Record<TaskStatus, { label: string; status: TaskStatus; done
 export function TaskRow({
   task,
   showSpaceTag,
-  heat,
   canWrite,
   onOpen,
   onMove,
@@ -34,13 +33,14 @@ export function TaskRow({
   showProgressTag = true,
   onComplete,
   onToday,
+  todayLabel,
   onToggleToday,
+  onScheduleToday,
   onMoveUp,
   onMoveDown,
 }: {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
-  heat?: string;
   canWrite: boolean;
   onOpen: () => void;
   onMove: (status: TaskStatus) => void;
@@ -48,7 +48,9 @@ export function TaskRow({
   showProgressTag?: boolean;
   onComplete?: () => void;
   onToday?: boolean;
+  todayLabel?: string;
   onToggleToday?: () => void;
+  onScheduleToday?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
 }) {
@@ -92,14 +94,15 @@ export function TaskRow({
         <TaskCard
           task={task}
           showSpaceTag={showSpaceTag}
-          heat={heat}
           selectable={canWrite}
           showProgressTag={showProgressTag}
           onPress={onOpen}
           media={media}
           onComplete={onComplete}
           onToday={onToday}
+          todayLabel={todayLabel}
           onToggleToday={onToggleToday}
+          onScheduleToday={onScheduleToday}
           onMoveUp={onMoveUp}
           onMoveDown={onMoveDown}
         />

@@ -787,6 +787,129 @@ export function useToggleTodayTask() {
   });
 }
 
+export type ScheduledTaskDay = { itemId: string; day: string };
+
+/**
+ * Open actions planned on a later day, keyed by task. The nearest day wins.
+ * Lets an action list show the day on its chip instead of a plain Today.
+ */
+export function useScheduledTaskDays() {
+  const { userId } = useAuth();
+  const day = localToday();
+  return useQuery({
+    queryKey: qk.todayTaskSchedule(userId ?? 'anon', day),
+    enabled: Boolean(userId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('today_items')
+        .select('id, task_id, day')
+        .gt('day', day)
+        .is('dismissed_at', null)
+        .is('checked_at', null)
+        .is('routine_id', null)
+        .not('task_id', 'is', null)
+        .order('day', { ascending: true });
+      if (error) throw error;
+      const plans: Record<string, ScheduledTaskDay> = {};
+      for (const row of (data ?? []) as { id: string; task_id: string | null; day: string }[]) {
+        if (row.task_id && !plans[row.task_id]) plans[row.task_id] = { itemId: row.id, day: row.day };
+      }
+      return plans;
+    },
+  });
+}
+
+type PlanCaches = {
+  links: Record<string, string> | undefined;
+  plans: Record<string, ScheduledTaskDay> | undefined;
+};
+
+/**
+ * Put an action on a chosen day's plan. `replaceItemId` is the line that has
+ * it on another day now, which is removed once the new day has it, so a
+ * refused add never leaves the action on no day at all.
+ */
+export function useScheduleTaskOnDay() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  const refresh = useRefreshToday();
+  const asOf = localToday();
+  const linksKey = qk.todayTaskLinks(userId ?? 'anon', asOf);
+  const plansKey = qk.todayTaskSchedule(userId ?? 'anon', asOf);
+  return useMutation({
+    mutationFn: async (input: { taskId: string; day: string; replaceItemId?: string }) => {
+      const { error } = await supabase.rpc('add_today_item', {
+        p_day: input.day,
+        p_text: null,
+        p_task_id: input.taskId,
+        p_as_of: asOf,
+      });
+      if (error) throw error;
+      if (input.replaceItemId) {
+        const { error: removeError } = await supabase.rpc('delete_today_item', {
+          p_item_id: input.replaceItemId,
+        });
+        if (removeError) throw removeError;
+      }
+    },
+    onMutate: async (input): Promise<PlanCaches> => {
+      await qc.cancelQueries({ queryKey: linksKey });
+      const previous: PlanCaches = {
+        links: qc.getQueryData<Record<string, string>>(linksKey),
+        plans: qc.getQueryData<Record<string, ScheduledTaskDay>>(plansKey),
+      };
+      const links = { ...(previous.links ?? {}) };
+      const plans = { ...(previous.plans ?? {}) };
+      delete links[input.taskId];
+      delete plans[input.taskId];
+      if (input.day === asOf) links[input.taskId] = 'pending';
+      else plans[input.taskId] = { itemId: 'pending', day: input.day };
+      qc.setQueryData(linksKey, links);
+      qc.setQueryData(plansKey, plans);
+      return previous;
+    },
+    onError: (_error, _input, previous) => {
+      if (!previous) return;
+      qc.setQueryData(linksKey, previous.links);
+      qc.setQueryData(plansKey, previous.plans);
+    },
+    onSettled: () => {
+      refresh(false);
+      void qc.invalidateQueries({ queryKey: linksKey });
+    },
+  });
+}
+
+/** Take an action off the later day it was planned on. The action itself is untouched. */
+export function useUnscheduleTask() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+  const refresh = useRefreshToday();
+  const asOf = localToday();
+  const plansKey = qk.todayTaskSchedule(userId ?? 'anon', asOf);
+  return useMutation({
+    mutationFn: async (input: { taskId: string; itemId: string }) => {
+      const { error } = await supabase.rpc('delete_today_item', { p_item_id: input.itemId });
+      if (error) throw error;
+    },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: plansKey });
+      const previous = qc.getQueryData<Record<string, ScheduledTaskDay>>(plansKey);
+      const plans = { ...(previous ?? {}) };
+      delete plans[input.taskId];
+      qc.setQueryData(plansKey, plans);
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context) qc.setQueryData(plansKey, context.previous);
+    },
+    onSettled: () => {
+      refresh(false);
+      void qc.invalidateQueries({ queryKey: plansKey });
+    },
+  });
+}
+
 export function useCheckTodayItem() {
   const { userId } = useAuth();
   const qc = useQueryClient();

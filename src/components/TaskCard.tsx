@@ -18,8 +18,6 @@ import { Text } from './ui/Text';
 type TaskCardProps = {
   task: TaskWithRefs;
   showSpaceTag?: boolean;
-  /** Colour for the urgency dot, derived from the task's rank in its list. */
-  heat?: string;
   /** The signed-in person can change this task. Long-press selects it. */
   selectable?: boolean;
   /**
@@ -30,10 +28,14 @@ type TaskCardProps = {
   onPress?: () => void;
   onLongPress?: () => void;
   media?: Attachment[];
-  /** Tap the leading checkbox to finish an open action. Also hides the heat dot. */
+  /** Shows a Done button on the right of an open action. */
   onComplete?: () => void;
-  /** The action already sits on today — the Today chip reads as selected. */
+  /** The action is on a day's plan, so the chip reads as selected. */
   onToday?: boolean;
+  /** Chip text when it is planned on another day, for example Tomorrow. Defaults to Today. */
+  todayLabel?: string;
+  /** Hold the chip to pick which day the action goes on. */
+  onScheduleToday?: () => void;
   /** Tap the Today chip to add the action to today, or pull it back off. */
   onToggleToday?: () => void;
   /** Nudge the action one place up its list. Omitted when it is already top. */
@@ -45,7 +47,6 @@ type TaskCardProps = {
 export function TaskCard({
   task,
   showSpaceTag,
-  heat,
   selectable = false,
   showProgressTag = true,
   onPress,
@@ -53,7 +54,9 @@ export function TaskCard({
   media,
   onComplete,
   onToday = false,
+  todayLabel = 'Today',
   onToggleToday,
+  onScheduleToday,
   onMoveUp,
   onMoveDown,
 }: TaskCardProps) {
@@ -70,10 +73,9 @@ export function TaskCard({
   const handoffName = task.latest_handoff?.from_name ?? 'Former member';
   const selecting = selection.active;
   const selected = selecting && selection.isSelected(task.id);
-  const showCheckbox = Boolean(onComplete) && !done && !selecting;
+  const showDone = Boolean(onComplete) && !done && !selecting;
   const showCarets = Boolean(onMoveUp || onMoveDown);
   const showTodayChip = Boolean(onToggleToday) && !done;
-  const checkRing = heat ?? colors.inkFaint;
 
   function handlePress() {
     if (selecting) {
@@ -193,80 +195,82 @@ export function TaskCard({
 
         {(due ||
           task.assignees.length > 0 ||
-          heat ||
           repeats ||
           showProgress ||
           task.project ||
           showTodayChip ||
-          showCheckbox) && (
+          showDone) && (
           <View style={styles.meta}>
-            {showCheckbox ? (
+            <View style={styles.metaLeft}>
+              {showTodayChip ? (
+                <Pressable
+                  onPress={onToggleToday}
+                  onLongPress={onScheduleToday}
+                  delayLongPress={300}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: onToday }}
+                  accessibilityLabel={onToday ? `On ${todayLabel.toLowerCase()}` : 'Add to today'}
+                  accessibilityHint={onScheduleToday ? 'Hold to pick a day' : undefined}
+                  style={[styles.todayChip, onToday && styles.todayChipOn]}
+                >
+                  <Text variant="meta" color={onToday ? colors.onBrand : colors.inkSoft}>
+                    {todayLabel}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {task.assignees.length > 0 ? (
+                <AvatarStack
+                  people={task.assignees}
+                  size={26}
+                  ringColor={
+                    selected ? colors.brandSoft : overdue ? colors.overdueSurface : colors.surface
+                  }
+                />
+              ) : null}
+              {task.project ? (
+                <View style={styles.projectTag}>
+                  <Ionicons name="folder-outline" size={12} color={colors.inkSoft} />
+                  <Text variant="meta" color={colors.inkSoft} numberOfLines={1}>
+                    {task.project.name}
+                  </Text>
+                </View>
+              ) : null}
+              {showProgress ? <InProgressTag reserveHeight={PROGRESS_TAG_HEIGHT} /> : null}
+              {repeats ? (
+                <View style={styles.dueWrap}>
+                  <Ionicons name="repeat" size={13} color={colors.inkFaint} />
+                  <Text variant="meta" color={colors.inkFaint}>
+                    Repeats
+                  </Text>
+                </View>
+              ) : null}
+              {due ? (
+                <View style={styles.dueWrap}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={13}
+                    color={overdue ? colors.priorityHigh : colors.inkFaint}
+                  />
+                  <Text variant="meta" color={overdue ? colors.priorityHigh : colors.inkFaint}>
+                    {due}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            {showDone ? (
               <Pressable
                 onPress={onComplete}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Finish ${task.title}`}
-                style={[styles.doneBox, { borderColor: checkRing }]}
-              />
-            ) : null}
-            {heat && !showCheckbox ? (
-              <View
-                accessible={false}
-                style={[styles.heatDot, { backgroundColor: heat }]}
-              />
-            ) : null}
-            {task.project ? (
-              <View style={styles.projectTag}>
-                <Ionicons name="folder-outline" size={12} color={colors.inkSoft} />
-                <Text variant="meta" color={colors.inkSoft} numberOfLines={1}>
-                  {task.project.name}
-                </Text>
-              </View>
-            ) : null}
-            {showProgress ? <InProgressTag reserveHeight={HEAT_DOT_SIZE} /> : null}
-            {repeats ? (
-              <View style={styles.dueWrap}>
-                <Ionicons name="repeat" size={13} color={colors.inkFaint} />
-                <Text variant="meta" color={colors.inkFaint}>
-                  Repeats
-                </Text>
-              </View>
-            ) : null}
-            {due ? (
-              <View style={styles.dueWrap}>
-                <Ionicons
-                  name="calendar-outline"
-                  size={13}
-                  color={overdue ? colors.priorityHigh : colors.inkFaint}
-                />
-                <Text variant="meta" color={overdue ? colors.priorityHigh : colors.inkFaint}>
-                  {due}
-                </Text>
-              </View>
-            ) : null}
-            <View style={styles.spacer} />
-            {showTodayChip ? (
-              <Pressable
-                onPress={onToggleToday}
                 hitSlop={6}
                 accessibilityRole="button"
-                accessibilityState={{ selected: onToday }}
-                accessibilityLabel={onToday ? 'On today' : 'Add to today'}
-                style={[styles.todayChip, onToday && styles.todayChipOn]}
+                accessibilityLabel={`Mark ${task.title} done`}
+                style={styles.doneButton}
               >
-                <Text variant="meta" color={onToday ? colors.onBrand : colors.inkSoft}>
-                  Today
+                <Ionicons name="checkmark" size={14} color={colors.brandDeep} />
+                <Text variant="meta" color={colors.brandDeep}>
+                  Done
                 </Text>
               </Pressable>
-            ) : null}
-            {task.assignees.length > 0 ? (
-              <AvatarStack
-                people={task.assignees}
-                size={26}
-                ringColor={
-                  selected ? colors.brandSoft : overdue ? colors.overdueSurface : colors.surface
-                }
-              />
             ) : null}
           </View>
         )}
@@ -275,7 +279,7 @@ export function TaskCard({
   );
 }
 
-const HEAT_DOT_SIZE = 9;
+const PROGRESS_TAG_HEIGHT = 9;
 
 const styles = StyleSheet.create({
   card: {
@@ -303,13 +307,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   checkOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  doneBox: {
-    width: 24,
-    height: 24,
-    marginTop: 1,
-    borderRadius: 12,
-    borderWidth: 2.5,
-    backgroundColor: colors.surface,
+  doneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    backgroundColor: colors.brandSoft,
   },
   caretCol: { alignSelf: 'center' },
   caret: {
@@ -339,11 +344,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
-  heatDot: {
-    width: HEAT_DOT_SIZE,
-    height: HEAT_DOT_SIZE,
-    borderRadius: HEAT_DOT_SIZE / 2,
-  },
+  // Chips wrap onto a second line rather than push the Done button off the card.
+  metaLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
   dueWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   projectTag: {
     flexDirection: 'row',
@@ -355,5 +357,4 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceAlt,
   },
-  spacer: { flex: 1 },
 });

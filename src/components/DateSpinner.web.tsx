@@ -6,12 +6,13 @@ import type { DateSpinnerProps } from './DateSpinner';
  * Web date field. `@react-native-community/datetimepicker` has no web build,
  * so on web we render a native HTML date input (react-dom renders this file).
  */
-export function DateSpinner({ visible, value, onChange }: DateSpinnerProps) {
+export function DateSpinner({ visible, value, minimumDate, onChange }: DateSpinnerProps) {
   if (!visible) return null;
   return (
     <input
       type="date"
       value={value ?? ''}
+      min={minimumDate}
       onChange={(e) => {
         hapticSelection();
         onChange(e.target.value || null);

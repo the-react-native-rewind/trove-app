@@ -34,6 +34,9 @@ export const qk = {
   todayReview: (userId: string, day: string) => ['today-review', userId, day] as const,
   todaySuggestions: (userId: string, day: string) => ['today-suggestions', userId, day] as const,
   todayTaskLinks: (userId: string, day: string) => ['today-task-links', userId, day] as const,
+  // Under the links key, so anything that refreshes the links refreshes this too.
+  todayTaskSchedule: (userId: string, day: string) =>
+    ['today-task-links', userId, day, 'later'] as const,
   todayTaskChoices: (search: string) => ['today-task-choices', search] as const,
   weekTasks: (userId: string, weekStart: string) => ['week-tasks', userId, weekStart] as const,
   taskWeekPlan: (userId: string, taskId: string) => ['task-week-plan', userId, taskId] as const,

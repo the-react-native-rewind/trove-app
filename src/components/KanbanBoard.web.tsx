@@ -4,7 +4,7 @@ import type { Attachment } from '@/data/attachments';
 import { positionBetween } from '@/data/tasks';
 import { groupByStatus, type KanbanProps, STATUSES } from '@/lib/board';
 import type { TaskStatus } from '@/lib/types';
-import { colors, fonts, heatColor, radii } from '@/theme/tokens';
+import { colors, fonts, radii } from '@/theme/tokens';
 import { useSelection } from '@/providers/SelectionProvider';
 import { TaskCard } from './TaskCard';
 
@@ -145,7 +145,6 @@ export function KanbanBoard({
                     <TaskCard
                       task={task}
                       showSpaceTag={showSpaceTag}
-                      heat={heatColor(index, column.length)}
                       selectable={canWriteTask(task.space_id)}
                       showProgressTag={false}
                       media={mediaByTaskId?.[task.id]}

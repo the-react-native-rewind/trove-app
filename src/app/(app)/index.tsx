@@ -3,6 +3,7 @@ import { useNavigation, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
+import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CircleMenuSheet } from '@/components/CircleMenuSheet';
@@ -12,6 +13,7 @@ import { MineMenuSheet } from '@/components/MineMenuSheet';
 import { TodayView } from '@/components/TodayView';
 import { ProjectFormSheet } from '@/components/ProjectFormSheet';
 import { ProjectsPane, type ProjectStat } from '@/components/ProjectsPane';
+import { planDayLabel, ScheduleDaySheet } from '@/components/ScheduleDaySheet';
 import { SelectionActionBar, SelectionHeader } from '@/components/SelectionChrome';
 import { SegmentTabs } from '@/components/StatusSegmented';
 import { TaskReorderList } from '@/components/TaskReorderList';
@@ -23,7 +25,13 @@ import { useTaskMediaForTasks } from '@/data/attachments';
 import { useRoster } from '@/data/members';
 import { useProjects } from '@/data/projects';
 import { useMoveTaskStatus, useTasks, useUpdateTaskRank } from '@/data/tasks';
-import { useTodayTaskLinks, useToggleTodayTask } from '@/data/today';
+import {
+  useScheduledTaskDays,
+  useScheduleTaskOnDay,
+  useTodayTaskLinks,
+  useToggleTodayTask,
+  useUnscheduleTask,
+} from '@/data/today';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
@@ -31,11 +39,11 @@ import { sortTasksByUrgency } from '@/lib/board';
 import { rankAfterStepDown, rankAfterStepUp } from '@/lib/rank';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
-import { TODAY_VIEW_ID } from '@/lib/today';
+import { localToday, TODAY_VIEW_ID } from '@/lib/today';
 import { canManage, canWrite, type ListStatus, type TaskWithRefs } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { SelectionProvider, useSelection } from '@/providers/SelectionProvider';
-import { colors, heatColor, radii, shadows, spacing } from '@/theme/tokens';
+import { colors, radii, shadows, spacing } from '@/theme/tokens';
 
 const EMPTY_COPY: Record<ListStatus, { title: string; body: string }> = {
   todo: { title: 'All clear', body: 'Nothing to do right now. Tap the plus to add the next thing.' },
@@ -100,6 +108,11 @@ function SpaceBoard() {
   const updateRank = useUpdateTaskRank();
   const { data: todayLinks = {} } = useTodayTaskLinks();
   const toggleToday = useToggleTodayTask();
+  const { data: laterDays = {} } = useScheduledTaskDays();
+  const scheduleDay = useScheduleTaskOnDay();
+  const unschedule = useUnscheduleTask();
+  // The action whose Today chip was held, while its day sheet is open.
+  const [scheduling, setScheduling] = useState<TaskWithRefs | null>(null);
 
   const [boardTab, setBoardTab] = useState<'actions' | 'projects'>('actions');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -117,6 +130,7 @@ function SpaceBoard() {
     setMenuOpen(false);
     setMineMenuOpen(false);
     setProjectFormOpen(false);
+    setScheduling(null);
   }
 
   const visibleTasks = useMemo(() => {
@@ -185,16 +199,52 @@ function SpaceBoard() {
     setReordering((on) => !on);
   }
 
-  function renderItem({ item, index }: { item: TaskWithRefs; index: number }) {
+  /** Where an action sits on the planner: today's line, else the nearest later day. */
+  function planFor(taskId: string): { itemId: string; day: string } | null {
+    const todayItemId = todayLinks[taskId];
+    if (todayItemId) return { itemId: todayItemId, day: localToday() };
+    return laterDays[taskId] ?? null;
+  }
+
+  function planError(error: unknown) {
+    Toast.show({
+      type: 'error',
+      text1: 'Couldn’t change that day',
+      text2: error instanceof Error ? error.message : 'Try again.',
+    });
+  }
+
+  function pickDay(day: string) {
+    const task = scheduling;
+    setScheduling(null);
+    if (!task) return;
+    const plan = planFor(task.id);
+    if (plan?.day === day || plan?.itemId === 'pending') return;
+    scheduleDay.mutate(
+      { taskId: task.id, day, replaceItemId: plan?.itemId },
+      { onError: planError },
+    );
+  }
+
+  function removePlan(task: TaskWithRefs) {
+    const plan = planFor(task.id);
+    if (!plan || plan.itemId === 'pending') return;
+    if (plan.day === localToday()) {
+      toggleToday.mutate({ task, itemId: plan.itemId }, { onError: planError });
+      return;
+    }
+    unschedule.mutate({ taskId: task.id, itemId: plan.itemId }, { onError: planError });
+  }
+
+  function renderItem({ item }: { item: TaskWithRefs }) {
     const rowWritable = isMine ? canWrite(spaces.find((s) => s.id === item.space_id)?.role) : writable;
     const reorderable = canReorderTask(item.space_id) && !selection.active;
     const upRank = reorderable ? rankAfterStepUp(item.id, items) : null;
     const downRank = reorderable ? rankAfterStepDown(item.id, items) : null;
-    const todayItemId = todayLinks[item.id];
+    const plan = planFor(item.id);
     return (
       <TaskRow
         task={item}
-        heat={heatColor(index, items.length)}
         canWrite={rowWritable}
         showSpaceTag={isMine}
         onOpen={() => router.push(`/task/${item.id}` as never)}
@@ -203,8 +253,15 @@ function SpaceBoard() {
         onComplete={
           rowWritable ? () => moveStatus.mutate({ id: item.id, status: 'done' }) : undefined
         }
-        onToday={Boolean(todayItemId)}
-        onToggleToday={() => toggleToday.mutate({ task: item, itemId: todayItemId })}
+        onToday={plan !== null}
+        todayLabel={plan ? planDayLabel(plan.day) : undefined}
+        onToggleToday={() =>
+          plan ? removePlan(item) : toggleToday.mutate({ task: item, itemId: undefined })
+        }
+        onScheduleToday={() => {
+          hapticLight();
+          setScheduling(item);
+        }}
         onMoveUp={upRank ? () => updateRank.mutate({ id: item.id, rank: upRank }) : undefined}
         onMoveDown={
           downRank ? () => updateRank.mutate({ id: item.id, rank: downRank }) : undefined
@@ -496,6 +553,18 @@ function SpaceBoard() {
       )}
 
       <SelectionActionBar tasks={tasks} projects={isMine || showingProjects ? [] : projects} />
+
+      <ScheduleDaySheet
+        title={scheduling?.title ?? null}
+        currentDay={scheduling ? (planFor(scheduling.id)?.day ?? null) : null}
+        onPick={pickDay}
+        onRemove={() => {
+          const task = scheduling;
+          setScheduling(null);
+          if (task) removePlan(task);
+        }}
+        onClose={() => setScheduling(null)}
+      />
 
       {canReorderList && !selection.active && !showingProjects ? (
         <Pressable
