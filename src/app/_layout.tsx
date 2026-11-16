@@ -97,7 +97,9 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
-      <Stack.Screen name="(auth)" />
+      {/* Arriving at the signed-out pages by replace (signing out, leaving
+          onboarding) is a step back, so it animates as one. */}
+      <Stack.Screen name="(auth)" options={{ animationTypeForReplace: 'pop' }} />
       <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(app)" />
       <Stack.Screen name="insights" />

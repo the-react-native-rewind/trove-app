@@ -1,6 +1,12 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
-import { daysToBitmask, type OnboardingAction, type OnboardingPlan } from '@/lib/onboarding';
+import {
+  daysToBitmask,
+  onboardingPlanDay,
+  type OnboardingAction,
+  type OnboardingPlan,
+} from '@/lib/onboarding';
 import { qk } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import { localToday } from '@/lib/today';
@@ -16,7 +22,8 @@ export type ApplyOnboardingResult = { created: number; failed: number };
 /**
  * Turn a reviewed onboarding plan into real data: a circle (space) per plan
  * circle, a task per action, and a today routine per routine. Actions marked
- * `today` are also placed on today. Loose "personal" items go into the default
+ * `today` are also placed on the planned day (today, or tomorrow when onboarding
+ * happens in the evening). Loose "personal" items go into the default
  * Personal circle. Each step is best-effort — a single failure never aborts the
  * whole build — and `profiles.onboarded_at` is stamped at the end so the gate
  * never sends them back through onboarding.
@@ -25,10 +32,12 @@ export function useApplyOnboarding() {
   const { userId } = useAuth();
   const qc = useQueryClient();
   const day = localToday();
+  // Read once, so the hooks below keep the same day for the whole visit.
+  const [planDay] = useState(() => onboardingPlanDay().day);
   const { data: spaces = [] } = useSpaces();
   const createSpace = useCreateSpace();
   const createTask = useCreateTask();
-  const addTodayTask = useAddTodayTask(day);
+  const addPlannedTask = useAddTodayTask(planDay);
   const addTodayText = useAddTodayText(day);
   const setRepeat = useSetTodayRepeat();
 
@@ -52,7 +61,7 @@ export function useApplyOnboarding() {
           created += 1;
           if (action.today) {
             try {
-              await addTodayTask.mutateAsync({
+              await addPlannedTask.mutateAsync({
                 taskId: task.id,
                 title: task.title,
                 spaceName: circle.name,
@@ -113,7 +122,7 @@ export function useApplyOnboarding() {
       qc.invalidateQueries({ queryKey: qk.spaces });
       qc.invalidateQueries({ queryKey: ['tasks'] });
       if (userId) {
-        qc.invalidateQueries({ queryKey: qk.today(userId, day) });
+        qc.invalidateQueries({ queryKey: ['today', userId] });
         qc.invalidateQueries({ queryKey: qk.profile(userId) });
       }
     },

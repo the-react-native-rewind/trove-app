@@ -1,21 +1,23 @@
 import { Stack } from 'expo-router';
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 
-import type { OnboardingPlan } from '@/lib/onboarding';
+import { EMPTY_LISTS, type OnboardingLists, type OnboardingPlan } from '@/lib/onboarding';
 import { colors } from '@/theme/tokens';
 
 type OnboardingDraft = {
   name: string;
   setName: (value: string) => void;
-  transcript: string;
-  setTranscript: (value: string) => void;
+  lists: OnboardingLists;
+  setLists: (value: OnboardingLists) => void;
   plan: OnboardingPlan | null;
-  setPlan: (value: OnboardingPlan | null) => void;
+  // The setter form, so an edit always builds on the latest plan rather than
+  // the one captured when the screen rendered.
+  setPlan: Dispatch<SetStateAction<OnboardingPlan | null>>;
 };
 
 const OnboardingContext = createContext<OnboardingDraft | null>(null);
 
-/** Shared draft carried across the onboarding steps (name → mic → build → review). */
+/** Shared draft carried across the onboarding steps (name → lists → review). */
 export function useOnboardingDraft(): OnboardingDraft {
   const ctx = useContext(OnboardingContext);
   if (!ctx) throw new Error('useOnboardingDraft must be used inside the onboarding stack');
@@ -24,12 +26,12 @@ export function useOnboardingDraft(): OnboardingDraft {
 
 export default function OnboardingLayout() {
   const [name, setName] = useState('');
-  const [transcript, setTranscript] = useState('');
+  const [lists, setLists] = useState<OnboardingLists>(EMPTY_LISTS);
   const [plan, setPlan] = useState<OnboardingPlan | null>(null);
 
   const value = useMemo<OnboardingDraft>(
-    () => ({ name, setName, transcript, setTranscript, plan, setPlan }),
-    [name, transcript, plan],
+    () => ({ name, setName, lists, setLists, plan, setPlan }),
+    [name, lists, plan],
   );
 
   return (
@@ -44,7 +46,6 @@ export default function OnboardingLayout() {
       >
         <Stack.Screen name="name" />
         <Stack.Screen name="capture" />
-        <Stack.Screen name="building" />
         <Stack.Screen name="review" />
       </Stack>
     </OnboardingContext.Provider>

@@ -15,7 +15,7 @@ import { useOnboardingDraft } from './_layout';
 
 export default function OnboardingName() {
   const router = useRouter();
-  const { session } = useAuth();
+  const { session, signOut } = useAuth();
   const { data: profile } = useProfile();
   const updateProfile = useUpdateProfile();
   const draft = useOnboardingDraft();
@@ -47,6 +47,26 @@ export default function OnboardingName() {
       router.push('/(onboarding)/capture' as never);
     } catch {
       setError('Something went wrong starting you off. Please try again.');
+    } finally {
+      // This screen stays underneath the next one, so it must be usable again
+      // when the person comes back to it.
+      setBusy(false);
+    }
+  }
+
+  // Leaving onboarding means leaving the account it started: sign out, then
+  // show the welcome page again.
+  async function onExit() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (session) await signOut();
+    } finally {
+      // Go back to the welcome page when it is underneath, so it slides the way
+      // a back arrow should. Opened straight into onboarding, there is nothing
+      // underneath, so put the welcome page in its place.
+      if (router.canGoBack()) router.back();
+      else router.replace('/(auth)/welcome' as never);
       setBusy(false);
     }
   }
@@ -58,14 +78,12 @@ export default function OnboardingName() {
     >
       <OnboardingScaffold
         step={1}
+        onBack={onExit}
         footer={
           <Button label="Continue" onPress={onContinue} loading={busy} haptic="none" />
         }
       >
-        <Text style={styles.heading}>Lots open in your head?{'\n'}Let’s close some tabs.</Text>
-        <Text variant="body" color={colors.inkSoft} style={styles.sub}>
-          First, what should we call you?
-        </Text>
+        <Text style={styles.heading}>First, what should we call you?</Text>
         <TextInput
           value={name}
           onChangeText={setName}
@@ -95,7 +113,6 @@ const styles = StyleSheet.create({
     lineHeight: 39,
     color: colors.ink,
   },
-  sub: { marginTop: spacing.md },
   input: {
     marginTop: spacing.xl,
     backgroundColor: colors.surface,
