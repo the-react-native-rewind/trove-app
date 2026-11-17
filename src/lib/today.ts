@@ -490,6 +490,29 @@ export function withoutVirtualRoutine(lines: readonly TodayLine[], routineId: st
   return lines.filter((line) => !(line.virtual && line.routineId === routineId));
 }
 
+/**
+ * Display order for a day: what you have ticked comes first, in the order you
+ * ticked it — first one ticked at the top, second below it, and so on — and
+ * everything still open follows in its own order. Ticking a line sends it to
+ * the end of that run, so the top of the day reads as what you have done.
+ *
+ * Ranks are untouched — this is only how the day reads. Returns the same array
+ * when the order already holds, so the list does not re-render for nothing.
+ */
+export function checkedFirst(lines: readonly TodayLine[]): TodayLine[] {
+  const checked = lines.filter((line) => line.checkedAt !== null);
+  // Ticked times are ISO strings, so comparing them compares the clock. Sort is
+  // stable, so two ticked in the same millisecond keep the order they were in.
+  if (checked.length > 1) {
+    checked.sort((a, b) => (a.checkedAt as string).localeCompare(b.checkedAt as string));
+  }
+  const next = [...checked, ...lines.filter((line) => line.checkedAt === null)];
+  for (let index = 0; index < next.length; index += 1) {
+    if (next[index] !== lines[index]) return next;
+  }
+  return lines as TodayLine[];
+}
+
 function compareTodayLines(a: TodayLine, b: TodayLine): number {
   return compareRank(a.rank, b.rank) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 }

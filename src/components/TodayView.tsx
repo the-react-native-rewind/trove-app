@@ -21,6 +21,7 @@ import ReanimatedSwipeable, {
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, {
   FadeInDown,
+  LinearTransition,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -56,7 +57,6 @@ import {
   useYesterdayList,
   type TodaySuggestion,
 } from '@/data/today';
-import { useAddInboxItem } from '@/data/inbox';
 import { FREE_TODAY_ITEMS, usePro } from '@/data/pro';
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
@@ -76,6 +76,7 @@ import {
   isRepeatMask,
   canMakeTodayAction,
   canRescheduleTodayLine,
+  checkedFirst,
   localToday,
   momentumCount,
   repeatLabel,
@@ -89,6 +90,7 @@ import { canWrite } from '@/lib/types';
 import { resolveAccent, colors, radii, shadows, spacing, type as typeScale } from '@/theme/tokens';
 import { CollapsingScreenHeader, useCollapsingHeader } from './CollapsingHeader';
 import { InboxSection } from './InboxSection';
+import { InlineAddRow } from './InlineAddRow';
 import { showUndoToast } from './ui/AppToast';
 import { EmptyState } from './ui/EmptyState';
 import { FadeSheet, SheetBottom } from './ui/FadeSheet';
@@ -106,8 +108,8 @@ const PICKER_LIST_MAX = Math.round(Dimensions.get('window').height * 0.56);
 
 type DayScope = 'yesterday' | 'today' | 'tomorrow';
 
-/** Which sheet is showing. add, inbox and routine come from the composer's + button. */
-type SheetMode = 'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action' | 'add' | 'inbox' | 'routine';
+/** Which sheet is showing. picker is what the composer's + button opens. */
+type SheetMode = 'menu' | 'edit' | 'repeat' | 'tick' | 'picker' | 'action';
 
 /** Map a day offset to the data-layer scope: past reads like yesterday, future like tomorrow. */
 function scopeForOffset(offset: number): DayScope {
@@ -161,7 +163,6 @@ export function TodayView() {
         : dayOffset === 1
           ? 'Tomorrow'
           : formatDayLabel(activeDay);
-  const [draft, setDraft] = useState('');
   const [sheet, setSheet] = useState<SheetMode | null>(null);
   const [menuLine, setMenuLine] = useState<TodayLine | null>(null);
   const [editLine, setEditLine] = useState<TodayLine | null>(null);
@@ -177,8 +178,11 @@ export function TodayView() {
   const [tickLine, setTickLine] = useState<TodayLine | null>(null);
   const [taskSearch, setTaskSearch] = useState('');
   const [actionLine, setActionLine] = useState<TodayLine | null>(null);
-  const [inboxDraft, setInboxDraft] = useState('');
-  const [routineDraft, setRoutineDraft] = useState('');
+  // Which add row is open, if any. Held here so it survives the row it sits
+  // under changing as lines are ticked and added.
+  const [addingAt, setAddingAt] = useState<'between' | 'end' | null>(null);
+  // The last line written at the +, so the next one goes under it, not above.
+  const seamAnchor = useRef<string | null>(null);
 
   const todayQuery = useTodayList(today);
   const pastQuery = useYesterdayList(viewingPast ? activeDay : '');
@@ -192,9 +196,6 @@ export function TodayView() {
   const addText = useAddTodayText(activeDay);
   const addTask = useAddTodayTask(activeDay);
   const { isPro } = usePro();
-  const addInbox = useAddInboxItem();
-  // The free cap on a day, without opening the Pro sheet. See todayFull.
-  const atCap = !isPro && lines.length >= FREE_TODAY_ITEMS;
 
   // Free Trove holds a capped number of things on a day. Adding past it opens
   // the Pro sheet and leaves the item unadded. Returns true when the cap bites.
@@ -231,6 +232,12 @@ export function TodayView() {
     () => lines.filter((line) => line.checkedAt !== null).length,
     [lines],
   );
+  // One list, top to bottom: ticked lines lead in the order they were ticked,
+  // then everything still open. Nothing marks a divide between them.
+  const ordered = useMemo(() => checkedFirst(lines), [lines]);
+  // The row the ticked run ends on, when there are open lines under it. A +
+  // rides below it so you can write something without leaving the spot.
+  const betweenIndex = doneCount > 0 && doneCount < ordered.length ? doneCount - 1 : -1;
   const stepDay = useCallback((delta: number) => {
     setDayOffset((current) => {
       const next = Math.min(MAX_FUTURE, Math.max(-MAX_PAST, current + delta));
@@ -246,51 +253,42 @@ export function TodayView() {
   }, []);
   const headerPan = useMemo(() => dayPanGesture(stepDay), [stepDay]);
   const listPan = useMemo(() => dayPanGesture(stepDay), [stepDay]);
-  // A quick tap on the list dismisses the composer keyboard (its input sits
-  // outside the list, so the list's own keyboard handling never blurs it).
-  // Wrap Keyboard.dismiss in a plain JS fn — referencing Keyboard.dismiss
-  // directly makes the worklet try to send the Keyboard object to the UI
-  // runtime, which throws.
-  const dismissKeyboard = useCallback(() => {
-    Keyboard.dismiss();
-  }, []);
-  const listGesture = useMemo(
-    () =>
-      Gesture.Simultaneous(
-        listPan,
-        Gesture.Tap()
-          .maxDistance(10)
-          .onEnd(() => runOnJS(dismissKeyboard)()),
-      ),
-    [listPan, dismissKeyboard],
-  );
+  // The list no longer swallows taps to close a keyboard: the only inputs on
+  // this screen are the inline seams inside the list, which close themselves
+  // and are dismissed by dragging the list.
 
   function openDrawer() {
     (navigation as unknown as { openDrawer: () => void }).openDrawer();
   }
 
-  function onDraftChange(value: string) {
-    if (value.includes('@')) {
-      setDraft(value.replaceAll('@', ''));
-      setSheet('picker');
-      hapticLight();
-      return;
-    }
-    setDraft(value);
+  /** Written straight into the day from one of the inline rows. */
+  function addLine(text: string, rank?: string) {
+    if (todayFull()) return;
+    hapticMedium();
+    addText.mutate(
+      { text, rank },
+      { onError: (error) => quietError('Couldn’t add that line', error) },
+    );
   }
 
-  function submitDraft() {
-    const text = draft.replace(/\s+/g, ' ').trim();
-    if (!text) return;
-    if (todayFull()) return; // keep the draft; nothing added
-    setDraft('');
-    hapticMedium();
-    addText.mutate(text, {
-      onError: (error) => {
-        setDraft(text);
-        quietError('Couldn’t add that line', error);
-      },
-    });
+  /**
+   * A rank that lands a line written at the + directly under it — at the head
+   * of the open run, not the foot of the day.
+   *
+   * Writing several in a row anchors each one under the last, so a burst keeps
+   * the order it was typed in instead of stacking up backwards.
+   */
+  function rankAtSeam(): string | undefined {
+    const firstOpen = ordered[doneCount];
+    if (!firstOpen) return undefined;
+    const anchor = seamAnchor.current;
+    const anchoredAt = anchor === null ? -1 : ordered.findIndex((line) => line.rank === anchor);
+    const rank =
+      anchoredAt >= 0
+        ? rankAfterDrop(anchor, ordered[anchoredAt + 1]?.rank)
+        : rankAfterDrop(null, firstOpen.rank);
+    seamAnchor.current = rank;
+    return rank;
   }
 
   function pickTask(choice: { id: string; title: string; spaceName: string; spaceColor: string }) {
@@ -590,70 +588,12 @@ export function TodayView() {
     );
   }
 
+  /** The one thing the bottom bar still does: pull in an action you already have. */
   function openAdd() {
     hapticLight();
     Keyboard.dismiss();
-    setSheet('add');
-  }
-
-  function startInbox() {
-    setInboxDraft('');
-    setSheet('inbox');
-  }
-
-  function startRoutine() {
-    const index = weekdayIndex(activeDay);
-    setRoutineDraft('');
-    setRepeatChoice('every');
-    setCustomDays(index === null ? [1, 2, 3, 4, 5] : [index]);
-    setSheet('routine');
-  }
-
-  /** A new action made from the planner lands on the day being viewed, cap allowing. */
-  function startNewAction() {
-    const query = atCap ? '' : `?addToDay=${activeDay}`;
-    closeSheet(() => router.push(`/task-new${query}` as never));
-  }
-
-  function submitInbox() {
-    const text = inboxDraft.replace(/\s+/g, ' ').trim();
-    if (!text) return;
-    closeSheet();
-    setInboxDraft('');
-    addInbox.mutate(text, {
-      onSuccess: () => Toast.show({ type: 'success', text1: 'Added to inbox' }),
-      onError: (error) => {
-        setInboxDraft(text);
-        quietError('Couldn’t add to inbox', error);
-      },
-    });
-  }
-
-  /** A routine is a line with a repeat, so this writes the line and then its days. */
-  function saveNewRoutine() {
-    const text = routineDraft.replace(/\s+/g, ' ').trim();
-    if (!text) return;
-    const days = repeatMask();
-    if (!isRepeatMask(days)) {
-      alertDialog('Pick at least one day');
-      return;
-    }
-    if (atCap) {
-      closeSheet(() => {
-        todayFull();
-      });
-      return;
-    }
-    closeSheet();
-    setRoutineDraft('');
-    void (async () => {
-      try {
-        const id = await addText.mutateAsync(text);
-        if (id) await setRepeat.mutateAsync({ id, days });
-      } catch (error) {
-        quietError('Couldn’t add that routine', error);
-      }
-    })();
+    setTaskSearch('');
+    setSheet('picker');
   }
 
   function addSuggestion(item: TodaySuggestion) {
@@ -690,7 +630,10 @@ export function TodayView() {
     const checked = line.checkedAt !== null;
     const shiftable = viewingToday && canRescheduleTodayLine(line);
     const canBringToday = viewingPast && canRescheduleTodayLine(line);
-    return (
+    // The + rides under the last ticked line, so the list data stays lines only
+    // and dragging is untouched. It hides while this row is being lifted.
+    const addBelow = index === betweenIndex && !isActive;
+    const row = (
       <TodayLineRow
         line={line}
         index={index}
@@ -720,6 +663,23 @@ export function TodayView() {
         planningTomorrow={viewingFuture}
       />
     );
+    if (!addBelow) return row;
+    return (
+      <>
+        {row}
+        <InlineAddRow
+          placeholder="Add a line"
+          label="Add a line here"
+          open={addingAt === 'between'}
+          onOpenChange={(next) => {
+            // Each visit to the + starts its own run.
+            seamAnchor.current = null;
+            setAddingAt(next ? 'between' : null);
+          }}
+          onSubmit={(text) => addLine(text, rankAtSeam())}
+        />
+      </>
+    );
   }
 
   const empty = (
@@ -741,7 +701,7 @@ export function TodayView() {
             ? 'Write a line for that day. Routines that fall on it show here too.'
             : viewingPast
               ? 'Lines you wrote that day show here. Tick one, or move it to today.'
-              : 'Write a line at the bottom. Type @ to pull in an action.'
+              : 'Tap the + below to write a line, or add an action you already have.'
       }
     />
   );
@@ -796,8 +756,6 @@ export function TodayView() {
     isRepeatMask(repeatDays) &&
     !dayMatches(repeatDays, repeatLine.day);
 
-  const routineSkipsDay = isRepeatMask(repeatDays) && !dayMatches(repeatDays, activeDay);
-
   const listPad = { paddingTop: collapse.contentOffset };
 
   return (
@@ -836,7 +794,7 @@ export function TodayView() {
         </GestureDetector>
       </CollapsingScreenHeader>
 
-      <GestureDetector gesture={listGesture} touchAction="pan-y">
+      <GestureDetector gesture={listPan} touchAction="pan-y">
       <View style={styles.listFrame}>
         {activeQuery.data === undefined && !activeQuery.isError ? (
           <View style={[styles.center, listPad]}>
@@ -845,7 +803,7 @@ export function TodayView() {
         ) : (
           <DraggableFlatList
             key={activeDay}
-            data={lines}
+            data={ordered}
             keyExtractor={(line) => line.id}
             renderItem={({ item, drag, isActive, getIndex }: RenderItemParams<TodayLine>) =>
               renderLine(item, drag, isActive, getIndex?.() ?? 0)
@@ -856,14 +814,23 @@ export function TodayView() {
             onScrollOffsetChange={collapse.onScrollOffsetChange}
             ListHeaderComponent={viewingToday ? <InboxSection /> : null}
             ListFooterComponent={
-              suggestions.length === 0 ? null : (
-                <SuggestionsSection
-                  items={suggestions}
-                  dayLabel={viewingFuture ? 'tomorrow' : 'today'}
-                  onAdd={addSuggestion}
-                  onDismiss={hideSuggestion}
+              <>
+                <InlineAddRow
+                  placeholder="Add a line"
+                  label="Add a line at the end"
+                  open={addingAt === 'end'}
+                  onOpenChange={(next) => setAddingAt(next ? 'end' : null)}
+                  onSubmit={addLine}
                 />
-              )
+                {suggestions.length === 0 ? null : (
+                  <SuggestionsSection
+                    items={suggestions}
+                    dayLabel={viewingFuture ? 'tomorrow' : 'today'}
+                    onAdd={addSuggestion}
+                    onDismiss={hideSuggestion}
+                  />
+                )}
+              </>
             }
             ListEmptyComponent={suggestions.length > 0 ? null : empty}
             contentContainerStyle={[
@@ -879,33 +846,19 @@ export function TodayView() {
       </View>
       </GestureDetector>
 
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-          <TextInput
-            value={draft}
-            onChangeText={onDraftChange}
-            onSubmitEditing={() => void submitDraft()}
-            placeholder={
-              viewingFuture
-                ? 'Add a line for that day'
-                : viewingPast
-                  ? 'Add a line for that day'
-                  : 'Add a line, or @ an action'
-            }
-            placeholderTextColor={colors.inkFaint}
-            returnKeyType="done"
-            blurOnSubmit={false}
-            style={styles.input}
-            accessibilityLabel="Add a line"
-          />
-          <Pressable
-            onPress={openAdd}
-            accessibilityRole="button"
-            accessibilityLabel="More ways to add"
-            style={styles.taskButton}
-          >
-            <Ionicons name="add" size={24} color={colors.onBrand} />
-          </Pressable>
-        </View>
+      {/*
+        Lines are written inline, where you are looking, so nothing needs a bar
+        across the bottom. This floats over the day and only pulls in an action
+        that already exists.
+      */}
+      <Pressable
+        onPress={openAdd}
+        accessibilityRole="button"
+        accessibilityLabel="Add an action to this day"
+        style={[styles.fab, { bottom: insets.bottom + spacing.lg }]}
+      >
+        <Ionicons name="add" size={30} color={colors.onBrand} />
+      </Pressable>
 
       <FadeSheet
         visible={sheet !== null}
@@ -921,13 +874,7 @@ export function TodayView() {
         <SheetBottom style={[styles.sheet, isWide && styles.sheetWide]}>
           <View style={styles.sheetHeader}>
             <Text variant="sectionHeading" numberOfLines={2} style={styles.sheetTitle}>
-              {shown === 'add'
-                ? 'What are you adding?'
-                : shown === 'inbox'
-                  ? 'Add to inbox'
-                  : shown === 'routine'
-                    ? 'New routine'
-                    : shown === 'edit'
+              {shown === 'edit'
                 ? 'Edit line'
                 : shown === 'repeat'
                   ? 'Repeat'
@@ -1066,82 +1013,6 @@ export function TodayView() {
               {repeatLine?.routineActive ? (
                 <SheetAction label="Delete routine" destructive onPress={() => repeatLine && void deleteRoutine(repeatLine)} />
               ) : null}
-            </>
-          ) : null}
-          {shown === 'add' ? (
-            <>
-              <SheetAction
-                label="Inbox"
-                detail="Park a thought to sort out later."
-                quiet
-                onPress={startInbox}
-              />
-              <SheetAction
-                label="Existing action"
-                detail="Pull one of your actions onto this day."
-                quiet
-                onPress={() => setSheet('picker')}
-              />
-              <SheetAction
-                label="Routine"
-                detail="A line that comes back on the days you pick."
-                quiet
-                onPress={startRoutine}
-              />
-              <SheetAction
-                label="New action"
-                detail={
-                  atCap
-                    ? 'Create an action in a circle, step by step.'
-                    : 'Create an action in a circle and put it on this day.'
-                }
-                quiet
-                onPress={startNewAction}
-              />
-            </>
-          ) : null}
-          {shown === 'inbox' ? (
-            <>
-              <Text variant="meta" color={colors.inkSoft}>
-                It waits at the top of today until you send it somewhere or let it go.
-              </Text>
-              <TextInput
-                value={inboxDraft}
-                onChangeText={setInboxDraft}
-                onSubmitEditing={submitInbox}
-                placeholder="Something to sort out later"
-                placeholderTextColor={colors.inkFaint}
-                returnKeyType="done"
-                style={styles.sheetInput}
-                autoFocus
-                accessibilityLabel="Inbox line"
-              />
-              <SheetAction label="Add to inbox" onPress={submitInbox} />
-            </>
-          ) : null}
-          {shown === 'routine' ? (
-            <>
-              <TextInput
-                value={routineDraft}
-                onChangeText={setRoutineDraft}
-                placeholder="Yoga, take meds, water the plants"
-                placeholderTextColor={colors.inkFaint}
-                style={styles.sheetInput}
-                autoFocus
-                accessibilityLabel="Routine"
-              />
-              <RepeatPicker
-                choice={repeatChoice}
-                onChoice={setRepeatChoice}
-                customDays={customDays}
-                onCustomDays={setCustomDays}
-              />
-              {routineSkipsDay ? (
-                <Text variant="meta" color={colors.inkSoft}>
-                  This day isn’t one of them, so it first shows on the next day you picked.
-                </Text>
-              ) : null}
-              <SheetAction label="Add routine" onPress={saveNewRoutine} />
             </>
           ) : null}
           {shown === 'tick' ? (
@@ -1577,7 +1448,11 @@ function TodayLineRow({
   const routineSkip = !checked && line.routineId !== null && !shiftable;
 
   return (
-    <Animated.View entering={FadeInDown.delay(Math.min(index, 10) * 24).duration(260)}>
+    // layout carries the row when ticking it sends it down to the done group.
+    <Animated.View
+      entering={FadeInDown.delay(Math.min(index, 10) * 24).duration(260)}
+      layout={LinearTransition.duration(260)}
+    >
     <ReanimatedSwipeable
       ref={ref}
       friction={1.6}
@@ -1920,7 +1795,8 @@ const styles = StyleSheet.create({
   progressLabel: { textAlign: 'right' },
   listFrame: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  listContent: { paddingBottom: spacing.lg },
+  // Room under the last line so the floating + never sits on top of it.
+  listContent: { paddingBottom: 110 },
   emptyList: { flexGrow: 1 },
   row: {
     minHeight: 52,
@@ -1992,29 +1868,18 @@ const styles = StyleSheet.create({
   },
   swipeTomorrow: { backgroundColor: colors.brandSoft },
   swipeNotToday: { backgroundColor: colors.surfaceAlt },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.hairline,
-    backgroundColor: colors.paper,
-  },
-  input: {
-    flex: 1,
-    minHeight: 44,
-    color: colors.ink,
-    ...typeScale.body,
-  },
-  taskButton: {
-    width: 40,
-    height: 40,
+  // Matches the circle on My Actions.
+  fab: {
+    position: 'absolute',
+    right: spacing.lg,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
     backgroundColor: colors.brand,
+    zIndex: 40,
+    ...shadows.floating,
   },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(43, 38, 32, 0.35)' },
   backdropWide: { justifyContent: 'center', padding: spacing.xl },

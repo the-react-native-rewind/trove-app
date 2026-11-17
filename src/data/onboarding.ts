@@ -78,7 +78,7 @@ export function useApplyOnboarding() {
 
       async function addRoutine(text: string, days: number) {
         try {
-          const lineId = (await addTodayText.mutateAsync(text)) as string | null;
+          const lineId = (await addTodayText.mutateAsync({ text })) as string | null;
           if (lineId) await setRepeat.mutateAsync({ id: lineId, days });
           created += 1;
         } catch {

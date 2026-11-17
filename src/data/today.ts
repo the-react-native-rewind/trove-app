@@ -588,6 +588,12 @@ function placeOptimisticLine(qc: QueryClient, userId: string, day: string, asOf:
   qc.setQueryData(key, insertTodayLine(current, line));
 }
 
+export type TodayTextDraft = {
+  text: string;
+  /** Where to file it. Left out, the line lands under everything on the day. */
+  rank?: string;
+};
+
 export type TodayReorder = {
   id: string;
   rank: string;
@@ -617,7 +623,7 @@ export function useAddTodayText(day: string) {
   const refresh = useRefreshToday();
   const asOf = localToday();
   return useMutation({
-    mutationFn: async (text: string) => {
+    mutationFn: async ({ text, rank }: TodayTextDraft) => {
       const { data, error } = await supabase.rpc('add_today_item', {
         p_day: day,
         p_text: text,
@@ -625,9 +631,20 @@ export function useAddTodayText(day: string) {
         p_as_of: asOf,
       });
       if (error) throw error;
+      // add_today_item always files a line under the day, so one written at a
+      // seam is moved into place right after. A failure here is not worth
+      // unwinding the add: the line exists, and the refetch settles it at the
+      // bottom, which is where it would have landed anyway.
+      if (data && rank) {
+        const { error: moveError } = await supabase.rpc('move_today_item', {
+          p_item_id: data,
+          p_rank: rank,
+        });
+        if (moveError) console.warn('today: could not place the new line', moveError);
+      }
       return data;
     },
-    onMutate: async (text) => {
+    onMutate: async ({ text, rank }) => {
       if (!userId) return { snapshot: undefined, tempId: undefined, editing: false };
       const tempId = nextPendingLineId();
       const snapshot = await beginTodayEdit(qc, userId, () => {
@@ -638,7 +655,7 @@ export function useAddTodayText(day: string) {
           day,
           asOf,
           {
-            ...blankLine(day, tempId, bottomTodayRank(current), new Date().toISOString()),
+            ...blankLine(day, tempId, rank ?? bottomTodayRank(current), new Date().toISOString()),
             text,
           },
         );

@@ -14,6 +14,7 @@ import {
   ACTION_TITLE_MAX,
   TODAY_SUGGESTION_LIMIT,
   canMakeTodayAction,
+  checkedFirst,
   canRescheduleTodayLine,
   compareMineOrder,
   eligibleMineSuggestions,
@@ -681,4 +682,46 @@ test('only a plain line can become an action', () => {
     false,
   );
   assert.equal(canMakeTodayAction({ taskId: null, routineId: null, text: '   ' }), false);
+});
+
+test('ticked lines come first, in the order they were ticked', () => {
+  const lines = [
+    line('a', { rank: 'a4' }),
+    line('b', { rank: 'a3', checkedAt: '2026-10-27T09:00:00.000Z' }),
+    line('c', { rank: 'a2' }),
+    line('d', { rank: 'a1', checkedAt: '2026-10-27T08:00:00.000Z' }),
+  ];
+  // d was ticked first, so it leads; b follows; the open lines keep their order.
+  assert.deepEqual(
+    checkedFirst(lines).map((item) => item.id),
+    ['d', 'b', 'a', 'c'],
+  );
+});
+
+test('ticking another line puts it at the end of the ticked run', () => {
+  const before = [
+    line('a', { rank: 'a3', checkedAt: '2026-10-27T08:00:00.000Z' }),
+    line('b', { rank: 'a2' }),
+    line('c', { rank: 'a1' }),
+  ];
+  const after = before.map((item) =>
+    item.id === 'c' ? { ...item, checkedAt: '2026-10-27T10:00:00.000Z' } : item,
+  );
+  assert.deepEqual(
+    checkedFirst(after).map((item) => item.id),
+    ['a', 'c', 'b'],
+  );
+});
+
+test('a day that needs no moving keeps the same array', () => {
+  const settled = [
+    line('a', { rank: 'a3', checkedAt: '2026-10-27T08:00:00.000Z' }),
+    line('b', { rank: 'a2' }),
+    line('c', { rank: 'a1' }),
+  ];
+  assert.equal(checkedFirst(settled), settled);
+  const empty: TodayLine[] = [];
+  assert.equal(checkedFirst(empty), empty);
+  const allOpen = [line('a'), line('b')];
+  assert.equal(checkedFirst(allOpen), allOpen);
 });

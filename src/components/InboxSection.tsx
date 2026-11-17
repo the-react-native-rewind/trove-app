@@ -5,10 +5,16 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 
-import { useDismissInboxItem, useInbox, useSendInboxItemToToday } from '@/data/inbox';
+import {
+  useAddInboxItem,
+  useDismissInboxItem,
+  useInbox,
+  useSendInboxItemToToday,
+} from '@/data/inbox';
 import { hapticLight, hapticMedium } from '@/lib/haptics';
 import { sourceLabel, type InboxItem } from '@/lib/inbox';
 import { colors, spacing } from '@/theme/tokens';
+import { InlineAddRow } from './InlineAddRow';
 import { Text } from './ui/Text';
 
 function messageOf(error: unknown): string {
@@ -29,9 +35,18 @@ export function InboxSection() {
   const { data: items = [] } = useInbox();
   const dismiss = useDismissInboxItem();
   const sendToToday = useSendInboxItemToToday();
+  const addItem = useAddInboxItem();
   const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   if (items.length === 0) return null;
+
+  function addToInbox(text: string) {
+    addItem.mutate(text, {
+      onError: (error) =>
+        Toast.show({ type: 'error', text1: 'Couldn’t add to inbox', text2: messageOf(error) }),
+    });
+  }
 
   function accept(item: InboxItem) {
     hapticMedium();
@@ -113,11 +128,12 @@ export function InboxSection() {
                 <Pressable
                   onPress={() => accept(item)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Send ${item.text} to Trove as an action`}
+                  accessibilityLabel={`Make ${item.text} an action`}
                   hitSlop={6}
                   style={styles.iconBtn}
                 >
-                  <Ionicons name="arrow-forward" size={18} color={colors.inkFaint} />
+                  {/* Same + as the day's lines use to become an action. */}
+                  <Ionicons name="add-circle-outline" size={18} color={colors.inkFaint} />
                 </Pressable>
                 <Pressable
                   onPress={() => decline(item)}
@@ -132,6 +148,16 @@ export function InboxSection() {
             );
           })
         : null}
+
+      {open ? (
+        <InlineAddRow
+          placeholder="Park a thought"
+          label="Add to inbox"
+          open={adding}
+          onOpenChange={setAdding}
+          onSubmit={addToInbox}
+        />
+      ) : null}
     </View>
   );
 }
