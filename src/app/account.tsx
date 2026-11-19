@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -139,8 +139,23 @@ export default function Account() {
       <View style={styles.beta}>
         <Text variant="sectionHeading">Beta features</Text>
         <Text variant="body" color={colors.inkSoft}>
-          Early features show up here first. No new beta features right now.
+          Early features show up here first. They work, but they may still move around.
         </Text>
+        <View style={styles.betaRow}>
+          <View style={styles.betaText}>
+            <Text variant="bodyMedium">Goals</Text>
+            <Text variant="meta" color={colors.inkFaint}>
+              A short list of results you are working towards, tied to the projects that serve
+              them. Adds Goals to the sidebar.
+            </Text>
+          </View>
+          <Switch
+            value={profile?.goals_enabled === true}
+            onValueChange={(next) => updateProfile.mutate({ goals_enabled: next })}
+            trackColor={{ true: colors.brand, false: colors.hairline }}
+            accessibilityLabel="Goals beta"
+          />
+        </View>
       </View>
 
       <View style={styles.connect}>
@@ -184,6 +199,8 @@ const styles = StyleSheet.create({
   },
   pro: { marginTop: spacing.xl, gap: spacing.md },
   beta: { marginTop: spacing.xl, gap: spacing.md },
+  betaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  betaText: { flex: 1, gap: 2 },
   connect: { marginTop: spacing.xl, gap: spacing.md },
   actions: { marginTop: spacing.xl, gap: spacing.md },
 });

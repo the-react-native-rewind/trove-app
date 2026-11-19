@@ -33,6 +33,11 @@ export const colors = {
   overdueSurface: '#F6E1DC',
   overdueBorder: '#E4B6AC',
 
+  // Coming up (honey wash, for a date bearing down but not yet missed)
+  dueSoonSurface: '#F8EAD2',
+  dueSoonBorder: '#E7C892',
+  dueSoonInk: '#9A6B1E',
+
   white: '#FFFFFF',
   transparent: 'transparent',
 } as const;

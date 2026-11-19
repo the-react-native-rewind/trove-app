@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useGoals } from '@/data/goals';
 import { useProfile } from '@/data/profile';
 import { useSpaces } from '@/data/spaces';
 import { useTasks } from '@/data/tasks';
@@ -19,6 +20,7 @@ import { useTodayList } from '@/data/today';
 import { useIsWide } from '@/hooks/useIsWide';
 import { normalizeStatus } from '@/lib/board';
 import { hapticLight } from '@/lib/haptics';
+import { GOALS_VIEW_ID, isGoalAchieved } from '@/lib/goals';
 import { localToday, TODAY_VIEW_ID } from '@/lib/today';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
@@ -41,6 +43,9 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
   const { data: spaces = [] } = useSpaces();
   const { data: mineTasks = [] } = useTasks('all');
   const { data: todayLines = [] } = useTodayList(localToday());
+  // Beta: the row and its query stay off until it is switched on in Account.
+  const goalsEnabled = profile?.goals_enabled === true;
+  const { data: goals = [] } = useGoals(goalsEnabled);
 
   const [collapsed, setCollapsed] = useState(false);
   const progress = useSharedValue(1); // 0 = rail, 1 = expanded
@@ -67,6 +72,7 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
 
   const todayOpen = todayLines.filter((line) => line.checkedAt === null).length;
   const mineOpen = mineTasks.filter((task) => normalizeStatus(task.status) !== 'done').length;
+  const goalsOpen = goals.filter((goal) => !isGoalAchieved(goal)).length;
 
   function select(id: string) {
     if (id !== selectedSpaceId) hapticLight();
@@ -127,6 +133,16 @@ export function SpacesDrawer({ navigation }: { navigation: DrawerNav }) {
           count={mineOpen}
           fade={fade}
         />
+        {goalsEnabled ? (
+          <Row
+            active={selectedSpaceId === GOALS_VIEW_ID}
+            onPress={() => select(GOALS_VIEW_ID)}
+            leading={<Ionicons name="flag-outline" size={20} color={colors.brandDeep} />}
+            label="Goals"
+            count={goalsOpen}
+            fade={fade}
+          />
+        ) : null}
         <Animated.View style={fade}>
           <Text variant="label" color={colors.inkFaint} style={styles.sectionLabel} numberOfLines={1}>
             Your circles

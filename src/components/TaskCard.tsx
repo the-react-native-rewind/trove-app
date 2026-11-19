@@ -5,6 +5,7 @@ import type { Attachment } from '@/data/attachments';
 import { visibleHandoffNote } from '@/lib/handoff';
 import { plainTextFromMarkdown } from '@/lib/markdown';
 import type { TaskWithRefs } from '@/lib/types';
+import { dueBand, isDuePressing } from '@/lib/board';
 import { formatDueDate, isOverdue } from '@/lib/format';
 import { describeRepeat, repeatRuleFromTask } from '@/lib/recurrence';
 import { useSelection } from '@/providers/SelectionProvider';
@@ -63,6 +64,10 @@ export function TaskCard({
   const selection = useSelection();
   const due = formatDueDate(task.due_date);
   const overdue = task.status !== 'done' && isOverdue(task.due_date);
+  // Due today or inside the next few days: worth marking, but not as a miss.
+  const band = dueBand(task);
+  const comingUp = isDuePressing(band) && !overdue;
+  const dueInk = overdue ? colors.priorityHigh : comingUp ? colors.dueSoonInk : colors.inkFaint;
   const done = task.status === 'done';
   const inProgress = task.status === 'in_progress';
   const showTag = Boolean(showSpaceTag && task.space);
@@ -115,6 +120,7 @@ export function TaskCard({
     <View
       style={[
         styles.card,
+        comingUp && styles.comingUp,
         overdue && styles.overdue,
         selected && styles.selected,
       ]}
@@ -224,7 +230,13 @@ export function TaskCard({
                   people={task.assignees}
                   size={26}
                   ringColor={
-                    selected ? colors.brandSoft : overdue ? colors.overdueSurface : colors.surface
+                    selected
+                      ? colors.brandSoft
+                      : overdue
+                        ? colors.overdueSurface
+                        : comingUp
+                          ? colors.dueSoonSurface
+                          : colors.surface
                   }
                 />
               ) : null}
@@ -248,11 +260,11 @@ export function TaskCard({
               {due ? (
                 <View style={styles.dueWrap}>
                   <Ionicons
-                    name="calendar-outline"
+                    name={comingUp ? 'alarm-outline' : 'calendar-outline'}
                     size={13}
-                    color={overdue ? colors.priorityHigh : colors.inkFaint}
+                    color={dueInk}
                   />
-                  <Text variant="meta" color={overdue ? colors.priorityHigh : colors.inkFaint}>
+                  <Text variant="meta" color={dueInk}>
                     {due}
                   </Text>
                 </View>
@@ -292,6 +304,7 @@ const styles = StyleSheet.create({
   clip: { ...fullBleedMediaCorners, overflow: 'hidden' },
   body: { padding: spacing.lg, gap: spacing.sm },
   overdue: { backgroundColor: colors.overdueSurface, borderColor: colors.overdueBorder },
+  comingUp: { backgroundColor: colors.dueSoonSurface, borderColor: colors.dueSoonBorder },
   selected: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   title: { flex: 1 },

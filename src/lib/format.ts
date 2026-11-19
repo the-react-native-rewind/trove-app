@@ -21,6 +21,18 @@ export function formatDueDate(iso: string | null): string | null {
     : `${label} ${due.getFullYear()}`;
 }
 
+/**
+ * Whole days from today to a due date: 0 is today, 1 tomorrow, negative is
+ * past. Null when there is no date. Both ends are taken at the start of the
+ * day, so this does not drift with the time of day.
+ */
+export function daysUntilDue(iso: string | null, now: Date = new Date()): number | null {
+  if (!iso) return null;
+  const due = startOfDay(new Date(`${iso}T00:00:00`));
+  const today = startOfDay(now);
+  return Math.round((due.getTime() - today.getTime()) / 86_400_000);
+}
+
 /** True when a due date is before today (and not done). */
 export function isOverdue(iso: string | null): boolean {
   if (!iso) return false;

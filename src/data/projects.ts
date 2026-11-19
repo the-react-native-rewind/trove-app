@@ -29,6 +29,50 @@ export function useProjects(spaceId: string) {
   });
 }
 
+/**
+ * Every project the person can see, across all their circles. Goals pull from
+ * this when tying work to a result; the per-circle hook above stays for boards.
+ */
+export function useAllProjects() {
+  const { userId } = useAuth();
+  return useQuery({
+    queryKey: ['projects', 'all-visible', userId ?? ''],
+    enabled: !!userId,
+    queryFn: async (): Promise<ProjectChoice[]> => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, color, space_id, spaces(name)')
+        .is('archived_at', null)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return (data ?? []).map((row) => {
+        const project = row as unknown as {
+          id: string;
+          name: string;
+          color: string;
+          space_id: string;
+          spaces: { name: string } | null;
+        };
+        return {
+          id: project.id,
+          name: project.name,
+          color: project.color,
+          spaceId: project.space_id,
+          spaceName: project.spaces?.name ?? '',
+        };
+      });
+    },
+  });
+}
+
+export type ProjectChoice = {
+  id: string;
+  name: string;
+  color: string;
+  spaceId: string;
+  spaceName: string;
+};
+
 export function useProject(projectId: string) {
   return useQuery({
     queryKey: ['project', projectId],

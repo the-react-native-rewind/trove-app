@@ -10,6 +10,7 @@ import { CircleMenuSheet } from '@/components/CircleMenuSheet';
 import { CollapsingScreenHeader, useCollapsingHeader } from '@/components/CollapsingHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { MineMenuSheet } from '@/components/MineMenuSheet';
+import { GoalsView } from '@/components/GoalsView';
 import { TodayView } from '@/components/TodayView';
 import { ProjectFormSheet } from '@/components/ProjectFormSheet';
 import { ProjectsPane, type ProjectStat } from '@/components/ProjectsPane';
@@ -35,10 +36,11 @@ import {
 import { useSpaces } from '@/data/spaces';
 import { useIsWide } from '@/hooks/useIsWide';
 import { taskMatchesAssigneeFilter, UNASSIGNED_FILTER } from '@/lib/assignees';
-import { sortTasksByUrgency } from '@/lib/board';
+import { sortTasksByRank, sortTasksByUrgency } from '@/lib/board';
 import { rankAfterStepDown, rankAfterStepUp } from '@/lib/rank';
 import { hapticLight } from '@/lib/haptics';
 import { MINE_VIEW_ID } from '@/lib/mine';
+import { GOALS_VIEW_ID } from '@/lib/goals';
 import { localToday, TODAY_VIEW_ID } from '@/lib/today';
 import { canManage, canWrite, type ListStatus, type TaskWithRefs } from '@/lib/types';
 import { useSelectedSpace } from '@/providers/SpaceProvider';
@@ -54,6 +56,7 @@ export default function Board() {
   const { selectedSpaceId } = useSelectedSpace();
 
   if (selectedSpaceId === TODAY_VIEW_ID) return <TodayView />;
+  if (selectedSpaceId === GOALS_VIEW_ID) return <GoalsView />;
 
   return (
     <SelectionProvider key={selectedSpaceId}>
@@ -153,6 +156,10 @@ function SpaceBoard() {
 
   const showingProjects = !isMine && boardTab === 'projects';
   const items = openActions;
+  // Reordering by hand is about the order you chose, so the list being dragged
+  // shows rank order rather than the urgency order the board reads in. A drop
+  // between two rows then writes the rank it looks like it should.
+  const reorderItems = useMemo(() => sortTasksByRank(items), [items]);
 
   // Per-project progress and who is assigned, from the circle's whole task list.
   const projectStats = useMemo(() => {
@@ -526,10 +533,10 @@ function SpaceBoard() {
         />
       ) : reorderActive ? (
         <TaskReorderList
-          tasks={items}
+          tasks={reorderItems}
           canDragTask={(task) => canReorderTask(task.space_id)}
           onCommitRank={(id, rank) => {
-            const task = items.find((item) => item.id === id);
+            const task = reorderItems.find((item) => item.id === id);
             if (!task || !canReorderTask(task.space_id)) return;
             updateRank.mutate({ id, rank });
           }}

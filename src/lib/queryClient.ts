@@ -28,6 +28,7 @@ export const qk = {
   handoffs: (taskId: string) => ['handoffs', taskId] as const,
   agentLog: (taskId: string) => ['agent-log', taskId] as const,
   inbox: (userId: string) => ['inbox', userId] as const,
+  goals: (userId: string) => ['goals', userId] as const,
   today: (userId: string, day: string) => ['today', userId, day] as const,
   yesterday: (userId: string, day: string) => ['yesterday', userId, day] as const,
   tomorrow: (userId: string, day: string) => ['tomorrow', userId, day] as const,

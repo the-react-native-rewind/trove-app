@@ -31,6 +31,7 @@ type ProfilePatch = {
   display_name?: string;
   avatar_url?: string | null;
   my_week_enabled?: boolean;
+  goals_enabled?: boolean;
 };
 
 export function useUpdateProfile() {
@@ -42,6 +43,7 @@ export function useUpdateProfile() {
       if (input.display_name !== undefined) patch.display_name = input.display_name.trim();
       if (input.avatar_url !== undefined) patch.avatar_url = input.avatar_url;
       if (input.my_week_enabled !== undefined) patch.my_week_enabled = input.my_week_enabled;
+      if (input.goals_enabled !== undefined) patch.goals_enabled = input.goals_enabled;
       const { error } = await supabase.from('profiles').update(patch).eq('id', userId!);
       if (error) throw error;
     },
@@ -57,6 +59,7 @@ export function useUpdateProfile() {
           ...(input.display_name !== undefined ? { display_name: input.display_name.trim() } : {}),
           ...(input.avatar_url !== undefined ? { avatar_url: input.avatar_url } : {}),
           ...(input.my_week_enabled !== undefined ? { my_week_enabled: input.my_week_enabled } : {}),
+          ...(input.goals_enabled !== undefined ? { goals_enabled: input.goals_enabled } : {}),
         };
       });
       return { previous };

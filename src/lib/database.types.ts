@@ -97,6 +97,7 @@ export type Database = {
           display_name: string | null
           id: string
           is_pro: boolean
+          goals_enabled: boolean
           my_week_enabled: boolean
           onboarded_at: string | null
         }
@@ -106,6 +107,7 @@ export type Database = {
           display_name?: string | null
           id: string
           is_pro?: boolean
+          goals_enabled?: boolean
           my_week_enabled?: boolean
           onboarded_at?: string | null
         }
@@ -115,6 +117,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_pro?: boolean
+          goals_enabled?: boolean
           my_week_enabled?: boolean
           onboarded_at?: string | null
         }
@@ -455,6 +458,75 @@ export type Database = {
           dismissed_at?: string | null
           position?: number
           task_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      goal_projects: {
+        Row: {
+          created_at: string
+          goal_id: string
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          goal_id: string
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          goal_id?: string
+          project_id?: string
+        }
+        Relationships: []
+      }
+      goals: {
+        Row: {
+          achieved_at: string | null
+          created_at: string
+          current_value: number
+          description: string | null
+          id: string
+          number_format: string
+          outcome: string | null
+          rank: string
+          result_kind: string
+          target_value: number | null
+          title: string
+          unit: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          achieved_at?: string | null
+          created_at?: string
+          current_value?: number
+          description?: string | null
+          id?: string
+          number_format?: string
+          outcome?: string | null
+          rank?: string
+          result_kind?: string
+          target_value?: number | null
+          title: string
+          unit?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          achieved_at?: string | null
+          created_at?: string
+          current_value?: number
+          description?: string | null
+          id?: string
+          number_format?: string
+          outcome?: string | null
+          rank?: string
+          result_kind?: string
+          target_value?: number | null
+          title?: string
+          unit?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
