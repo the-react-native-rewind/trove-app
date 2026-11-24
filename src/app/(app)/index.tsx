@@ -47,6 +47,9 @@ import { useSelectedSpace } from '@/providers/SpaceProvider';
 import { SelectionProvider, useSelection } from '@/providers/SelectionProvider';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 
+// A render error on the board shows a retry screen instead of closing the app.
+export { ErrorBoundary } from 'expo-router';
+
 const EMPTY_COPY: Record<ListStatus, { title: string; body: string }> = {
   todo: { title: 'All clear', body: 'Nothing to do right now. Tap the plus to add the next thing.' },
   done: { title: 'Nothing done yet', body: 'Finished tasks land here. A good place to see what got carried.' },

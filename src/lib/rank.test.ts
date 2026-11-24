@@ -6,6 +6,7 @@ import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
 import {
   compareRank,
   rankAfterDrop,
+  rankAfterStepDown,
   rankAfterStepUp,
   rankAtBottom,
   rankAtTop,
@@ -116,4 +117,32 @@ test('a spawned-style bottom rank stays last even after later taps', () => {
   assert.equal(first, 'a0');
   assert.ok(compareRank(above, first) < 0);
   assert.ok(compareRank(spawned, first) > 0);
+});
+
+// Two actions sharing a rank used to make every row next to them throw
+// "a1 >= a1" while the circle rendered, which closed the app.
+test('tied ranks next to a row never throw and still give a move that lands', () => {
+  const ordered = [row('top', 'a3', null), row('tie-1', 'a1', null), row('tie-2', 'a1', null), row('low', 'Zo', null)];
+  // A throw here fails the test, as it used to fail the render.
+  for (const task of ordered) {
+    rankAfterStepUp(task.id, ordered);
+    rankAfterStepDown(task.id, ordered);
+  }
+
+  const up = rankAfterStepUp('low', ordered);
+  assert.ok(up && up > 'a1' && up < 'a3', `step up from below a tie lands above it, got ${up}`);
+
+  const down = rankAfterStepDown('top', ordered);
+  assert.ok(down && down < 'a1' && down > 'Zo', `step down from above a tie lands below it, got ${down}`);
+
+  // The tied pair has nothing strictly between it and its neighbours to skip.
+  const tieUp = rankAfterStepUp('tie-2', ordered);
+  assert.ok(tieUp && tieUp > 'a1' && tieUp < 'a3');
+  const tieDown = rankAfterStepDown('tie-1', ordered);
+  assert.ok(tieDown && tieDown < 'a1' && tieDown > 'Zo');
+});
+
+test('a malformed stored rank costs the move button, not the screen', () => {
+  const ordered = [row('a', '!!', null), row('b', 'a1', null)];
+  assert.equal(rankAfterStepUp('b', ordered), null);
 });

@@ -26,50 +26,70 @@ export function rankAtTop(highest: string | null | undefined): string {
 
 /**
  * Move one place up inside the same circle and due date.
- * The new key sits between the task directly above and the one above that.
- * Returns null when this task is already the top of that group.
+ * The new key sits just above the task directly above, and below the next
+ * key in the group that is strictly higher than that one. Tied keys (two
+ * actions sharing a rank) are skipped over rather than squeezed between, as
+ * there is no key between two equal keys.
+ * Returns null when this task is already the top of that group, or when the
+ * keys cannot be ordered. This runs while a row renders, so it never throws.
  */
 export function rankAfterStepUp(taskId: string, ordered: readonly RankedRef[]): string | null {
   const index = ordered.findIndex((task) => task.id === taskId);
   if (index < 0) return null;
   const task = ordered[index];
   let above: RankedRef | undefined;
-  let aboveAbove: RankedRef | undefined;
+  let upper: string | null = null;
   for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
     const candidate = ordered[cursor];
     if (candidate.space_id !== task.space_id || candidate.due_date !== task.due_date) continue;
     if (!above) above = candidate;
-    else {
-      aboveAbove = candidate;
+    else if (candidate.rank > above.rank) {
+      upper = candidate.rank;
       break;
     }
   }
   if (!above) return null;
-  return generateKeyBetween(above.rank, aboveAbove?.rank ?? null);
+  return safeKeyBetween(above.rank || null, upper);
 }
 
 /**
  * Move one place down inside the same circle and due date.
- * The new key sits between the task directly below and the one below that.
- * Returns null when this task is already the bottom of that group.
+ * The new key sits just below the task directly below, and above the next
+ * key in the group that is strictly lower than that one. Tied keys are
+ * skipped over, as there is no key between two equal keys.
+ * Returns null when this task is already the bottom of that group, or when
+ * the keys cannot be ordered. This runs while a row renders, so it never throws.
  */
 export function rankAfterStepDown(taskId: string, ordered: readonly RankedRef[]): string | null {
   const index = ordered.findIndex((task) => task.id === taskId);
   if (index < 0) return null;
   const task = ordered[index];
   let below: RankedRef | undefined;
-  let belowBelow: RankedRef | undefined;
+  let lower: string | null = null;
   for (let cursor = index + 1; cursor < ordered.length; cursor += 1) {
     const candidate = ordered[cursor];
     if (candidate.space_id !== task.space_id || candidate.due_date !== task.due_date) continue;
     if (!below) below = candidate;
-    else {
-      belowBelow = candidate;
+    else if (candidate.rank < below.rank) {
+      lower = candidate.rank || null;
       break;
     }
   }
   if (!below) return null;
-  return generateKeyBetween(belowBelow?.rank ?? null, below.rank);
+  return safeKeyBetween(lower, below.rank || null);
+}
+
+/**
+ * generateKeyBetween, but null instead of an exception when the bounds are
+ * out of order or a stored key is malformed. A bad key in the data should
+ * cost a move button, not the whole screen.
+ */
+function safeKeyBetween(lower: string | null, upper: string | null): string | null {
+  try {
+    return generateKeyBetween(lower, upper);
+  } catch {
+    return null;
+  }
 }
 
 /** Keep a slider value inside 0 (bottom) to 1 (top). Anything unusable is the bottom. */
